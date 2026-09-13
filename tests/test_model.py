@@ -198,3 +198,19 @@ def test_tiny_overfit():
         opt.zero_grad()
     final = (m(x, y)[0] / n).item()
     assert final < 0.05, f"final loss {final}"
+
+
+def test_diagnostics_runs_on_tiny_model():
+    from slm.eval.diagnostics import render_html, run_diagnostics
+
+    torch.manual_seed(0)
+    cfg = tiny()
+    m = Transformer(cfg)
+    batches = [(torch.randint(0, cfg.vocab_size, (2, 32)), torch.randint(0, cfg.vocab_size, (2, 32))) for _ in range(2)]
+    d = run_diagnostics(m, batches, do_ablations=True, attn_max_len=32)
+    assert len(d["residual"]["residual_rms"]) == cfg.n_layers + 1
+    assert len(d["mlp"]["dead_frac"]) == cfg.n_layers
+    assert len(d["attention"]["entropy"]) == cfg.n_layers and len(d["attention"]["entropy"][0]) == cfg.n_heads
+    assert len(d["ablation"]["head_loss_delta"]) == cfg.n_layers and len(d["ablation"]["layer_loss_delta"]) == cfg.n_layers
+    assert "blocks.0.attn.wqkv.weight" in d["spectra"]
+    assert "<svg" in render_html(d)

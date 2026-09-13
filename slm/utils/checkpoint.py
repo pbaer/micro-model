@@ -15,6 +15,7 @@ import platform
 import random
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -60,11 +61,24 @@ def set_rng_state(s: dict[str, Any]) -> None:
         torch.cuda.set_rng_state_all(s["torch_cuda"])
 
 
+def _replace_with_retry(src: Path, dst: Path, attempts: int = 10, wait_s: float = 1.0) -> None:
+    """os.replace fails on Windows while another process holds `dst` open (e.g. a viewer loading
+    the checkpoint); retry briefly instead of crashing a multi-hour run."""
+    for i in range(attempts):
+        try:
+            os.replace(src, dst)
+            return
+        except PermissionError:
+            if i == attempts - 1:
+                raise
+            time.sleep(wait_s)
+
+
 def _atomic_save(obj: Any, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(obj, tmp)
-    os.replace(tmp, path)
+    _replace_with_retry(tmp, path)
 
 
 def unwrap(model: torch.nn.Module) -> torch.nn.Module:
@@ -82,7 +96,7 @@ def save_full(
     keep_prev: bool = True,
 ) -> None:
     if keep_prev and path.exists():
-        os.replace(path, path.with_name(path.stem + ".prev" + path.suffix))
+        _replace_with_retry(path, path.with_name(path.stem + ".prev" + path.suffix))
     _atomic_save(
         {
             "model": unwrap(model).state_dict(),
