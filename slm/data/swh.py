@@ -18,6 +18,7 @@ from pathlib import Path
 
 import boto3
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 from botocore import UNSIGNED
 from botocore.config import Config
@@ -58,16 +59,16 @@ def existing_blob_ids(src: Source) -> set[str]:
 
 def fetch_source(src: Source, max_files: int, workers: int = 64, shard_rows: int = 20000, min_score: float = 0.0) -> None:
     assert src.content_via_swh
-    id_files = sorted(p for p in src.local_dir.glob("*.parquet"))
+    id_files = sorted(p for p in src.local_dir.rglob("*.parquet") if content_dir(src) not in p.parents)
     assert id_files, f"no id parquet files under {src.local_dir}; run slm.data.download first"
     tbl = pa.concat_tables([pq.read_table(p) for p in id_files])
     cols = tbl.column_names
     score_col = "score" if "score" in cols else ("int_score" if "int_score" in cols else None)
     if score_col:
-        idx = pa.compute.sort_indices(tbl, sort_keys=[(score_col, "descending")])
+        idx = pc.sort_indices(tbl, sort_keys=[(score_col, "descending")])
         tbl = tbl.take(idx)
         if min_score > 0:
-            tbl = tbl.filter(pa.compute.greater_equal(tbl[score_col], min_score))
+            tbl = tbl.filter(pc.greater_equal(tbl[score_col], min_score))
     done = existing_blob_ids(src)
     ids = [b for b in tbl.column("blob_id").to_pylist() if b not in done][: max(0, max_files - len(done))]
     print(f"[{src.name}] {len(done)} already fetched, fetching {len(ids)} more (of {tbl.num_rows} ids) with {workers} threads")

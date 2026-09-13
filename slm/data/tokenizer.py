@@ -66,7 +66,8 @@ def train_bpe(texts: Iterable[str], vocab_size: int = BPE_VOCAB, min_frequency: 
         max_token_length=32,
     )
     tok.train_from_iterator(texts, trainer=trainer)
-    assert tok.get_vocab_size() == vocab_size, f"BPE vocab {tok.get_vocab_size()} != {vocab_size}"
+    if tok.get_vocab_size() != vocab_size:
+        print(f"WARNING: BPE vocab {tok.get_vocab_size()} != requested {vocab_size} (corpus too small for that many merges)")
     return tok
 
 
