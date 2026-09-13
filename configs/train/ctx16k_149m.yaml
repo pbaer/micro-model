@@ -1,0 +1,41 @@
+# M7: context extension 8K -> 16K by YaRN scaling + short continued training on long documents.
+# Branches from the finished 8K base checkpoint; the base checkpoint itself is never modified.
+run_name: m7_ctx16k_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+model:
+  max_seq_len: 16384
+  rope_scaling: {type: yarn, factor: 2.0, original_max_seq_len: 8192}
+  grad_checkpointing: true
+  loss_chunk_size: 4096
+init_from: runs/m3_base_149m/checkpoints/final.pt
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu-long: 0.7, fineweb-edu: 0.2, python-edu: 0.05, finemath: 0.05}
+  seq_len: 16384
+  val_tokens: 2000000
+optim:
+  lr: 1.0e-4
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 200000000
+  warmup_tokens: 5000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 1
+  tokens_per_update: 262144
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  log_every_updates: 5
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 25000000
+  gen_every_tokens: 50000000
+  report_every_minutes: 10
+  prompts: ["The history of the Roman Empire begins"]
+milestone_tokens: 50000000
+notes: "Needs the long-doc source: python -m slm.data.prepare fineweb-edu --tokenizer ... --min-doc-tokens 4096 --name fineweb-edu-long"

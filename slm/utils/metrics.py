@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Any
 
 TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "elapsed_s", "eta_s"]
+# RL (GRPO) runs log these extra per-step fields; absent (null) for pretraining/SFT.
+RL_FIELDS = ["reward_mean", "success_rate", "group_std_mean", "groups_no_signal", "adv_abs_mean", "len_mean", "len_correct", "len_wrong", "malformed_rate", "length_term_rate", "kl", "entropy", "clip_frac", "ratio_mean"]
+EVAL_RL_FIELDS = ["heldout_acc", "train_acc", "heldout_malformed", "heldout_len"]
 EVAL_FIELDS = ["val_loss", "val_ppl", "val_pt_loss"]
 EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint")
 
@@ -92,12 +95,13 @@ def series(records: list[dict], max_points: int = 1500) -> dict[str, Any]:
     out["train"]["tokens"], _ = thin(tx, tx, max_points)
     out["train"]["update"], _ = thin(tu, tu, max_points)
     out["train"]["time"], _ = thin(tt, tt, max_points)
-    for f in TRAIN_FIELDS:
+    for f in TRAIN_FIELDS + RL_FIELDS:
         _, out["train"][f] = thin(tx, [r.get(f) for r in train], max_points)
     out["eval"]["tokens"] = [r["tokens"] for r in evals]
     out["eval"]["time"] = [r["time"] for r in evals]
-    for f in EVAL_FIELDS:
+    for f in EVAL_FIELDS + EVAL_RL_FIELDS:
         out["eval"][f] = [r.get(f) for r in evals]
+    out["is_rl"] = any(r.get("reward_mean") is not None for r in train)
     return out
 
 

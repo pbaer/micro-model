@@ -188,3 +188,9 @@ remark: chftrxcdnjaqm4pzaynloy4fl74i5sup6fvlq2tocxy24xicetkp.py:18:0: 336 instru
 00:49:26 upd 540 | 71M (11.8%) | loss 1.9957 | lr 9.77e-04 | gn 0.37 | 76,477 tok/s | 1714 ms/upd (data 2) | 6.3 GiB | ETA 1h 59m
 00:49:44 upd 550 | 72M (12.0%) | loss 1.8769 | lr 9.76e-04 | gn 0.51 | 74,705 tok/s | 1755 ms/upd (data 2) | 6.3 GiB | ETA 1h 59m
 00:50:04 upd 560 | 73M (12.2%) | loss 1.9625 | lr 9.75e-04 | gn 0.37 | 64,092 tok/s | 2045 ms/upd (data 1) | 6.3 GiB | ETA 2h 02m
+00:50:22 upd 570 | 75M (12.5%) | loss 1.8270 | lr 9.74e-04 | gn 0.38 | 76,568 tok/s | 1712 ms/upd (data 1) | 6.3 GiB | ETA 2h 00m
+00:50:34 eval @ 75M: val loss 1.8601 ppl 6.42 (best) [9s]
+00:50:47 upd 580 | 76M (12.7%) | loss 1.8950 | lr 9.73e-04 | gn 0.45 | 51,277 tok/s | 2556 ms/upd (data 1) | 6.3 GiB | ETA 2h 07m
+00:51:04 upd 590 | 77M (12.9%) | loss 1.8199 | lr 9.71e-04 | gn 0.35 | 75,252 tok/s | 1742 ms/upd (data 2) | 6.3 GiB | ETA 2h 04m
+00:51:22 upd 600 | 79M (13.1%) | loss 1.8238 | lr 9.70e-04 | gn 0.35 | 76,071 tok/s | 1723 ms/upd (data 2) | 6.3 GiB | ETA 2h 02m
+00:51:39 upd 610 | 80M (13.3%) | loss 1.7733 | lr 9.69e-04 | gn 0.30 | 76,033 tok/s | 1724 ms/upd (data 2) | 6.3 GiB | ETA 2h 00m

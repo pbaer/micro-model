@@ -126,6 +126,13 @@ export function RunDetail({ run }) {
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
       <${Chart} title="step time (ms)" xmode=${xmode} ymin=${0} series=${[{ label: "step", x: tokensX, y: t.step_ms }, { label: "fwd", x: tokensX, y: t.fwd_ms }, { label: "bwd", x: tokensX, y: t.bwd_ms }, { label: "opt", x: tokensX, y: t.opt_ms }, { label: "data", x: tokensX, y: t.data_ms }]} />
       <${Chart} title="VRAM peak (GiB)" xmode=${xmode} ymin=${0} series=${[{ label: "GiB", x: tokensX, y: t.vram_gib }]} />
+      ${series.is_rl && html`
+        <${Chart} title="reward / success rate (train rollouts)" xmode=${xmode} ymin=${0} series=${[{ label: "reward", x: tokensX, y: t.reward_mean }, { label: "success", x: tokensX, y: t.success_rate }]} />
+        <${Chart} title="held-out vs train accuracy (greedy)" xmode=${xmode} ymin=${0} series=${[{ label: "heldout", x: evalX, y: e.heldout_acc, points: true, width: 2 }, { label: "train", x: evalX, y: e.train_acc, points: true }]} />
+        <${Chart} title="KL to reference / entropy" xmode=${xmode} ymin=${0} series=${[{ label: "kl", x: tokensX, y: t.kl }, { label: "entropy", x: tokensX, y: t.entropy }]} />
+        <${Chart} title="completion length (tokens)" xmode=${xmode} ymin=${0} series=${[{ label: "mean", x: tokensX, y: t.len_mean }, { label: "correct", x: tokensX, y: t.len_correct }, { label: "wrong", x: tokensX, y: t.len_wrong }]} />
+        <${Chart} title="malformed / length-terminated / no-signal groups" xmode=${xmode} ymin=${0} series=${[{ label: "malformed", x: tokensX, y: t.malformed_rate }, { label: "length-term", x: tokensX, y: t.length_term_rate }, { label: "no-signal", x: tokensX, y: t.groups_no_signal }]} />
+        <${Chart} title="clip fraction / |advantage| / group reward std" xmode=${xmode} ymin=${0} series=${[{ label: "clip", x: tokensX, y: t.clip_frac }, { label: "|adv|", x: tokensX, y: t.adv_abs_mean }, { label: "group std", x: tokensX, y: t.group_std_mean }]} />`}
     </div>`}
     ${tab === "milestones" && html`<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr>
       ${series.milestones.map((m) => html`<tr><td>${fmtTok(m.tokens)}</td><td>${fmtDur(m.segment_s)}</td><td>${fmtDur(m.elapsed_s)}</td><td>${fmtInt(m.tok_s)}</td><td>${fmtNum(m.loss, 4)}</td><td>${fmtNum(m.val_loss, 4)}</td><td>${fmtTime(m.time)}</td></tr>`)}
