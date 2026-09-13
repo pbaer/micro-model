@@ -52,6 +52,7 @@ export function ModelPage() {
   const [messages, setMessages] = useState([{ role: "user", content: "What is 17 + 26?" }]);
   const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 120, seed: 1234, logprobs_topk: 5 });
   const [useBoth, setUseBoth] = useState(false);
+  const [thinkReq, setThinkReq] = useState(false);
   const [out, setOut] = useState({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
   const [hover, setHover] = useState(null);
   const [streamId, setStreamId] = useState(null);
@@ -75,7 +76,7 @@ export function ModelPage() {
     setBusy(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
-      const body = { slots, mode, text, messages, ...sampling, think_required: false };
+      const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq };
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
@@ -125,6 +126,7 @@ export function ModelPage() {
       <span class="muted">seed</span><input type="number" value=${sampling.seed} onChange=${(e) => setSampling({ ...sampling, seed: Number(e.target.value) })} style="width:80px" />
       <button onClick=${() => setSampling({ ...sampling, temperature: 0 })}>greedy</button>
       <label class="muted"><input type="checkbox" checked=${useBoth} onChange=${(e) => setUseBoth(e.target.checked)} /> A and B side by side</label>
+      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force <|think|> (reasoning models)</label>`}
     </div>
     ${mode === "completion" ? html`<textarea value=${text} onInput=${(e) => setText(e.target.value)}></textarea>` : html`<div class="panel">
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">

@@ -194,3 +194,5 @@ remark: chftrxcdnjaqm4pzaynloy4fl74i5sup6fvlq2tocxy24xicetkp.py:18:0: 336 instru
 00:51:04 upd 590 | 77M (12.9%) | loss 1.8199 | lr 9.71e-04 | gn 0.35 | 75,252 tok/s | 1742 ms/upd (data 2) | 6.3 GiB | ETA 2h 04m
 00:51:22 upd 600 | 79M (13.1%) | loss 1.8238 | lr 9.70e-04 | gn 0.35 | 76,071 tok/s | 1723 ms/upd (data 2) | 6.3 GiB | ETA 2h 02m
 00:51:39 upd 610 | 80M (13.3%) | loss 1.7733 | lr 9.69e-04 | gn 0.30 | 76,033 tok/s | 1724 ms/upd (data 2) | 6.3 GiB | ETA 2h 00m
+00:51:56 upd 620 | 81M (13.5%) | loss 1.8842 | lr 9.68e-04 | gn 0.34 | 75,031 tok/s | 1747 ms/upd (data 3) | 6.3 GiB | ETA 1h 58m
+00:52:17 upd 630 | 83M (13.8%) | loss 1.8128 | lr 9.67e-04 | gn 0.39 | 63,614 tok/s | 2060 ms/upd (data 2) | 6.3 GiB | ETA 2h 01m
