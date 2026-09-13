@@ -1,0 +1,75 @@
+tokens=550M update=4197 2026-09-13 01:39:35
+================================================================================
+PROMPT: 'Once upon a time, there was a little girl named Lily. She loved to'
+--- greedy:
+ play outside in the park. One day, she saw a big, scary dog. The dog barked loudly and Lily was scared. She ran away and hid behind a tree.
+
+The dog came closer and closer. Lily was very scared. She wanted to go home, but she couldn't. The dog started to bark and growl. Lily was very scared. She wanted to go home, but she couldn't. The dog got closer and closer.
+
+Lily was very scared. She wanted to go home, but she couldn't. The dog bit her hand and she cried. She
+--- sampled:
+ play outside in the sun. One day, Lily found a shiny object in the grass. She picked it up and looked at it. It was a diamond! Lily was so happy and showed it to her mom.
+
+Her mom told her that the diamond was very valuable and that they needed to keep it safe. Lily promised to keep the diamond safe and lock it with a secret place to keep it safe. She kept it safe and kept it safe in her pocket.
+
+The next day, Lily's friend Timmy came over to play. Timmy asked Lily if he could see the diamond in her pocket. Lily
+================================================================================
+PROMPT: 'Tom and his dog went to the park. Suddenly,'
+--- greedy:
+ a big dog came and tried to take Tom's toy. Tom was scared and he ran away. The dog chased after him, but Tom was too fast. He ran and ran until he was safe. 
+
+Tom's mom saw what happened and she was very angry. She told Tom that he should not have run away from the dog. She said that he should have stayed with Tom and his dog. Tom felt very sad and he learned a lesson. He never ran away from the dog again.<|eos|>
+--- sampled:
+ a big bird flew in the sky and struck Tom in his head. Tom was scared and he ran home. But the bird flew away and the dog followed it.
+
+Tom's mom saw what happened and she said, "Don't worry, Tom. The bird didn't strike you, it was just saying hello to you." Tom felt better and he and his mom went home.
+
+Tom and his mom went to the park to have some fun. They played and ran around. Tom was happy because he got to have a great time with his mom.<|eos|>
+================================================================================
+PROMPT: 'The sun was shining and the birds were singing. Ben looked out the window and saw'
+--- greedy:
+ a big, white cloud. He pointed at it and said, "Look, Mommy! A cloud!"
+
+Mommy smiled and said, "Yes, Ben. That's a cloud. It's a big, fluffy cloud. It's so fluffy and fluffy."
+
+Ben looked up and saw the cloud. He said, "Wow, it's so big and fluffy!"
+
+Mommy said, "Yes, it is. But it's getting late and it's time to go inside. We can play with our toys and read a book."
+
+Ben said, "Okay
+--- sampled:
+ a small bird. He was excited to see it.
+
+"Mommy, look! A bird!", Ben said excitedly.
+
+His mom smiled and said, "Yes, that's a bird. Do you want to go to the park and play with it?"
+
+Ben nodded eagerly and they walked to the park. Ben felt the warm sun on his face and he couldn't believe how nice the park was. He asked his mom, "Can we go to the park?"
+
+"Yes, of course!", she replied.
+
+When they got to the park, Ben had a great time running around
+================================================================================
+PROMPT: 'One day, a big red ball rolled down the hill and'
+--- greedy:
+ into a field. The ball was very happy and bounced around the field. A little girl named Lily saw the ball and wanted to play with it. She ran to the ball and kicked it with all her might. The ball bounced back and forth, and Lily laughed and clapped her hands.
+
+Lily's mom saw her playing with the ball and smiled. She knew that Lily loved to play with the ball too. She picked up the ball and threw it for Lily to catch. Lily caught the ball and threw it back to her mom. They played with the ball all
+--- sampled:
+ onto the grass. It was so big and bouncy. The ball went down the hill and went so fast that it felt like it could fly.
+
+As the ball rolled down the hill, it saw a little bird. The bird was small and blue. The ball wanted to play with the bird. So, the ball rolled over to the bird and said, "Hi! Do you want to play with me?"
+
+The bird was happy and said, "Yes, I want to play with you!" So, the ball and the bird played together all day long. They rolled and jumped and l
+================================================================================
+PROMPT: 'Mom said, "Do not touch the hot stove." But Tim'
+--- greedy:
+ was curious. He wanted to see what was inside. He climbed on a chair and reached for the hot stove. He touched it and it was hot. He screamed and dropped the hot stove. Mom ran to him and hugged him. She said, "I told you not to touch the hot stove. It is hot and dangerous. You could get hurt."
+
+Tim was sorry. He said, "I'm sorry, Mom. I was curious. I wanted to see what was inside the hot stove. I did not know it was hot. I will not touch it again." Mom said
+--- sampled:
+ was curious. He wanted to see what was inside. He walked closer and saw a big red stove. 
+
+Tim said, "Mom, can I touch the stove?" His mom said, "No, Tim. The stove is hot. It can hurt you." 
+
+Tim was sad, but he listened to his mom. He watched the hot stove and decided to play with his toys instead. He had fun, but he also learned to be careful and not touch the hot stove.<|eos|>

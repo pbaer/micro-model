@@ -23,8 +23,8 @@ schedule:
   min_lr_ratio: 0.1
   decay_frac: 0.2
 batch:
-  microbatch: 16            # set from benchmark
-  tokens_per_update: 262144 # 16 x 2048 x 8 accum
+  microbatch: 8             # benchmark: 2K x mb8 compiled = 58k tok/s, 11.1 GiB (mb16 spills to host memory on WDDM)
+  tokens_per_update: 262144 # 8 x 2048 x 16 accum
 runtime:
   compile: true
   sdpa_backend: cudnn

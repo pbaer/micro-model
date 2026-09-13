@@ -1,0 +1,16 @@
+GPU: NVIDIA GeForce RTX 4080 SUPER  torch 2.14.0+cu130  peak 104.5 TFLOPS (spec)
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: Memory efficient kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1240.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: Memory Efficient attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen/native/transformers/sdp_utils_cpp.h:600.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: Flash attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1242.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: Torch was not compiled with flash attention. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1050.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: cuDNN attention kernel not used because: (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:1244.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+D:\dev\micro-model\slm\utils\sdpa.py:38: UserWarning: cuDNN attention has been runtime disabled. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\aten\src\ATen\native\transformers\cuda\sdp_utils.cpp:922.)
+  F.scaled_dot_product_attention(q, k, v, is_causal=True, enable_gqa=True).sum().backward()
+SDPA backends: {'flash': 'FAIL', 'cudnn': '0.55ms', 'efficient': '0.72ms', 'math': '7.60ms'}
+  seq  mb cmp    tok/s  step ms    fwd    bwd   opt   VRAM   MFU  MFUc
+ 2048   8   0     9508   1723.2  640.5 1073.0   9.6  18.50 11.2%  9.7%

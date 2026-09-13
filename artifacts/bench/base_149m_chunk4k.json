@@ -1,0 +1,54 @@
+{
+ "config": "configs/model/base_149m.yaml",
+ "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+ "results": [
+  {
+   "seq": 2048,
+   "microbatch": 8,
+   "compile": true,
+   "backend": "auto",
+   "loss_chunk": 4096,
+   "tokens_per_sec": 56379.984486073845,
+   "step_ms": 290.59958333346003,
+   "fwd_ms": 80.96870422363281,
+   "bwd_ms": 200.0804011027018,
+   "opt_ms": 9.533797264099121,
+   "peak_vram_gib": 10.521392822265625,
+   "mfu_palm": 0.6658212492915196,
+   "mfu_causal": 0.574173123212859,
+   "warmup_s": 48.11999389999983
+  },
+  {
+   "seq": 2048,
+   "microbatch": 16,
+   "compile": true,
+   "backend": "auto",
+   "loss_chunk": 4096,
+   "tokens_per_sec": 860.8884914818794,
+   "step_ms": 38063.00156666657,
+   "fwd_ms": 6087.325358072917,
+   "bwd_ms": 31873.034505208332,
+   "opt_ms": 102.68401463826497,
+   "peak_vram_gib": 19.243866443634033,
+   "mfu_palm": 0.010166690468684673,
+   "mfu_causal": 0.00876727864326128,
+   "warmup_s": 157.54424730000028
+  },
+  {
+   "seq": 8192,
+   "microbatch": 8,
+   "compile": true,
+   "backend": "auto",
+   "loss_chunk": 4096,
+   "tokens_per_sec": 344.9828191031168,
+   "step_ms": 189968.88068333344,
+   "fwd_ms": 35589.115885416664,
+   "bwd_ms": 154112.16666666666,
+   "opt_ms": 267.86304982503253,
+   "peak_vram_gib": 37.961029052734375,
+   "mfu_palm": 0.007438793550994089,
+   "mfu_causal": 0.005195655019592485,
+   "warmup_s": 651.2276600999976
+  }
+ ]
+}

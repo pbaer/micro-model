@@ -45,3 +45,8 @@ placeholder and may change, so don't bake it into code.
   free: a benchmark left running silently shared the GPU with M1 for 45 minutes.
 - KV-cache decoding must not run under the cuDNN-only SDPA restriction (`sdpa_context("decode")`
   = efficient+math); cuDNN re-plans per KV length and generation crawls.
+- On Windows (WDDM) PyTorch does NOT OOM at 16 GiB: it spills into shared host memory and runs
+  ~60x slower (bench showed "20-38 GiB peak" at ~1k tok/s). Treat peak VRAM > ~14.5 GiB as a
+  failure; keep training configs around 11 GiB. Benchmark table: artifacts/bench/base_149m_full.log.
+- Measured 149M throughput (compiled, cuDNN SDPA): 2K x mb8 = 58k tok/s (69% MFU), 4K x mb4 = 43k,
+  eager 2K x mb8 = 9.5k (torch.compile is a 6x win here, not optional).

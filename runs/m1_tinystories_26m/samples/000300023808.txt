@@ -1,0 +1,71 @@
+tokens=300M update=2289 2026-09-13 01:25:50
+================================================================================
+PROMPT: 'Once upon a time, there was a little girl named Lily. She loved to'
+--- greedy:
+ play outside in the park with her friends. One day, they saw a big, scary dog running towards them. Lily's friend, Timmy, said, "I don't like that dog. It's too scary."
+
+Lily said, "Don't worry, Timmy. I'll protect you. We can play with our toys instead." They played with their toys and had fun. But then, Lily's mom called her to come home. Lily said goodbye to her friends and ran home.
+
+When they got home, Lily's mom asked her, "Did you have fun playing outside?" Lily
+--- sampled:
+ play outside in the sun. One day, Lily was playing with her friend, Timmy. They ran around and played tag. Lily's friend accidentally dropped her favorite toy and it got all dirty.
+
+Lily said, "Oh no! My toy is dirty. What do we do now?"
+
+Timmy replied, "I will help you clean it up."
+
+Lily and Timmy went to Timmy's house and started cleaning the toy. They worked together to make it look nice. After they finished, Timmy said, "Thanks for helping me. Now let's go play!"
+
+Lily and Timmy went back
+================================================================================
+PROMPT: 'Tom and his dog went to the park. Suddenly,'
+--- greedy:
+ a big dog came running towards them. Tom was scared, but he wanted to be brave. He said, "Hi, doggy! What's your name?"
+
+The dog barked and wagged his tail. Tom was happy and said, "Hi, doggy! My name is Max. What's yours?"
+
+The dog barked again and said, "My name is Spot. I'm a friendly dog. Do you want to play with me?"
+
+Tom and Max said, "Yes, please!"
+
+They played with Spot for a while. Then, they saw a big dog. The dog
+--- sampled:
+ a big bird appeared and flew down to Tom. Tom was so happy! The bird was so beautiful. 
+
+The bird said, "I want to give you a present." It was a big box with a bow on top. The bird gave it to Tom and said, "This is for you. It is yours." Tom was so happy! He thanked the bird and hugged the box. 
+
+The bird said, "You are welcome, Tom. I hope you will always be my friend." Tom smiled and said, "I will always be your friend." 
+
+The bird flew away
+================================================================================
+PROMPT: 'The sun was shining and the birds were singing. Ben looked out the window and saw'
+--- greedy:
+ a big, fluffy cloud in the sky. He thought it was so pretty and wanted to touch it. He asked his mom if he could go outside and she said yes.
+
+Ben ran outside and saw the cloud. It was big and white and fluffy. He wanted to touch it, but his mom said no. She said it was too far away and he could get hurt. She said he had to stay inside and play with his toys.
+
+Ben was sad, but he listened to his mom. He played with his toys and read his books. He did not touch the cloud. He
+--- sampled:
+ a small bird. He was excited to see it in his window. He ran outside and said hello to the bird.
+
+The bird flew away and Ben followed it. He noticed that the ground was wet and slippery. He saw the water dripping from the ground and the grass on the ground. He saw a bird on the ground. The bird looked angry and scared. Ben felt sorry for the bird.
+
+He went to his mom and said, "Mom, I found a bird. It is wet and cold. Can you help me dry it?"
+
+His mom nodded and said, "Yes
+================================================================================
+PROMPT: 'One day, a big red ball rolled down the hill and'
+--- greedy:
+ into the woods. It rolled down the hill very fast and very far. A little girl saw the ball and wanted to play with it. She ran to the ball and picked it up. She threw it up in the air and watched it roll down the hill. The ball went very fast and made a loud noise. The little girl laughed and clapped her hands. She had so much fun playing with the ball.<|eos|>
+--- sampled:
+ went to the park. It rolled down the hill and into the woods. The ball was so happy! It rolled down the hill, over the trees, and over the rocks. It rolled and rolled until it reached the pond. The ball rolled to the pond and got in. It was so cold and wet. The ball felt so happy. It rolled down the hill again and again. It felt so much better after rolling. The ball rolled back to the park and everyone cheered. The ball was very happy.<|eos|>
+================================================================================
+PROMPT: 'Mom said, "Do not touch the hot stove." But Tim'
+--- greedy:
+ was curious. He wanted to see what it was like. He reached out and touched the hot stove. It was hot! He was scared. He dropped the stove and ran away.
+
+Mom saw Tim and said, "Tim, you should not touch the stove. It is hot. It can hurt you." Tim felt sorry. He said, "I am sorry, Mom. I did not know it was hot. I will not touch it again." Mom said, "I am glad you are safe, Tim. But you have to listen to me. The stove is hot. It can
+--- sampled:
+ was curious. He wanted to taste the hot stove. He walked over to the stove and touched it. It was hot! He liked the hot stove. He smiled and said, "I want to taste it." He reached for the hot stove, but he was too small. He felt uncomfortable in the hot stove. He felt his toes tremble.
+
+Mom saw him and said, "Tim, that's okay. You can have a little bit of the hot stove. I'm proud of you." She gave him a hug and said, "Now, let's go outside and play

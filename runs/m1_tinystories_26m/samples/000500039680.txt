@@ -1,0 +1,81 @@
+tokens=500M update=3815 2026-09-13 01:36:50
+================================================================================
+PROMPT: 'Once upon a time, there was a little girl named Lily. She loved to'
+--- greedy:
+ play outside in the park with her friends. One day, she saw a big, scary dog. She was scared and didn't know what to do. 
+
+Her friend, Timmy, saw her and said, "Don't worry, Lily. I'll protect you." Timmy ran to get a stick and scared the dog away. 
+
+Lily was so happy and grateful to Timmy for protecting her. She said, "Thank you, Timmy! You're my hero!" 
+
+From that day on, Lily and Timmy played together every day. They were the best of friends and always protected each other.
+--- sampled:
+ play outside in the park. One day, she saw a bird flying in the sky. She wanted to catch it, so she ran after it. 
+
+As she ran, she saw a big tree with a lot of leaves. She decided to sit under the tree and watch the leaves fall. Suddenly, she saw a bird fly out of the tree and land on a branch. 
+
+The bird looked at Lily and said, "Hello there! Do you want to play with me?" Lily smiled and said, "Yes, I want to play with you!" They played tag and had so much fun
+================================================================================
+PROMPT: 'Tom and his dog went to the park. Suddenly,'
+--- greedy:
+ a big dog came and started to bark. Tom was scared and he ran away. He ran to his mom and said, "Mom, there is a big dog!" His mom hugged him and said, "Don't worry, Tom. I will protect you." She took Tom to the dog's owner and they all went home. Tom was happy to be safe and he knew his dog would be safe.<|eos|>
+--- sampled:
+ a big bird flew in and said, "I'm going to punish you! If you don't come with me, I'll scare you away." The big bird said, "No, I want to fly alone! I don't want to be punished anymore."
+
+Tom was very sad. He didn't want to be punished, so he took a bag and put some food inside. He made sure the big bird was safe and happy. After that, Tom went to the park and played with his dog. But then, he saw the big bird again. This time, he had a plan.
+================================================================================
+PROMPT: 'The sun was shining and the birds were singing. Ben looked out the window and saw'
+--- greedy:
+ a big, white cloud in the sky. He smiled and said, "Look, Mommy! A cloud!"
+
+Mommy smiled and said, "Yes, Ben. That's a cloud. It's very big and fluffy."
+
+Ben looked up and said, "Can I go outside and play?"
+
+Mommy said, "Yes, Ben. But be careful and don't go too far."
+
+Ben ran outside and played in the grass. He saw a big, white cloud and said, "Look, Mommy! A cloud!"
+
+Mommy said, "Yes, Ben.
+--- sampled:
+ a small bird. He was excited to see it in the garden.
+
+Ben ran outside and said to the bird, "Hi birdie! What are you doing in the garden?" 
+
+The bird looked at Ben and said, "I'm looking for a place to build a nest." 
+
+Ben was so excited to help the bird. He ran inside and grabbed some sticks and leaves. He made a nice nest for the bird to stay in and sing a song. 
+
+The bird was so happy and thanked Ben. Ben smiled and said, "You're welcome." 
+
+The bird flew away
+================================================================================
+PROMPT: 'One day, a big red ball rolled down the hill and'
+--- greedy:
+ into the park. It was a very nice ball, with a big red button on the top. The ball was red and shiny, and it made a loud noise when it hit the ground. A little boy named Tim saw the ball and wanted to play with it. He ran to the ball and picked it up. He pressed the button and the ball made a loud noise. Tim laughed and played with the ball all day.
+
+As the sun went down, Tim knew it was time to go home. He put the ball in his pocket and went home. He was very happy to have
+--- sampled:
+ onto the grass. It was a happy ball and a happy face. It saw a big red car and wanted to play with it. So, the ball rolled down the hill very fast and far. The car went very fast and the ball rolled past a big blue cloud in the sky.
+
+The ball thought it would be fun to roll in the sky and see the big blue cloud. So, the ball rolled and rolled until it was a big blue cloud. The big red ball was very happy to roll in the sky. It saw the big blue cloud and wanted to play with it. So,
+================================================================================
+PROMPT: 'Mom said, "Do not touch the hot stove." But Tim'
+--- greedy:
+ was curious. He wanted to see what was inside. So he opened the door and stepped inside.
+
+The stove was hot and it made a loud noise. Tim was scared. He wanted to run away, but he was too scared to move. He started to cry.
+
+Mom heard the noise and came running. She saw Tim and the stove. She was angry. She said, "Tim, you should not touch the hot stove. It is not a toy. It is for grown-ups only. You could get hurt."
+
+Tim felt bad. He said, "I'm sorry, Mom.
+--- sampled:
+ was curious. He wanted to see what was inside. He walked closer and saw a big red stove. 
+
+Tim said, "Mom, can I touch the stove?" His mom said, "No, Tim. The stove is hot. It can hurt you." 
+
+Tim kept walking and saw a man sitting on the stove. The man said, "The stove is hot. I need to prevent it from burning." Tim was scared. 
+
+The man said, "You can touch the stove, but you must listen to me." 
+
+Tim nodded and went to the stove. He touched the

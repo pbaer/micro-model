@@ -1,0 +1,63 @@
+tokens=250M update=1908 2026-09-13 01:23:05
+================================================================================
+PROMPT: 'Once upon a time, there was a little girl named Lily. She loved to'
+--- greedy:
+ play with her toys and her friends. One day, Lily's mommy took her to the park to play. Lily was so happy to see all the trees and flowers. She ran around and played with her friends. 
+
+After a while, Lily's mommy said it was time to go home. Lily was sad to leave the park, but she knew she could come back another day. She said goodbye to her friends and went home. 
+
+When Lily got home, she told her mommy all about the fun she had at the park. Her mommy was happy to see her and
+--- sampled:
+ ride her bike. One day, she went to the park with her mom and dad. She saw a big slide and wanted to go down it. 
+
+Her mom said, "Let's go down the slide, Lily!" Lily was so happy and said, "Yay! Let's go!" They went down the slide and it was so much fun! 
+
+After playing for a while, Lily and her family went to have a snack. Lily's dad brought a tasty apple. Lily took a bite and said, "This apple is so yummy!" 
+
+After they ate, Lily and her family
+================================================================================
+PROMPT: 'Tom and his dog went to the park. Suddenly,'
+--- greedy:
+ a big dog came and started to bark. Tom was scared and ran away. He ran to his mom and said, "Mom, there's a big dog! It's scary!"
+
+His mom said, "Don't worry, Tom. The dog is just barking. It won't hurt you. Let's go and see if we can find a safe place."
+
+So, they went to the big dog and asked it if it wanted to go on a walk. The big dog barked and wagged its tail. Tom was so happy and he forgot about the big dog. He followed
+--- sampled:
+ a big bird flew in the sky and struck a tree. Tom was very sad. He missed his home and his dog's home. He hugged the tree and cried.
+
+The tree had a hole in it. Tom went inside to get a new rope. He tied the rope around the tree and the dog's paw. It was very strong and the dog could not run. He made the rope even stronger and more. Tom was very happy. He went back to his yard and played with his dog. He forgot about the tree and his broken rope. He had a great day at the
+================================================================================
+PROMPT: 'The sun was shining and the birds were singing. Ben looked out the window and saw'
+--- greedy:
+ a big, white cloud. He wanted to go outside and play, but his mom said no. She said it was too dangerous. She said Ben could get hurt if he stayed inside.
+
+Ben was sad. He wanted to play outside, but he knew his mom was right. He decided to stay inside and play with his toys. He put on his coat and hat and went to his room. He played with his toys and his books. He did not touch the window. He did not touch the window. He did not know the window was not safe.
+
+He heard a loud noise outside.
+--- sampled:
+ a small bird. He was so excited to see the bird. He wanted to fly closer so he could see it better. 
+
+He waved his hands to the bird and it flew into the sky. Ben felt so happy! He watched the bird until it was out of sight. Then he waved goodbye to the bird and watched it fly away. 
+
+After a while, Ben decided it was time to go home. He waved goodbye to the bird and ran off to bed, happy and excited.<|eos|>
+================================================================================
+PROMPT: 'One day, a big red ball rolled down the hill and'
+--- greedy:
+ into the woods. A little girl named Lily saw the ball and wanted to play with it. She ran to the ball and tried to push it down the hill. But the ball was too heavy for her. She tried and tried, but the ball just wouldn't move.
+
+Lily was sad because she couldn't play with the ball. She sat down on the grass and looked at the ball. She thought about how she could push it down the hill. Then she had an idea. She took a big stick and used it to push the ball down the hill. The ball rolled down the hill
+--- sampled:
+ into the sky. A little boy saw the ball and ran to catch it. He was so happy! He threw the ball up into the sky and the ball went up, up, up. The boy watched it go until it went down.
+
+The little boy kept throwing the ball, but he was too slow. The ball bounced back down the hill and rolled down the hill. It rolled so far that the boy could not reach it. The little boy ran faster and ran until he reached the bottom of the hill. He looked up and saw the ball again. He was so happy that he
+================================================================================
+PROMPT: 'Mom said, "Do not touch the hot stove." But Tim'
+--- greedy:
+ was curious. He wanted to see what it was. So he opened the door and went inside. He saw a big pot of hot soup. He was so excited. He wanted to taste it. But he was scared. He wanted to be brave. So he took a big spoonful of soup. It was so hot! He ate it all up. Then he went back to his mom. She was so proud of him. She said, "You did it! You are so brave!" Tim smiled and said, "I'm so proud of you!"<|eos|>
+--- sampled:
+ was curious. He wanted to know what was in the hot stove. He climbed onto a chair and reached for a cup. He was careful not to touch it.
+
+Suddenly, Tim felt a tingling sensation. He saw the hot handle of the hot stove and he quickly pulled it off. It was a bit wet, but Tim was determined to find out what was inside.
+
+The next day, Tim's mom asked him to turn off the stove and they went to the store. Tim was happy to learn something new and he asked his mom lots of questions. His mom told him that she
