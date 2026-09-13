@@ -65,25 +65,40 @@ def format_chat(
     return ChatEncoding(ids, mask, segs)
 
 
-def parse_assistant(tok: SlmTokenizer, ids: list[int]) -> dict:
-    """Split a generated assistant turn into think / answer text (ids after <|assistant|>)."""
+def parse_assistant(tok: SlmTokenizer, ids: list[int], think_expected: bool = True) -> dict:
+    """Split a generated assistant turn into think / answer text.
+
+    `ids` are the tokens generated after the assistant role token. When the generation prompt already
+    ended with <|think|> (think_required prompts), the completion starts inside the think span, so
+    the opening tag may legitimately be absent; the closing <|/think|> is what separates the spans.
+    """
     think_open, think_close = tok.special("<|think|>"), tok.special("<|/think|>")
     stop = {tok.end_id, tok.eos_id}
-    body = []
+    body: list[int] = []
+    terminated = False
     for i in ids:
         if i in stop:
+            terminated = True
             break
         body.append(i)
-    think, answer = None, body
     if body and body[0] == think_open:
-        if think_close in body:
-            j = body.index(think_close)
-            think, answer = body[1:j], body[j + 1 :]
-        else:
-            think, answer = body[1:], []
+        body = body[1:]
+        had_open = True
+    else:
+        had_open = False
+    if think_close in body:
+        j = body.index(think_close)
+        think, answer = body[:j], body[j + 1 :]
+        malformed = think_close in answer or think_open in answer  # nested / repeated tags
+    elif think_expected:
+        think, answer = None, body  # no closing tag: treat everything as the answer, flag it
+        malformed = True
+    else:
+        think, answer = None, body
+        malformed = had_open  # opened a think span without closing it
     return {
         "think": tok.decode(think, skip_special=True) if think is not None else None,
         "answer": tok.decode(answer, skip_special=True),
-        "terminated": any(i in stop for i in ids),
-        "malformed": bool(body) and body[0] != think_open or (think is not None and think_close not in body),
+        "terminated": terminated,
+        "malformed": bool(malformed) or not terminated,
     }

@@ -98,7 +98,8 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
         attempts += 1
         name = rng.choice(names)
         t = GENERATORS[name](rng)
-        canon = f"{t.task}|{t.prompt}"
+        canon = t.prompt  # split by prompt text alone: generators overlap (arith1 vs arith2), and the
+        # same question must never be in train for one and held-out for another
         if canon in seen or _split_of(canon, holdout_permille) != split:
             continue
         seen.add(canon)

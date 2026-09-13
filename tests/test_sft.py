@@ -35,6 +35,14 @@ def test_format_chat_mask_and_parse(tok):
     after = enc.ids[enc.ids.index(tok.special("<|assistant|>")) + 1 :]
     parsed = parse_assistant(tok, after)
     assert parsed["think"] == "t" and parsed["answer"] == "#### 42" and parsed["terminated"] and not parsed["malformed"]
+    # completion generated after a prompt that already ends in <|think|>: no opening tag in the ids
+    comp = [*tok.encode("t"), tok.special("<|/think|>"), *tok.encode("#### 42"), tok.end_id]
+    p2 = parse_assistant(tok, comp)
+    assert p2["think"] == "t" and p2["answer"] == "#### 42" and not p2["malformed"]
+    p3 = parse_assistant(tok, [*tok.encode("#### 42"), tok.end_id])
+    assert p3["malformed"] and p3["answer"] == "#### 42"  # missing closing tag is flagged but the answer still parses
+    p4 = parse_assistant(tok, tok.encode("#### 42"))
+    assert p4["malformed"] and not p4["terminated"]
 
 
 def _write_sft(root: Path, name: str, tok, n: int = 400, seed: int = 0):

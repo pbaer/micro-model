@@ -14,6 +14,10 @@ from slm.rl.tasks import GENERATORS, make_tasks
 def test_tasks_disjoint_and_deterministic():
     tr = make_tasks(["arith1", "arith2", "algebra", "word"], 300, "train", seed=1)
     ho = make_tasks(["arith1", "arith2", "algebra", "word"], 100, "heldout", seed=1)
+    # overlapping generators (arith1 is a subset of arith2) must not leak prompts across splits
+    tr2 = make_tasks(["arith1", "arith2"], 4000, "train", seed=0)
+    ho2 = make_tasks(["arith1", "arith2"], 100, "heldout", seed=0)
+    assert not ({t.prompt for t in tr2} & {t.prompt for t in ho2})
     assert len(tr) == 300 and len(ho) == 100
     assert not ({t.prompt for t in tr} & {t.prompt for t in ho})
     assert [t.prompt for t in tr] == [t.prompt for t in make_tasks(["arith1", "arith2", "algebra", "word"], 300, "train", seed=1)]
