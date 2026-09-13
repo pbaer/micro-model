@@ -1,5 +1,0 @@
-D:\dev\micro-model\slm\config.py:124: FutureWarning: In the future `np.str` will be defined as the corresponding NumPy scalar.
-  obj = getattr(mod, name, None)
-base loss 1.4407; dead MLP units per layer: ['0.0%', '0.0%', '0.0%', '0.0%', '0.0%', '0.0%', '0.0%', '0.0%']
-layer skip deltas: ['+3.698', '+0.315', '+0.286', '+0.269', '+0.249', '+0.214', '+0.467', '+0.538']
-wrote runs\m1_tinystories_26m\diagnostics\final.html (5s)

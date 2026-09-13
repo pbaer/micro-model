@@ -10,3 +10,6 @@ runs/*/*.pt
 runs/*/rollouts/
 # tokenizer training scratch
 artifacts/scratch/
+
+# run outputs are data, not source (metrics, logs, reports, samples, checkpoints)
+runs/
