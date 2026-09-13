@@ -203,14 +203,23 @@ def test_data_page(server, browser):
     p = Page(browser, server)
     p.goto("/data")
     clicked = set()
-    for tab in ("sources", "mixture", "raw", "tokenized"):
+    for tab in ("sources", "mixture", "documents"):
         p.page.get_by_role("button", name=tab, exact=True).click()
         p.settle(600)
-        clicked |= p.click_all_buttons(skip=("‹", "›", "‹ prev", "next ›", "sources", "mixture", "raw", "tokenized"))
-    assert {"random doc", "doc", "window", "stats", "ids", "random sample"} <= clicked, clicked
-    # window view must render chips with a boundary and the legend with the literal token names
-    p.page.get_by_role("button", name="tokenized").click()
+        clicked |= p.click_all_buttons(skip=("\u2039", "\u203a", "\u2039 prev", "next \u203a", "sources", "mixture", "documents"))
+    assert {"random doc", "doc", "window", "stats", "text", "tokens", "ids"} <= clicked, clicked
+    p.page.get_by_role("button", name="documents", exact=True).click()
     p.settle()
+    # text <-> tokens toggle on one document
+    p.page.get_by_role("button", name="random doc", exact=True).click()
+    p.settle(800)
+    p.page.get_by_role("button", name="text", exact=True).click()
+    p.settle()
+    assert p.page.locator("main pre").count() >= 1
+    p.page.get_by_role("button", name="tokens", exact=True).click()
+    p.settle()
+    assert p.page.locator(".chip").count() > 3
+    # window view renders boundaries and the legend with literal token names
     p.page.get_by_role("button", name="window", exact=True).click()
     p.settle(800)
     body = p.page.inner_text("main")

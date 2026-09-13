@@ -79,7 +79,9 @@ async def docs(request: Request, tag: str, source: str, split: str, shard: int =
 async def doc(request: Request, tag: str, source: str, split: str, shard: int, doc: int) -> dict:
     s = _split(request, tag, source, split)
     d = await anyio.to_thread.run_sync(lambda: s.doc(shard, doc))
-    d["pieces"] = request.app.state.tokenizers.pieces(tag, d["ids"])
+    reg = request.app.state.tokenizers
+    d["pieces"] = reg.pieces(tag, d["ids"])
+    d["text"] = reg.get(tag).decode(d["ids"], skip_special=True)
     return d
 
 
