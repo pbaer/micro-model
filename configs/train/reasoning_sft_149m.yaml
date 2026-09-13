@@ -1,0 +1,43 @@
+# M5: reasoning SFT on the instruct checkpoint. Mandatory <|think|> span; loss on think + answer + <|end|>.
+run_name: m5_reasoning_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+init_from: runs/m4_sft_149m/checkpoints/final.pt
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  mixture:
+    synthetic-reasoning: 0.45
+    gsm8k-reasoning: 0.25
+    metamathqa-reasoning: 0.30
+  seq_len: 1024
+  val_tokens: 1000000
+  extra_val_mixture: {fineweb-edu: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+optim:
+  lr: 2.0e-5
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  epochs: 3.0
+  warmup_tokens: 2000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 32
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 0
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 10000000
+  gen_every_tokens: 20000000
+  gen_max_new_tokens: 160
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is 17 + 26?\nThink step by step, then give the final answer on its own line as '#### <number>'.<|end|><|assistant|><|think|>"
+notes: "M5 reasoning SFT. Prompts above are raw text; the chat format is applied by the reasoning eval, not here."

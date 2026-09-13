@@ -91,3 +91,15 @@ def test_rollout_group_cpu():
     x = torch.randint(0, cfg.vocab_size, (1, 8))
     lp2 = sequence_logprobs(m(x[:, :-1]), x[:, 1:])
     assert lp2.shape == (1, 7) and torch.all(lp2 <= 0)
+
+
+def test_synthetic_traces_are_correct_by_construction():
+    import random
+
+    from slm.rl.synth import trace_for
+
+    rng = random.Random(0)
+    for name in ["arith1", "arith2", "arith2mul", "arith_multi", "algebra", "word"]:
+        for t in make_tasks([name], 30, "train", 7):
+            tr = trace_for(t, rng)
+            assert tr.strip().endswith(t.answer + ".") or t.answer in tr, (name, t.prompt, tr, t.answer)

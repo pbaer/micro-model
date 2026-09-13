@@ -73,10 +73,11 @@ SOURCES: dict[str, Source] = {
                 ("openhermes-100k", "100k general instruction pairs"),
                 ("systemchats-30k", "system-prompt following"),
                 ("smol-constraints", "instruction following with constraints"),
-                ("metamathqa-50k", "math word problems with CoT solutions (reasoning SFT source)"),
-                ("numina-cot-100k", "competition-style math with CoT (reasoning SFT source)"),
+                ("numina-cot-100k", "competition-style math with CoT; too hard for a 150M model, kept for reference"),
             ]
         ],
+        Source("smoltalk-metamathqa-50k", "HuggingFaceTB/smoltalk", "data/metamathqa-50k/*.parquet", text_col="messages", kind="math_cot", license="Apache-2.0",
+               notes="math word problems whose solutions end in 'The answer is: X'; converted to <|think|> trace + '#### X'"),
         Source("gsm8k", "openai/gsm8k", "main/*.parquet", text_col="answer", kind="math_qa", license="MIT", notes="grade-school math with '#### answer' format; test split is the held-out benchmark"),
     ]
 }
