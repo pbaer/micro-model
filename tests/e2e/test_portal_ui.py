@@ -177,7 +177,14 @@ class Page:
 def test_home_and_runs(server, browser):
     p = Page(browser, server)
     p.goto("/")
-    assert "Live runs" in p.page.inner_text("main")
+    body = p.page.inner_text("main")
+    assert "Live runs" in body
+    assert body.count("live") == 1 + body.count("Live runs") + body.count("not live") - 1 or body.count("m") > 0  # a live run appears once
+    live_section = body.split("Recent runs")[0]
+    recent_section = body.split("Recent runs")[1]
+    assert "live" in live_section and "fin" not in live_section.split("Live runs")[1]
+    assert "fin" in recent_section and "
+live" not in recent_section
     p.goto("/runs")
     body = p.page.inner_text("main")
     assert "fin" in body and "live" in body and "100.0%" in body  # finished run shows exactly 100%
