@@ -23,7 +23,7 @@ import numpy as np
 import pyarrow.parquet as pq
 import torch
 
-from slm.data.chat import format_chat
+from slm.data.chat import format_chat, rows_to_messages  # noqa: F401 (re-export)
 from slm.data.loader import PretrainLoader, TokenStream
 from slm.data.sources import DATA_ROOT, SOURCES, Source
 from slm.data.tokenizer import SlmTokenizer
@@ -31,45 +31,6 @@ from slm.model.loss import IGNORE_INDEX
 
 SFT_DIR = DATA_ROOT / "sft"
 SHARD_TOKENS = 50_000_000
-
-
-# ------------------------------------------------------------------------------ conversion
-def rows_to_messages(src: Source, row: dict) -> list[dict] | None:
-    """Normalize a raw row to [{role, content, think?}] or None to drop it."""
-    if src.kind == "chat":
-        msgs = row.get("messages")
-        if not msgs:
-            return None
-        out = []
-        for m in msgs:
-            role = m.get("role")
-            if role not in ("system", "user", "assistant") or not m.get("content"):
-                return None
-            out.append({"role": role, "content": m["content"]})
-        return out if any(m["role"] == "assistant" for m in out) else None
-    if src.kind == "math_cot":  # metamathqa-style chat: solution text ending in "The answer is: X"
-        msgs = row.get("messages") or []
-        if len(msgs) < 2 or msgs[-1].get("role") != "assistant":
-            return None
-        sol = msgs[-1]["content"]
-        m = re.search(r"The answer is:\s*(.+?)\s*$", sol.strip(), flags=re.S)
-        if not m:
-            return None
-        final = m.group(1).strip().rstrip(".")
-        if not re.fullmatch(r"-?[\d,]+(?:\.\d+)?(?:/\d+)?", final):
-            return None  # numeric answers only (verifiable)
-        think = sol[: m.start()].strip()
-        think = re.sub(r"\n?####\s*[^\n]*$", "", think).strip()  # drop a trailing gsm8k-style marker inside the trace
-        if not think:
-            return None
-        return [{"role": "user", "content": msgs[0]["content"].strip()}, {"role": "assistant", "think": think, "content": "#### " + final}]
-    if src.kind == "math_qa":  # gsm8k: question / answer ("reasoning\n#### 42")
-        q, a = row.get("question"), row.get("answer")
-        if not q or not a or "####" not in a:
-            return None
-        reasoning, _, final = a.rpartition("####")
-        return [{"role": "user", "content": q.strip()}, {"role": "assistant", "think": reasoning.strip(), "content": "#### " + final.strip()}]
-    return None
 
 
 class SftShardWriter:

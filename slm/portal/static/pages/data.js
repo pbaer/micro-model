@@ -93,9 +93,11 @@ function Documents() {
   useEffect(() => { if (base) api(`${base}/docs?shard=${shard}&offset=${offset}&limit=200`).then(setDocs).catch(() => setDocs(null)); }, [base, shard, offset]);
   useEffect(() => { if (base && view === "window") api(`${base}/window?shard=${shard}&start=${winStart}&length=${winLen}`).then(setWin).catch(() => setWin(null)); }, [base, shard, winStart, winLen, view]);
   useEffect(() => { if (!isTok && source && files.length) api(`/api/data/raw/${source}/docs?file=${file}&rg=${rg}&limit=100`).then(setPage).catch(() => setPage(null)); }, [source, files, file, rg]);
-  useEffect(() => {  // raw docs: tokenize on demand when the tokens view is chosen
-    if (!doc || isTok || mode === "text" || !tag) { setRawTokens(null); return; }
-    api(`/api/tokenizers/${tag}/encode`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: doc.text, mode: "document" }) }).then(setRawTokens).catch(() => setRawTokens(null));
+  const [tokErr, setTokErr] = useState(null);
+  useEffect(() => {  // raw docs: tokenize on demand when the tokens view is chosen (chat rows go through the SFT chat formatter)
+    if (!doc || isTok || mode === "text" || !tag) { setRawTokens(null); setTokErr(null); return; }
+    const body = doc.messages ? { mode: "chat", messages: doc.messages } : { mode: "document", text: doc.text };
+    api(`/api/tokenizers/${tag}/encode`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => { setRawTokens(r); setTokErr(null); }).catch((e) => { setRawTokens(null); setTokErr(String(e)); });
   }, [doc, mode, isTok, tag]);
 
   const openTok = (d) => api(`${base}/doc?shard=${shard}&doc=${d}`).then((x) => { setDoc(x); setView("doc"); });
@@ -130,14 +132,17 @@ function Documents() {
           <table><tr><th>doc</th><th>start</th><th>tokens</th></tr>
           ${docs.docs.map((d) => html`<tr class=${"click" + (doc && doc.doc === d.doc ? " sel" : "")} onClick=${() => openTok(d.doc)}><td>${d.doc}</td><td>${fmtInt(d.start)}</td><td>${fmtInt(d.length)}</td></tr>`)}</table>`}
         ${!isTok && page && html`<table><tr><th>row</th><th>chars</th><th class="l">preview</th></tr>
-          ${page.docs.map((d) => html`<tr class="click" onClick=${() => openRaw(file, rg, d.row)}><td>${d.row}</td><td>${fmtInt(d.chars)}</td><td class="l">${d.preview.slice(0, 140)}</td></tr>`)}</table>`}
+          ${page.docs.map((d) => html`<tr class="click" onClick=${() => openRaw(file, rg, d.row)}><td>${d.row}</td><td>${fmtInt(d.chars)}${d.turns ? html`<div class="legend">${d.turns} turns</div>` : ""}</td><td class="l">${d.preview.slice(0, 140)}</td></tr>`)}</table>`}
         ${!isTok && !page && html`<div class="empty-note">no files</div>`}
       </div>
       <div>
         ${view === "doc" && (!doc ? html`<div class="empty-note">pick a document (or "random doc")</div>` : html`<div>
           <div class="sub">${isTok ? `doc ${doc.doc} · starts at token ${fmtInt(doc.start)} · ${fmtInt(doc.length)} tokens incl. bos/eos · ${fmtInt(doc.text.length)} chars` : `file ${doc.file} · row group ${doc.rg} · row ${doc.row} · ${fmtInt(doc.text.length)} chars${rawTokens ? ` · ${fmtInt(rawTokens.n_tokens)} tokens` : ""}`}</div>
           ${!isTok && doc.meta && html`<table style="margin-bottom:8px">${Object.entries(doc.meta).map(([k, v]) => html`<tr><td>${k}</td><td class="l">${String(v).slice(0, 200)}</td></tr>`)}</table>`}
-          ${mode === "text" ? html`<pre style="max-height:600px">${doc.text}</pre>` : pieces ? html`<${TokenChips} pieces=${pieces} showIds=${mode === "ids"} />` : html`<div class="empty-note">tokenizing…</div>`}
+          ${mode === "text" ? html`<pre style="max-height:600px">${doc.text}</pre>` : pieces ? html`<div>
+              <${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${!isTok && !!doc.messages} />
+              ${!isTok && doc.messages && html`<div class="legend" style="margin-top:6px">exactly what SFT trains on: chat format with reserved tokens; <b style="color:#15803d">green</b> = loss target (assistant turns + ${"<|end|>"}), grey = masked · ${rawTokens.n_tokens} tokens, ${rawTokens.n_target} targets</div>`}
+            </div>` : tokErr ? html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">tokenization failed: ${tokErr}</div>` : html`<div class="empty-note">tokenizing…</div>`}
         </div>`)}
         ${view === "window" && html`<div>
           <div class="row" style="margin-bottom:6px"><span class="muted">window start</span><input type="number" value=${winStart} step=${winLen} min="0" onChange=${(e) => setWinStart(Math.max(0, Number(e.target.value)))} style="width:140px" />

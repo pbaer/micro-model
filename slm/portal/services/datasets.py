@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 import pyarrow.parquet as pq
 
+from slm.data.chat import rows_to_messages
 from slm.data.sources import SOURCES, Source
 from slm.data.swh import content_dir
 
@@ -66,18 +67,42 @@ class RawSource:
     def _path(self, file_index: int) -> Path:
         return Path(self.files()[file_index]["path"])
 
+    def _render(self, r: dict) -> tuple[str, list[dict] | None, dict]:
+        """(display text, normalized chat messages or None, metadata) for one raw row."""
+        kind = self.src.kind
+        if kind in ("chat", "math_cot", "math_qa"):
+            msgs = rows_to_messages(self.src, r)
+            if msgs is None:  # would be dropped by the SFT pipeline; still show the raw content
+                raw = r.get("messages") or [{"role": "user", "content": str(r.get("question", ""))}, {"role": "assistant", "content": str(r.get("answer", ""))}]
+                msgs_disp, msgs = raw, None
+            else:
+                msgs_disp = msgs
+            parts = []
+            for m in msgs_disp:
+                parts.append(f"[{m.get('role')}]")
+                if m.get("think") is not None:
+                    parts.append("<think>\n" + m["think"] + "\n</think>")
+                parts.append(m.get("content", ""))
+                parts.append("")
+            text = "\n".join(parts).rstrip()
+            meta = {k: (str(v)[:200] if not isinstance(v, (int, float)) else v) for k, v in r.items() if k not in ("messages", "question", "answer")}
+            if msgs is None:
+                meta["note"] = "row would be dropped by the SFT pipeline (unsupported roles/empty content/no numeric answer)"
+            return text, msgs, meta
+        text = r.get(self.src.text_col) or ""
+        meta = {k: (str(v)[:200] if not isinstance(v, (int, float)) else v) for k, v in r.items() if k != self.src.text_col}
+        return str(text), None, meta
+
     def docs(self, file_index: int, rg: int, offset: int = 0, limit: int = 50, preview_chars: int = 200) -> dict:
         p = self._path(file_index)
         pf = pq.ParquetFile(p)
         cols = [c for c in pf.schema_arrow.names if c != "prompt"]
         tbl = pf.read_row_group(rg, columns=cols)
         rows = tbl.slice(offset, limit).to_pylist()
-        text_col = self.src.text_col if self.src.text_col in cols else None
         out = []
         for i, r in enumerate(rows):
-            t = r.get(text_col, "") if text_col else ""
-            meta = {k: (str(v)[:80] if not isinstance(v, (int, float)) else v) for k, v in r.items() if k != text_col}
-            out.append({"row": offset + i, "chars": len(t or ""), "preview": (t or "")[:preview_chars], "meta": meta})
+            text, msgs, meta = self._render(r)
+            out.append({"row": offset + i, "chars": len(text), "preview": text[:preview_chars], "meta": {k: (str(v)[:80] if not isinstance(v, (int, float)) else v) for k, v in meta.items()}, "turns": len(msgs) if msgs else None})
         return {"file": file_index, "rg": rg, "rg_rows": tbl.num_rows, "offset": offset, "docs": out}
 
     def doc(self, file_index: int, rg: int, row: int) -> dict:
@@ -85,8 +110,8 @@ class RawSource:
         pf = pq.ParquetFile(p)
         cols = [c for c in pf.schema_arrow.names if c != "prompt"]
         r = pf.read_row_group(rg, columns=cols).slice(row, 1).to_pylist()[0]
-        text = r.pop(self.src.text_col, "") if self.src.text_col in r else ""
-        return {"file": file_index, "rg": rg, "row": row, "text": text, "meta": {k: (str(v) if not isinstance(v, (int, float)) else v) for k, v in r.items()}}
+        text, msgs, meta = self._render(r)
+        return {"file": file_index, "rg": rg, "row": row, "text": text, "messages": msgs, "meta": meta}
 
     def sample(self, n: int = 10, seed: int = 0) -> list[dict]:
         files = self.files()
