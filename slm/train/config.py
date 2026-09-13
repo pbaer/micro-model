@@ -89,6 +89,10 @@ class TrainConfig:
     eval: EvalConfig = field(default_factory=EvalConfig)
     milestone_tokens: int = 100_000_000
     notes: str = ""
+    # Initialize model weights from another run's checkpoint (snapshot or full). Counters, schedule,
+    # and loader start fresh; set init_optimizer=True to also carry AdamW moments (full ckpt only).
+    init_from: str = ""
+    init_optimizer: bool = False
 
     @property
     def run_dir(self) -> Path:

@@ -75,6 +75,8 @@ class Trainer:
         if self.latest_path.exists() and not fresh:
             self._resume()
         else:
+            if cfg.init_from:
+                self._init_from(cfg.init_from, cfg.init_optimizer)
             self._start_fresh()
         signal.signal(signal.SIGINT, self._on_sigint)
 
@@ -99,10 +101,22 @@ class Trainer:
         meta = self._meta()
         (self.run_dir / "run.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
         self.log.log("start", msg=f"fresh start: {self.n_params:,} params, accum {self.accum}, seq {self.cfg.data.seq_len}, "
-                     f"mb {self.cfg.batch.microbatch}, {fmt_tokens(self.cfg.schedule.total_tokens)} tokens planned")
+                     f"mb {self.cfg.batch.microbatch}, {fmt_tokens(self.cfg.schedule.total_tokens)} tokens planned"
+                     + (f"; {self._init_note}" if getattr(self, "_init_note", "") else ""))
         console(f"[{self.cfg.run_name}] fresh start. model {self.n_params:,} params ({self.model.num_params(True):,} non-embed); "
                 f"{self.accum}x{self.cfg.batch.microbatch}x{self.cfg.data.seq_len} = {self.cfg.batch.tokens_per_update:,} tokens/update; "
                 f"data {self.loader.total_tokens / 1e6:.0f}M tokens available; val {self.val_loader.n_tokens / 1e6:.1f}M tokens")
+
+    def _init_from(self, path: str, with_optimizer: bool) -> None:
+        ck = torch.load(path, map_location="cuda", weights_only=False)
+        sd = {k: v.float() if v.is_floating_point() else v for k, v in ck["model"].items()}
+        missing, unexpected = self.model.load_state_dict(sd, strict=False)
+        assert not unexpected, f"unexpected keys in init checkpoint: {unexpected[:5]}"
+        if with_optimizer and "optimizer" in ck:
+            self.optimizer.load_state_dict(ck["optimizer"])
+        src_tokens = ck.get("meta", {}).get("tokens") or ck.get("counters", {}).get("tokens")
+        console(f"[{self.cfg.run_name}] initialized weights from {path} (trained {fmt_tokens(src_tokens or 0)} tokens; missing keys: {len(missing)}; optimizer: {with_optimizer})")
+        self._init_note = f"init_from {path} @ {fmt_tokens(src_tokens or 0)} tokens"
 
     def _resume(self) -> None:
         ck = ckpt.load_full(self.latest_path, self.model, self.optimizer)

@@ -1,0 +1,52 @@
+# M2: 149M base model, first serious run. 1B tokens at 2K context, WSD schedule so the pre-decay
+# checkpoint can be continued to 5-10B tokens later without re-warming.
+run_name: m2_base_149m_1b
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+model:
+  loss_chunk_size: 0        # set from benchmark (chunked CE trades a little speed for the 5 GB logits spike)
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu: 0.80, cosmopedia: 0.10, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+  seq_len: 2048
+  val_tokens: 4000000
+optim:
+  lr: 5.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: wsd
+  total_tokens: 1000000000
+  warmup_tokens: 20000000
+  min_lr_ratio: 0.1
+  decay_frac: 0.2
+batch:
+  microbatch: 16            # set from benchmark
+  tokens_per_update: 262144 # 16 x 2048 x 8 accum
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 0
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 50000000
+  gen_every_tokens: 100000000
+  gen_max_new_tokens: 96
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "The capital of France is"
+    - "Photosynthesis is the process by which plants"
+    - "Question: What is 12 + 7?\nAnswer:"
+    - "def is_prime(n):\n    "
+    - "#!/bin/bash\n# count lines in all .py files\n"
+    - "Once upon a time, in a small village,"
+    - "The three primary colors are"
+    - "| name | age |\n|---|---|\n| Alice | 30 |\n"
+milestone_tokens: 100000000
+notes: "M2: first 149M run. 100M-token mark doubles as the smoke test; abort if loss/samples look wrong."

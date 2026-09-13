@@ -100,10 +100,10 @@ class ShardWriter:
         self.doc_starts = []
 
 
-def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, val_permille: int, batch_docs: int = 512) -> dict:
+def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, val_permille: int, batch_docs: int = 512, min_doc_tokens: int = MIN_DOC_TOKENS, name: str | None = None) -> dict:
     files = raw_files(src)
     assert files, f"no raw files for {src.name}"
-    out = out_root / src.name
+    out = out_root / (name or src.name)
     train = ShardWriter(out / "train", SHARD_TOKENS)
     val = ShardWriter(out / "val", SHARD_TOKENS // 10)
     cols = [src.text_col] + [c for c in ("language",) if c]  # language may not exist; filtered below
@@ -122,7 +122,7 @@ def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, v
                 n_dropped += len(batch) - len(kept)
                 texts = [r[src.text_col] for r in kept]
                 for text, ids in zip(texts, tok.encode_batch(texts)):
-                    if not (MIN_DOC_TOKENS <= len(ids) <= MAX_DOC_TOKENS):
+                    if not (min_doc_tokens <= len(ids) <= MAX_DOC_TOKENS):
                         n_dropped += 1
                         continue
                     doc = [tok.bos_id, *ids, tok.eos_id]
@@ -143,7 +143,7 @@ def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, v
     train.flush()
     val.flush()
     manifest = {
-        "source": src.name, "kind": src.kind, "tokenizer_sha256": tok.sha256,
+        "source": src.name, "name": name or src.name, "kind": src.kind, "tokenizer_sha256": tok.sha256, "min_doc_tokens": min_doc_tokens,
         "train_tokens": train.total_tokens, "train_docs": train.total_docs, "train_shards": train.shard_idx,
         "val_tokens": val.total_tokens, "val_docs": val.total_docs, "val_shards": val.shard_idx,
         "docs_seen": n_seen, "docs_dropped": n_dropped, "val_permille": val_permille,
@@ -160,11 +160,13 @@ def main() -> None:
     ap.add_argument("--tokenizer", required=True)
     ap.add_argument("--max-tokens", type=float, default=float("inf"))
     ap.add_argument("--val-permille", type=int, default=5)
+    ap.add_argument("--min-doc-tokens", type=int, default=MIN_DOC_TOKENS, help="keep only documents with at least this many tokens (long-context phase)")
+    ap.add_argument("--name", default=None, help="output source name (default: source name); e.g. fineweb-edu-long")
     a = ap.parse_args()
     tok = SlmTokenizer.load(a.tokenizer)
     out_root = TOKENIZED_DIR / Path(a.tokenizer).name
     for s in a.sources:
-        prepare(SOURCES[s], tok, out_root, a.max_tokens, a.val_permille)
+        prepare(SOURCES[s], tok, out_root, a.max_tokens, a.val_permille, min_doc_tokens=a.min_doc_tokens, name=a.name)
 
 
 if __name__ == "__main__":
