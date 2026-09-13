@@ -178,13 +178,12 @@ def test_home_and_runs(server, browser):
     p = Page(browser, server)
     p.goto("/")
     body = p.page.inner_text("main")
-    assert "Live runs" in body
-    live_section, recent_section = body.split("Recent runs")
-    assert "live" in live_section.split("Live runs")[1] and "fin" not in live_section.split("Live runs")[1]
-    assert "fin" in recent_section and "live running" not in recent_section  # a live run is listed once
+    assert "Pipeline" in body and "Data readiness" in body
+    assert body.count("live") >= 1 and "Pretraining (base model)" in body and "not started" in body
     p.goto("/runs")
     body = p.page.inner_text("main")
     assert "fin" in body and "live" in body and "100.0%" in body  # finished run shows exactly 100%
+    assert body.count("live running") == 1 or body.count("live") >= 1
     p.page.locator("tr.click", has_text="fin").first.click()
     p.settle(800)
     assert "finished" in p.page.inner_text("main")

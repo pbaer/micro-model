@@ -134,6 +134,9 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
         "best_val": min((e["val_loss"] for e in evals), default=None),
         "vram_gib": last.get("vram_gib"), "step_ms": last.get("step_ms"), "fwd_ms": last.get("fwd_ms"), "bwd_ms": last.get("bwd_ms"),
         "opt_ms": last.get("opt_ms"), "data_ms": last.get("data_ms"),
+        "mixture": list((cfg.get("data") or {}).get("mixture", {}).keys()) if isinstance(cfg.get("data"), dict) else [],
+        "init_from": cfg.get("init_from") or "", "tasks": cfg.get("tasks") or [],
+        "heldout_acc": next((r.get("heldout_acc") for r in reversed(evals) if r.get("heldout_acc") is not None), None),
         "n_params": meta.get("n_params"), "started": meta.get("started"), "git_commit": (meta.get("env") or {}).get("git_commit"),
         "gpu": (meta.get("env") or {}).get("gpu"), "last_record_time": records[-1]["time"] if records else None,
     }

@@ -16,8 +16,15 @@ export function Runs() {
     return () => { alive = false; clearInterval(id); };
   }, []);
   if (!runs) return html`<div>loading…</div>`;
+  const live = runs.filter((r) => r.status === "running");
   return html`<div>
-    <h1>Runs</h1><div class="sub">${runs.length} runs</div>
+    <h1>Runs</h1><div class="sub">${runs.length} runs · ${live.length} live</div>
+    ${live.length > 0 && html`<div class="cards" style="margin-bottom:12px">${live.map((r) => html`
+      <a class="card" href=${"#/runs/" + encodeURIComponent(r.run_name)}>
+        <div><b>${r.run_name}</b> <span class="status running">running</span></div>
+        <div class="bar"><div style=${"width:" + (r.progress * 100).toFixed(1) + "%"}></div></div>
+        <div class="muted">${fmtTok(r.tokens)} / ${fmtTok(r.total_tokens)} · loss ${fmtNum(r.loss, 3)} · val ${fmtNum(r.val_loss, 3)} · ${fmtInt(r.tok_s)} tok/s · ETA ${fmtDur(r.eta_s)}</div>
+      </a>`)}</div>`}
     <table><tr><th>run</th><th>stage</th><th>status</th><th>tokens</th><th>progress</th><th>loss</th><th>best val</th><th>tok/s</th><th>elapsed</th><th>ETA</th><th>started</th><th>git</th></tr>
     ${runs.map((r) => html`<tr class="click" onClick=${() => (location.hash = "#/runs/" + encodeURIComponent(r.run_name))}>
       <td>${r.run_name}</td><td>${r.stage}</td><td><span class=${"status " + r.status}>${r.status}</span></td>

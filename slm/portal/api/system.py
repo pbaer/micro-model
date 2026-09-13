@@ -29,7 +29,7 @@ def meta(request: Request) -> dict:
         "runs_root": str(Path(s.runs_root).resolve()), "data_root": str(s.data_root), "configs_root": str(Path(s.configs_root).resolve()),
         "python": sys.version.split()[0], "gpu_policy": s.gpu_policy,
         "pages": [
-            {"id": "home", "label": "Home"}, {"id": "runs", "label": "Runs"}, {"id": "data", "label": "Data"},
+            {"id": "home", "label": "Overview"}, {"id": "runs", "label": "Runs"}, {"id": "data", "label": "Data"},
             {"id": "tokenizer", "label": "Tokenizer"}, {"id": "model", "label": "Model"}, {"id": "arch", "label": "Architecture"},
         ],
         "stages": [{"name": "pretrain", "label": "Pretraining"}],
