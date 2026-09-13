@@ -77,3 +77,22 @@ def test_api_runs(tmp_path):
     assert c.get("/").status_code == 200 and "app.js" in c.get("/").text
     for asset in ("/static/app.js", "/static/pages/runs.js", "/static/components/chart.js", "/static/vendor/preact.mjs", "/static/vendor/uplot.iife.min.js"):
         assert c.get(asset).status_code == 200, asset
+
+
+def test_portal_js_modules_parse():
+    """Every ES module in the portal must parse (a broken template literal blanks the whole app)."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+
+    node = shutil.which("node")
+    if not node:
+        import pytest
+
+        pytest.skip("node not installed")
+    static = Path("slm/portal/static")
+    for f in list(static.glob("*.js")) + list((static / "pages").glob("*.js")) + list((static / "components").glob("*.js")):
+        tmp = Path(__import__("tempfile").gettempdir()) / "slm_check.mjs"
+        shutil.copy(f, tmp)
+        r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
+        assert r.returncode == 0, f"{f}: {r.stderr[:400]}"

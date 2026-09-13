@@ -55,13 +55,13 @@ function App() {
   else if (page === "data") body = html`<${DataPage} />`;
   else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
   else if (page === "arch") body = html`<${ArchPage} />`;
-  else if (page === "model") body = html`<${ModelPage} />`;
+  else if (page === "inference" || page === "model") body = html`<${ModelPage} />`;
   else body = html`<${Placeholder} name=${page} />`;
   const pages = meta ? meta.pages : [{ id: "home", label: "Home" }, { id: "runs", label: "Runs" }];
   return html`<div class="layout">
     <nav>
       <div class="brand">slm command center</div>
-      ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id || (p.id === "home" && page === "runs") ? "active" : ""}>${p.label}</a>`)}
+      ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id || (p.id === "home" && page === "runs") || (p.id === "inference" && page === "model") ? "active" : ""}>${p.label}</a>`)}
       <${GpuTile} />
     </nav>
     <main>${body}</main>

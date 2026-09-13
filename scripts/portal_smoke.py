@@ -92,7 +92,7 @@ def main() -> int:
                 settle()
             cycle_selects()
             print(f"  run {name!r}: clicked {sorted(clicked)}")
-        for page in ("data", "tokenizer", "arch", "model"):  # overview already exercised above
+        for page in ("data", "tokenizer", "arch", "inference"):  # overview already exercised above
             t0 = time.time()
             pg.goto(a.url + "/#/" + page)
             settle(1200)
@@ -103,7 +103,7 @@ def main() -> int:
                     settle(800)
                     clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "sources", "mixture", "documents"))
                     cycle_selects(2)
-            elif page == "model" and a.generate:
+            elif page == "inference" and a.generate:
                 sel = pg.locator("main select").first
                 opts = [o.get_attribute("value") for o in sel.locator("option").all() if o.get_attribute("value")]
                 if opts:
@@ -113,7 +113,7 @@ def main() -> int:
                     pg.wait_for_function("document.querySelector('main').innerText.includes('cpu/float32')", timeout=120000)
                     pg.locator("input[type=number]").nth(3).fill("16")
                     pg.get_by_role("button", name="generate").click()
-                    pg.wait_for_function("document.querySelectorAll('.chips .chip').length > 3", timeout=120000)
+                    pg.wait_for_function("document.querySelectorAll('.rawout span').length > 3", timeout=120000)
                     settle()
                 clicked = {"load", "generate"}
             else:

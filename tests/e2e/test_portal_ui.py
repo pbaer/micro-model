@@ -254,7 +254,8 @@ def test_arch_page(server, browser):
 
 def test_model_page_load_and_generate(server, browser):
     p = Page(browser, server)
-    p.goto("/model")
+    p.goto("/inference")
+    assert "Inference" in p.page.inner_text("main")
     sel = p.page.locator("main select").first
     opts = [o.get_attribute("value") for o in sel.locator("option").all() if o.get_attribute("value")]
     assert opts, "no checkpoints listed"
@@ -264,7 +265,13 @@ def test_model_page_load_and_generate(server, browser):
     p.settle()
     p.page.locator("input[type=number]").nth(3).fill("8")  # max new tokens
     p.page.get_by_role("button", name="generate").click()
-    p.page.wait_for_function("document.querySelectorAll('.chips .chip').length > 3", timeout=60000)
+    p.page.wait_for_function("document.querySelectorAll('.rawout span').length > 3", timeout=60000)
+    p.settle()
+    assert "<|bos|>" in p.page.inner_text(".rawout")  # reserved tokens stay visible in the raw view
+    p.page.get_by_role("button", name="tokens", exact=True).click()
+    p.settle()
+    assert p.page.locator(".chips .chip").count() > 3
+    p.page.get_by_role("button", name="text", exact=True).click()
     p.settle()
     p.page.get_by_role("button", name="score prompt (teacher-forced)").click()
     p.page.wait_for_function("document.querySelector('main').innerText.includes('perplexity')", timeout=60000)

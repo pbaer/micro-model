@@ -35,10 +35,21 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
   </div>`;
 }
 
-function Stream({ tokens, prompt, hover, setHover }) {
+const showPiece = (p) => p.replace(/ /g, "·").replace(/\n/g, "↵\n");
+const isSpecial = (p) => p.startsWith("<|") && p.endsWith("|>");
+
+/** Generated output. mode "tokens": one chip per token colored by its probability; mode "text": the
+ *  raw decoded text, with reserved tokens (<|bos|>, <|end|>, ...) still shown as highlighted markers. */
+function Stream({ tokens, prompt, mode, setHover }) {
+  if (mode === "text") {
+    return html`<div class="rawout">
+      ${prompt && prompt.map((p, i) => isSpecial(p) ? html`<span class="chip special" key=${"p" + i}>${p}</span>` : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
+      ${tokens.map((t, i) => t.special ? html`<span class="chip special" title=${`logprob ${t.logprob.toFixed(3)}`} onMouseEnter=${() => setHover(t)} key=${i}>${t.piece}</span>` : html`<span title=${`logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)}`} onMouseEnter=${() => setHover(t)} key=${i}>${t.piece}</span>`)}
+    </div>`;
+  }
   return html`<div class="chips" style="min-height:60px">
-    ${prompt && prompt.map((p, i) => html`<span class="chip" style="background:#e5e7eb;color:#374151" key=${"p" + i}>${p.replace(/ /g, "·").replace(/\n/g, "↵\n")}</span>`)}
-    ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "")} style=${t.special ? "" : `background:${lpColor(t.logprob)}`} title=${`logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`} onMouseEnter=${() => setHover(t)} key=${i}>${t.piece.replace(/ /g, "·").replace(/\n/g, "↵\n")}</span>`)}
+    ${prompt && prompt.map((p, i) => html`<span class="chip" style="background:#e5e7eb;color:#374151" key=${"p" + i}>${showPiece(p)}</span>`)}
+    ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "")} style=${t.special ? "" : `background:${lpColor(t.logprob)}`} title=${`logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`} onMouseEnter=${() => setHover(t)} key=${i}>${showPiece(t.piece)}</span>`)}
   </div>`;
 }
 
@@ -53,6 +64,7 @@ export function ModelPage() {
   const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 120, seed: 1234, logprobs_topk: 5 });
   const [useBoth, setUseBoth] = useState(false);
   const [thinkReq, setThinkReq] = useState(false);
+  const [view, setView] = useState("text");
   const [out, setOut] = useState({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
   const [hover, setHover] = useState(null);
   const [streamId, setStreamId] = useState(null);
@@ -108,7 +120,7 @@ export function ModelPage() {
   const stat = (s) => { const o = out[s]; const t = o.tokens; if (!t.length) return ""; const mean = t.reduce((a, b) => a + b.logprob, 0) / t.length; return `${t.length} tokens · mean logprob ${mean.toFixed(3)} · mean entropy ${(t.reduce((a, b) => a + b.entropy, 0) / t.length).toFixed(2)}${o.done ? ` · ${o.done.tok_s.toFixed(1)} tok/s · ${o.done.reason}` : ""}`; };
   const divergence = useBoth && out.A.tokens.length && out.B.tokens.length ? out.A.tokens.findIndex((t, i) => !out.B.tokens[i] || out.B.tokens[i].id !== t.id) : -1;
   return html`<div>
-    <h1>Model harness</h1>
+    <h1>Inference</h1>
     <div class="sub">${status ? (status.worker ? `worker alive · VRAM in worker ${fmtNum(status.vram_gib, 2)} GiB` : "worker idle (no VRAM held)") : "…"} ${status && status.live_runs && status.live_runs.length ? ` · ⚠ training live: ${status.live_runs.join(", ")} — loads default to CPU` : ""}
       ${status && status.worker && html` · <a href="#" onClick=${(e) => { e.preventDefault(); api("/api/model/worker/stop", { method: "POST" }).then(refresh); }}>release GPU (stop worker)</a>`}</div>
     ${err && html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`}
@@ -139,17 +151,20 @@ export function ModelPage() {
       <button class="active" onClick=${generate} disabled=${busy || !slots.A || !slots.A.checkpoint}>generate</button>
       <button onClick=${cancel} disabled=${!streamId}>cancel</button>
       <button onClick=${doScore} disabled=${busy || !slots.A || !slots.A.checkpoint}>score prompt (teacher-forced)</button>
+      <span class="muted" style="margin-left:10px">view</span>
+      ${["text", "tokens"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}
       ${hover && html`<span class="muted" style="font-family:var(--mono)">top-${hover.topk.length}: ${hover.topk.map((t) => `${JSON.stringify(t.piece)} ${Math.exp(t.logprob).toFixed(2)}`).join("  ")}</span>`}
     </div>
     <div class=${useBoth ? "two" : ""}>
       ${(useBoth ? ["A", "B"] : ["A"]).map((s) => html`<div key=${s}>
         <div class="muted" style="margin-bottom:4px"><b>${s}</b> ${stat(s)}${useBoth && divergence >= 0 && s === "A" ? ` · diverges at token ${divergence + 1}` : ""}</div>
-        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} hover=${hover} setHover=${setHover} />
+        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} mode=${view} setHover=${setHover} />
       </div>`)}
     </div>
-    <div class="legend" style="margin-top:6px">chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step.</div>
+    <div class="legend" style="margin-top:6px">${view === "tokens" ? "chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step." : "raw decoded text; reserved tokens are shown as markers. Hover any word for its log-prob and the top-k alternatives."}</div>
     ${score && html`<h2>Teacher-forced scoring (slot A)</h2>
       <div class="muted">${score.n} tokens · mean logprob ${score.mean_logprob.toFixed(3)} · perplexity ${score.ppl ? score.ppl.toFixed(2) : "-"} (over loss-target tokens)</div>
-      <div class="chips">${score.tokens.map((t, i) => html`<span class=${"chip" + (t.target ? "" : " masked")} style=${t.target ? `background:${lpColor(t.logprob)}` : ""} title=${t.logprob == null ? "first token" : `logprob ${t.logprob.toFixed(3)} · rank ${t.rank}`} key=${i}>${t.piece.replace(/ /g, "·").replace(/\n/g, "↵\n")}</span>`)}</div>`}
+      ${view === "tokens" ? html`<div class="chips">${score.tokens.map((t, i) => html`<span class=${"chip" + (t.target ? "" : " masked")} style=${t.target ? `background:${lpColor(t.logprob)}` : ""} title=${t.logprob == null ? "first token" : `logprob ${t.logprob.toFixed(3)} · rank ${t.rank}`} key=${i}>${showPiece(t.piece)}</span>`)}</div>`
+        : html`<div class="rawout">${score.tokens.map((t, i) => isSpecial(t.piece) ? html`<span class="chip special" key=${i}>${t.piece}</span>` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}
   </div>`;
 }
