@@ -123,10 +123,9 @@ class TokenizedSplit:
         return out
 
     def mm(self, i: int) -> np.memmap:
-        with self.lock:
-            if i not in self._mm:
-                self._mm[i] = np.memmap(self.paths[i], dtype=np.uint16, mode="r")
-            return self._mm[i]
+        # Not cached on purpose: a live mapping would block re-tokenization from overwriting the
+        # shard on Windows. Opening a memmap is a cheap syscall; slices are copied out immediately.
+        return np.memmap(self.paths[i], dtype=np.uint16, mode="r")
 
     def idx(self, i: int) -> np.ndarray:
         with self.lock:

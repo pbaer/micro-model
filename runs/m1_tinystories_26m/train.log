@@ -1,0 +1,84 @@
+D:\dev\micro-model\slm\config.py:124: FutureWarning: In the future `np.str` will be defined as the corresponding NumPy scalar.
+  obj = getattr(mod, name, None)
+00:30:38 [m1_tinystories_26m] fresh start. model 26,353,024 params (13,770,112 non-embed); 4x32x1024 = 131,072 tokens/update; data 463M tokens available; val 2.0M tokens
+remark: c33l3j2lg4544375f7cmanvn34gdjsbe2a5fjp54uwh2rzxmekhk.py:18:0: 427 instructions in function
+remark: cikuuzx2av2dabjotccnmjvlcpo774ojf5jeq55qrphv7n55u6he.py:18:0: 16 instructions in function
+remark: cikuuzx2av2dabjotccnmjvlcpo774ojf5jeq55qrphv7n55u6he.py:18:0: 12 instructions in function
+remark: cgxhbyomh4thwhznmhxsrmhv2tbpgcxedflxj4ff3lpwroywqygf.py:18:0: 49 instructions in function
+remark: cgxhbyomh4thwhznmhxsrmhv2tbpgcxedflxj4ff3lpwroywqygf.py:18:0: 68 instructions in function
+remark: cgxhbyomh4thwhznmhxsrmhv2tbpgcxedflxj4ff3lpwroywqygf.py:18:0: 70 instructions in function
+remark: cjsmzzqoa2qgnhqmywmrbimjewal637ld7xfsttaoxxxr5a2mnfl.py:18:0: 51 instructions in function
+remark: cjsmzzqoa2qgnhqmywmrbimjewal637ld7xfsttaoxxxr5a2mnfl.py:18:0: 70 instructions in function
+remark: cjsmzzqoa2qgnhqmywmrbimjewal637ld7xfsttaoxxxr5a2mnfl.py:18:0: 72 instructions in function
+remark: cdryd63zrskretqul4tonvs74arrwhiv73pcxwggy7ziekri5usi.py:18:0: 198 instructions in function
+remark: cdryd63zrskretqul4tonvs74arrwhiv73pcxwggy7ziekri5usi.py:18:0: 95 instructions in function
+remark: csw7uzrku53w62aetzryqbctl5zgzeaumkm2b5c2y7rlpf77ci3v.py:18:0: 202 instructions in function
+remark: csw7uzrku53w62aetzryqbctl5zgzeaumkm2b5c2y7rlpf77ci3v.py:18:0: 97 instructions in function
+remark: c4x7mvd665q47cgx7tpjuk4lm73zqpq2kweciaftrw2w5iawxyzc.py:18:0: 16 instructions in function
+remark: c4x7mvd665q47cgx7tpjuk4lm73zqpq2kweciaftrw2w5iawxyzc.py:18:0: 12 instructions in function
+remark: c5osmfp4ak2mxsonz6xe4h65uvp2ed3soope7og7haijvhwh7qt2.py:18:0: 38 instructions in function
+remark: c5osmfp4ak2mxsonz6xe4h65uvp2ed3soope7og7haijvhwh7qt2.py:18:0: 38 instructions in function
+remark: cfbjhjfm32hz7u7nthjsvl3tlpgiw2tpmudkgswnwi73f7acrbbh.py:18:0: 349 instructions in function
+remark: cpzecyyeysojl3ulha3vb3jfvvb74efa5iniannsbpvz3tolnbuo.py:18:0: 16 instructions in function
+remark: cpzecyyeysojl3ulha3vb3jfvvb74efa5iniannsbpvz3tolnbuo.py:18:0: 12 instructions in function
+remark: cnguycuf45evm5jrkwgayks46gzklfyjovffywh5ltcrinrpkwcz.py:18:0: 16 instructions in function
+remark: cnguycuf45evm5jrkwgayks46gzklfyjovffywh5ltcrinrpkwcz.py:18:0: 12 instructions in function
+remark: cbog2gyqukghspdixijrylgexfw52oifh3ahmyfh2hmkzwnqjpbc.py:18:0: 156 instructions in function
+remark: cbog2gyqukghspdixijrylgexfw52oifh3ahmyfh2hmkzwnqjpbc.py:18:0: 57 instructions in function
+remark: cibinhcdpofsy6nvlmdzxehq6i77ieeehvulewga44yjrpyof72m.py:18:0: 557 instructions in function
+remark: ckoen247ref6dj644u6jxs4uvxxdjrw2nzkbqil7vimdgu4qft7s.py:18:0: 642 instructions in function
+remark: cmhnaxosspdiki3zniscnendnsbe6n5jpz2itg5qqwodf7fvglxz.py:18:0: 840 instructions in function
+remark: cukbw3acry3zmw4kxpzbhohqq2g2vnp7kludk6ze2i7blrzon7zm.py:18:0: 472 instructions in function
+remark: cdigd5gm3qcheiiazulne7j7chw5gy2c5d7tucpghd472isuly33.py:18:0: 839 instructions in function
+remark: cwobolbuabzeya7qeiump7e6r52mddrbefqhjlcrzu2yfckcdvs4.py:18:0: 726 instructions in function
+remark: cjoagkpampwn5pg62p2ezeykhvogfgiyqzziknjcvlpcfq27udfw.py:18:0: 16 instructions in function
+remark: cjoagkpampwn5pg62p2ezeykhvogfgiyqzziknjcvlpcfq27udfw.py:18:0: 12 instructions in function
+remark: cskne5nnlqqfbmvpujgvjsffwxtkgej7rp6p3umrnlunmrk7eoi5.py:18:0: 298 instructions in function
+remark: cibw3lzn2a2mhqvaekdmkxqn2v2e6ntcupdq2l6m25tkensiy5l5.py:18:0: 285 instructions in function
+remark: cdfusaovqrtiekqo63lciqpvgjv4ntg56yyyur64wawidlp3o6eb.py:18:0: 27 instructions in function
+remark: c5jdsxns6ykodxg4ftsjskgzute2f5czicpjg4is7lhyxf733wd6.py:18:0: 14 instructions in function
+remark: cowymg6g3op7l2zsqorc77vezbup3gi4kx42ce7ns4v3khxmts5d.py:18:0: 437 instructions in function
+remark: ctg73qljnwn2rujbvo3pnvzwoaaidyn62zhszjnppopoaqwm3fsq.py:18:0: 613 instructions in function
+remark: cib2rbiufylizwcv5vxr3rojr5ssqpgxc4mnbvzwx3mmawhp2nf5.py:18:0: 16 instructions in function
+remark: cib2rbiufylizwcv5vxr3rojr5ssqpgxc4mnbvzwx3mmawhp2nf5.py:18:0: 12 instructions in function
+remark: cmlylxi7s5oxvhoxma6dlws5mecsau3tonskenmkd636wflt4q7j.py:18:0: 44 instructions in function
+remark: cmlylxi7s5oxvhoxma6dlws5mecsau3tonskenmkd636wflt4q7j.py:18:0: 14 instructions in function
+remark: cmxj6pj4wx3k3bp72sj75tpbd4lvq4cylrhtknfb4fy2qkdcczae.py:18:0: 290 instructions in function
+remark: cmxj6pj4wx3k3bp72sj75tpbd4lvq4cylrhtknfb4fy2qkdcczae.py:18:0: 104 instructions in function
+remark: cd5xvdhv67ihl4wpacs5nmdnw3rnzg323vvs3ld3jwcjhiawdhsy.py:18:0: 44 instructions in function
+remark: cd5xvdhv67ihl4wpacs5nmdnw3rnzg323vvs3ld3jwcjhiawdhsy.py:18:0: 14 instructions in function
+remark: cr7kvpduxf72wxhe32bngmvm4qv6bli3rek5ygqabvcawzl4kulq.py:18:0: 660 instructions in function
+remark: c2jsdp7tnx23aqx4pnifp3bpyqcuf52fhwe7o7kjmsdes67wkq3v.py:18:0: 44 instructions in function
+remark: c2jsdp7tnx23aqx4pnifp3bpyqcuf52fhwe7o7kjmsdes67wkq3v.py:18:0: 14 instructions in function
+remark: cwjswlsol3ktgfrf4amllo2bepxelhylakgat37qbx5knxfhwi7l.py:18:0: 79 instructions in function
+remark: cwjswlsol3ktgfrf4amllo2bepxelhylakgat37qbx5knxfhwi7l.py:18:0: 246 instructions in function
+remark: cwjswlsol3ktgfrf4amllo2bepxelhylakgat37qbx5knxfhwi7l.py:18:0: 771 instructions in function
+remark: clu2p3wlm73mi2kzpzaxgmitof37oz6pi37tz3serfwnilp2njmk.py:18:0: 153 instructions in function
+remark: clu2p3wlm73mi2kzpzaxgmitof37oz6pi37tz3serfwnilp2njmk.py:18:0: 57 instructions in function
+remark: cdsmelk55gsnbvowaxgsd2b5c43pxscg3ozpgtfxmbne26ujf3ij.py:18:0: 179 instructions in function
+remark: c5w56dbieot2yfgainkhefik7fomwimcuzpoaky5ai62mliae7am.py:18:0: 48 instructions in function
+remark: cwzmr5wfsu254qsv7vokmut36uycdnpwlcfndbu5a5lx3nuaxajw.py:18:0: 388 instructions in function
+remark: cwzmr5wfsu254qsv7vokmut36uycdnpwlcfndbu5a5lx3nuaxajw.py:18:0: 323 instructions in function
+remark: cwzmr5wfsu254qsv7vokmut36uycdnpwlcfndbu5a5lx3nuaxajw.py:18:0: 275 instructions in function
+remark: c4umnkefzo2us3hlhoupxv5mxlj4cu6b6qmropodr7oktttmcp3x.py:18:0: 296 instructions in function
+remark: c4umnkefzo2us3hlhoupxv5mxlj4cu6b6qmropodr7oktttmcp3x.py:18:0: 95 instructions in function
+remark: cx6ji5tjuofb7mozuifsmpbskm67l5ee7caz2rzjkast2jgu5pnb.py:18:0: 336 instructions in function
+remark: cx6ji5tjuofb7mozuifsmpbskm67l5ee7caz2rzjkast2jgu5pnb.py:18:0: 102 instructions in function
+remark: cs4b5etycoxyybvikeurn3p62mb4egec2epkyxd724u3n53vio22.py:18:0: 17 instructions in function
+remark: cs4b5etycoxyybvikeurn3p62mb4egec2epkyxd724u3n53vio22.py:18:0: 17 instructions in function
+remark: ctrzqmge2ly6245svksuimav2ibtziat3cdiczhlgoiukydmuy5k.py:18:0: 44 instructions in function
+remark: ctrzqmge2ly6245svksuimav2ibtziat3cdiczhlgoiukydmuy5k.py:18:0: 14 instructions in function
+remark: cpq6o5otvtawhasshvvabpqbduki33xufwkooe737lpqg47h634u.py:18:0: 875 instructions in function
+remark: crbxrfcb3hmjgxqnvpvybdiv4v23aly2gurt7odoyddw6dvrbniv.py:18:0: 11 instructions in function
+remark: crbxrfcb3hmjgxqnvpvybdiv4v23aly2gurt7odoyddw6dvrbniv.py:18:0: 10 instructions in function
+remark: cyoghvp2i5dppcrf6uea3ca56tjxfbo77ipwjrwkrcc3rxlw7o5g.py:18:0: 1149 instructions in function
+remark: cq6bod5bjvavdlwxo6bxxyqsyiefvwxwrc47h6nrqf35ng3a632d.py:18:0: 52 instructions in function
+remark: cq6bod5bjvavdlwxo6bxxyqsyiefvwxwrc47h6nrqf35ng3a632d.py:18:0: 19 instructions in function
+00:31:35 upd 10 | 1M (0.2%) | loss 9.9486 | lr 1.18e-04 | gn 2.33 | 23,142 tok/s | 5664 ms/upd (data 17) | 6.3 GiB | ETA 7h 11m
+00:31:52 upd 20 | 3M (0.4%) | loss 8.9384 | lr 2.49e-04 | gn 2.32 | 74,518 tok/s | 1759 ms/upd (data 1) | 6.3 GiB | ETA 4h 57m
+00:32:10 upd 30 | 4M (0.7%) | loss 7.4467 | lr 3.80e-04 | gn 1.97 | 74,398 tok/s | 1762 ms/upd (data 3) | 6.3 GiB | ETA 3h 58m
+00:32:10 *** initial estimate: whole run ~4h 00m at 41,613 tok/s ***
+00:32:27 upd 40 | 5M (0.9%) | loss 5.9560 | lr 5.11e-04 | gn 1.08 | 75,846 tok/s | 1728 ms/upd (data 3) | 6.3 GiB | ETA 3h 24m
+00:32:48 upd 50 | 7M (1.1%) | loss 4.9447 | lr 6.42e-04 | gn 1.03 | 62,555 tok/s | 2095 ms/upd (data 1) | 6.3 GiB | ETA 3h 12m
+00:33:06 upd 60 | 8M (1.3%) | loss 4.4311 | lr 7.73e-04 | gn 1.12 | 74,983 tok/s | 1748 ms/upd (data 2) | 6.3 GiB | ETA 2h 56m
+00:33:23 upd 70 | 9M (1.5%) | loss 4.0735 | lr 9.04e-04 | gn 1.60 | 76,413 tok/s | 1715 ms/upd (data 2) | 6.3 GiB | ETA 2h 43m

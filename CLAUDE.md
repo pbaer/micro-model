@@ -34,3 +34,10 @@ placeholder and may change, so don't bake it into code.
   checkpoint on Ctrl-C, and refresh a self-contained `runs/<run>/report.html` (inline charts, ETA,
   per-100M-token milestone timings) at least every 30 minutes and at every milestone.
 - Tests live in `tests/`; run `.venv/Scripts/python.exe -m pytest`.
+
+## Windows gotchas learned
+- A process holding a memmap or open handle on a file blocks overwriting/renaming it (prepare.py
+  failed with EINVAL while the portal had a shard mapped). The portal opens memmaps per request
+  and never caches them; stop viewers before re-tokenizing; checkpoint writes retry on PermissionError.
+- Long background jobs: run `python -u ... > log 2>&1`; never pipe through grep/tail (buffered output
+  is lost if the pipeline dies, which is how the first 149M benchmark's results were lost).

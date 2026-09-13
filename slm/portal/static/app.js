@@ -6,6 +6,7 @@ import { Home } from "./pages/home.js";
 import { Runs, RunDetail } from "./pages/runs.js";
 import { DataPage } from "./pages/data.js";
 import { TokenizerPage } from "./pages/tokenizer.js";
+import { ArchPage } from "./pages/arch.js";
 
 const html = htm.bind(h);
 
@@ -52,6 +53,7 @@ function App() {
   else if (page === "runs") body = html`<${Runs} />`;
   else if (page === "data") body = html`<${DataPage} />`;
   else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
+  else if (page === "arch") body = html`<${ArchPage} />`;
   else body = html`<${Placeholder} name=${page} />`;
   const pages = meta ? meta.pages : [{ id: "home", label: "Home" }, { id: "runs", label: "Runs" }];
   return html`<div class="layout">

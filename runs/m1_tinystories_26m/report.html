@@ -1,0 +1,141 @@
+<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="refresh" content="60">
+<title>m1_tinystories_26m</title><style>
+body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;padding:20px 28px;color:#222;background:#fafafa;max-width:1280px}
+h1{margin:0 0 4px 0;font-size:22px} h2{font-size:16px;margin:26px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
+.sub{color:#666;font-size:13px;margin-bottom:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin:12px 0}
+.tile{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px 12px}
+.tile .k{font-size:11px;color:#777;text-transform:uppercase;letter-spacing:.04em}.tile .v{font-size:20px;font-weight:600;margin-top:2px}
+.tile .s{font-size:11px;color:#888}
+.bar{height:10px;background:#e5e7eb;border-radius:5px;overflow:hidden;margin:6px 0 2px}.bar>div{height:100%;background:#2563eb}
+.charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(560px,1fr));gap:14px}
+.chart{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:8px}.chart h3{margin:0 0 4px 6px;font-size:13px;font-weight:600;color:#444}
+svg{width:100%;height:auto;display:block}
+table{border-collapse:collapse;font-size:12.5px;background:#fff;width:100%}th,td{border:1px solid #e3e3e3;padding:4px 8px;text-align:right}th{background:#f3f4f6}td:first-child,th:first-child{text-align:left}
+pre{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px;font-size:12px;white-space:pre-wrap;word-break:break-word;max-height:520px;overflow:auto}
+.status{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
+.running{background:#dbeafe;color:#1d4ed8}.finished{background:#dcfce7;color:#15803d}.stopped{background:#fee2e2;color:#b91c1c}.stale{background:#fef3c7;color:#b45309}
+</style></head><body>
+<h1>m1_tinystories_26m <span class="status running">running</span></h1>
+<div class="sub">generated 2026-09-13 00:30:38 · started 2026-09-13 00:30:38 · NVIDIA GeForce RTX 4080 SUPER · git d990bd26 · model 26,353,024 params</div>
+<div class="bar"><div style="width:0.00%"></div></div>
+<div class="tiles"><div class="tile"><div class="k">progress</div><div class="v">0.0%</div><div class="s">0K / 600M tokens</div></div><div class="tile"><div class="k">ETA</div><div class="v">?</div><div class="s"></div></div><div class="tile"><div class="k">elapsed</div><div class="v">0m 00s</div><div class="s"></div></div><div class="tile"><div class="k">tokens/sec</div><div class="v">0</div><div class="s">run avg 0</div></div><div class="tile"><div class="k">train loss</div><div class="v">nan</div><div class="s">update 0</div></div><div class="tile"><div class="k">val loss</div><div class="v">-</div><div class="s"></div></div><div class="tile"><div class="k">lr</div><div class="v">0.00e+00</div><div class="s"></div></div><div class="tile"><div class="k">grad norm</div><div class="v">0.000</div><div class="s"></div></div><div class="tile"><div class="k">VRAM peak</div><div class="v">0.0 GiB</div><div class="s"></div></div><div class="tile"><div class="k">step time</div><div class="v">0 ms</div><div class="s">fwd 0 bwd 0 opt 0 data 0</div></div></div>
+<div class="charts">
+<div class="chart"><h3>train loss</h3><svg id="c_loss"></svg></div>
+<div class="chart"><h3>validation loss</h3><svg id="c_val"></svg></div>
+<div class="chart"><h3>tokens / sec</h3><svg id="c_tps"></svg></div>
+<div class="chart"><h3>learning rate</h3><svg id="c_lr"></svg></div>
+<div class="chart"><h3>gradient norm</h3><svg id="c_gn"></svg></div>
+<div class="chart"><h3>VRAM peak (GiB)</h3><svg id="c_vram"></svg></div>
+</div>
+<h2>Milestones (every 50M tokens)</h2>
+<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr><tr><td colspan=7>none yet</td></tr></table>
+<h2>Latest samples</h2><pre>(no samples yet)</pre>
+<h2>Events</h2><table><tr><th>time</th><th>kind</th><th>message</th></tr><tr><td>09-13 00:30:38</td><td>start</td><td style='text-align:left'>fresh start: 26,353,024 params, accum 4, seq 1024, mb 32, 600M tokens planned</td></tr></table>
+<h2>Config</h2><pre>{
+ &quot;run_name&quot;: &quot;m1_tinystories_26m&quot;,
+ &quot;runs_root&quot;: &quot;runs&quot;,
+ &quot;tokenizer_dir&quot;: &quot;C:\\slm-data\\tokenizer\\v1&quot;,
+ &quot;model_file&quot;: &quot;configs/model/sanity_26m.yaml&quot;,
+ &quot;model&quot;: {},
+ &quot;data&quot;: {
+  &quot;tokenized_root&quot;: &quot;C:\\slm-data\\tokenized\\v1&quot;,
+  &quot;mixture&quot;: {
+   &quot;tinystories&quot;: 1.0
+  },
+  &quot;seq_len&quot;: 1024,
+  &quot;val_tokens&quot;: 2000000,
+  &quot;prefetch&quot;: 4
+ },
+ &quot;optim&quot;: {
+  &quot;lr&quot;: 0.001,
+  &quot;betas&quot;: [
+   0.9,
+   0.95
+  ],
+  &quot;eps&quot;: 1e-08,
+  &quot;weight_decay&quot;: 0.1,
+  &quot;grad_clip&quot;: 1.0,
+  &quot;fused&quot;: true,
+  &quot;decay_only_matrices&quot;: true
+ },
+ &quot;schedule&quot;: {
+  &quot;type&quot;: &quot;cosine&quot;,
+  &quot;total_tokens&quot;: 600000000,
+  &quot;warmup_tokens&quot;: 10000000,
+  &quot;min_lr_ratio&quot;: 0.1,
+  &quot;decay_frac&quot;: 0.2
+ },
+ &quot;batch&quot;: {
+  &quot;microbatch&quot;: 32,
+  &quot;tokens_per_update&quot;: 131072
+ },
+ &quot;runtime&quot;: {
+  &quot;compile&quot;: true,
+  &quot;sdpa_backend&quot;: &quot;cudnn&quot;,
+  &quot;seed&quot;: 0,
+  &quot;log_every_updates&quot;: 10,
+  &quot;min_free_vram_gib&quot;: 12.0
+ },
+ &quot;ckpt&quot;: {
+  &quot;every_minutes&quot;: 10,
+  &quot;keep_prev_latest&quot;: true,
+  &quot;snapshot_at_milestones&quot;: true
+ },
+ &quot;eval&quot;: {
+  &quot;every_tokens&quot;: 25000000,
+  &quot;gen_every_tokens&quot;: 50000000,
+  &quot;gen_max_new_tokens&quot;: 120,
+  &quot;gen_temperature&quot;: 0.8,
+  &quot;gen_top_p&quot;: 0.95,
+  &quot;prompts&quot;: [
+   &quot;Once upon a time, there was a little girl named Lily. She loved to&quot;,
+   &quot;Tom and his dog went to the park. Suddenly,&quot;,
+   &quot;The sun was shining and the birds were singing. Ben looked out the window and saw&quot;,
+   &quot;One day, a big red ball rolled down the hill and&quot;,
+   &quot;Mom said, \&quot;Do not touch the hot stove.\&quot; But Tim&quot;
+  ],
+  &quot;report_every_minutes&quot;: 5
+ },
+ &quot;milestone_tokens&quot;: 50000000,
+ &quot;notes&quot;: &quot;M1: validate tokenizer, packing, model, loss, ckpt/resume, generation, logging, throughput.&quot;
+}</pre>
+<script>
+function chart(id, series, opts){
+  opts = opts||{};
+  const W=560,H=260,L=60,R=16,T=16,B=36;
+  const svg=document.getElementById(id); if(!svg) return;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  let xs=[],ys=[];
+  series.forEach(s=>s.pts.forEach(p=>{xs.push(p[0]);ys.push(p[1]);}));
+  if(!xs.length){svg.innerHTML='<text x="20" y="40" fill="#888">no data yet</text>';return;}
+  let x0=Math.min(...xs),x1=Math.max(...xs),y0=Math.min(...ys),y1=Math.max(...ys);
+  if(opts.ymin!==undefined) y0=opts.ymin;
+  if(x1===x0) x1=x0+1; if(y1===y0) y1=y0+1;
+  const pad=(y1-y0)*0.05; y0-=pad; y1+=pad;
+  const sx=x=>L+(x-x0)/(x1-x0)*(W-L-R), sy=y=>T+(1-(y-y0)/(y1-y0))*(H-T-B);
+  let g='';
+  for(let i=0;i<=4;i++){const y=y0+(y1-y0)*i/4, yy=sy(y);
+    g+=`<line x1="${L}" x2="${W-R}" y1="${yy}" y2="${yy}" stroke="#e5e5e5"/><text x="${L-6}" y="${yy+4}" text-anchor="end" font-size="10" fill="#666">${opts.ylog?y.toFixed(3):y.toPrecision(4)}</text>`;}
+  for(let i=0;i<=4;i++){const x=x0+(x1-x0)*i/4, xx=sx(x);
+    g+=`<text x="${xx}" y="${H-B+14}" text-anchor="middle" font-size="10" fill="#666">${opts.xfmt?opts.xfmt(x):x.toPrecision(3)}</text>`;}
+  const colors=['#2563eb','#dc2626','#16a34a','#9333ea','#ea580c'];
+  series.forEach((s,i)=>{
+    const d=s.pts.map((p,j)=>(j?'L':'M')+sx(p[0]).toFixed(1)+' '+sy(p[1]).toFixed(1)).join(' ');
+    g+=`<path d="${d}" fill="none" stroke="${colors[i%colors.length]}" stroke-width="${s.w||1.5}"/>`;
+    if(s.dots) s.pts.forEach(p=>{g+=`<circle cx="${sx(p[0])}" cy="${sy(p[1])}" r="2.5" fill="${colors[i%colors.length]}"/>`;});
+    g+=`<text x="${W-R}" y="${T+12+i*13}" text-anchor="end" font-size="11" fill="${colors[i%colors.length]}">${s.name}</text>`;
+  });
+  g+=`<text x="${(L+W-R)/2}" y="${H-4}" text-anchor="middle" font-size="11" fill="#444">${opts.xlabel||''}</text>`;
+  svg.innerHTML=g;
+}
+const fmtTok=x=>x>=1e9?(x/1e9).toFixed(2)+'B':x>=1e6?(x/1e6).toFixed(0)+'M':(x/1e3).toFixed(0)+'K';
+
+const D={"loss": [], "val": [], "lr": [], "tps": [], "gn": [], "vram": []};
+chart('c_loss',[{name:'train',pts:D.loss},{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
+chart('c_val',[{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
+chart('c_tps',[{name:'tok/s',pts:D.tps}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});
+chart('c_lr',[{name:'lr',pts:D.lr}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});
+chart('c_gn',[{name:'grad norm',pts:D.gn}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});
+chart('c_vram',[{name:'GiB',pts:D.vram}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});
+</script></body></html>
