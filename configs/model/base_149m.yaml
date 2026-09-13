@@ -1,0 +1,12 @@
+# M2/M3 serious base model. ~149M total, ~124M non-embedding.
+vocab_size: 32768
+n_layers: 18
+d_model: 768
+n_heads: 12
+n_kv_heads: 4
+head_dim: 64
+d_ff: 2304
+max_seq_len: 8192
+rope_theta: 100000.0
+qk_norm: true
+tie_embeddings: true

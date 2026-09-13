@@ -1,0 +1,12 @@
+# Unit-test model: microseconds per step, fits anywhere.
+vocab_size: 256
+n_layers: 2
+d_model: 64
+n_heads: 4
+n_kv_heads: 2
+head_dim: 16
+d_ff: 128
+max_seq_len: 256
+rope_theta: 10000.0
+qk_norm: true
+tie_embeddings: true

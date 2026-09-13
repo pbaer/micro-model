@@ -1,0 +1,33 @@
+[project]
+name = "slm"
+version = "0.0.1"
+description = "From-scratch small language model research stack: pretraining, SFT, reasoning SFT, RL, context extension"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.0",
+    "pyyaml>=6.0",
+    "tokenizers>=0.21",
+    "datasets>=3.0",
+    "huggingface_hub>=0.30",
+    "pyarrow>=18.0",
+    "tqdm>=4.66",
+    "regex>=2024.0",
+    "boto3>=1.35",
+    "zstandard>=0.23",
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+# torch/triton are installed separately from the PyTorch cu130 index; see README
+package = true
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["slm*"]

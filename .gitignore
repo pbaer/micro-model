@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+# training outputs (large) - checkpoints/logs live under runs/ in this repo dir but are not versioned
+runs/*/checkpoints/
+runs/*/*.pt
+runs/*/rollouts/
+# tokenizer training scratch
+artifacts/scratch/
