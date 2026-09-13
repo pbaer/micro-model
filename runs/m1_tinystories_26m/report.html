@@ -17,9 +17,9 @@ pre{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px;font
 .running{background:#dbeafe;color:#1d4ed8}.finished{background:#dcfce7;color:#15803d}.stopped{background:#fee2e2;color:#b91c1c}.stale{background:#fef3c7;color:#b45309}
 </style></head><body>
 <h1>m1_tinystories_26m <span class="status running">running</span></h1>
-<div class="sub">generated 2026-09-13 00:40:43 · started 2026-09-13 00:30:38 · NVIDIA GeForce RTX 4080 SUPER · git d990bd26 · model 26,353,024 params</div>
-<div class="bar"><div style="width:6.12%"></div></div>
-<div class="tiles"><div class="tile"><div class="k">progress</div><div class="v">6.1%</div><div class="s">37M / 600M tokens</div></div><div class="tile"><div class="k">ETA</div><div class="v">2h 08m</div><div class="s">finish ~Sun 02:48</div></div><div class="tile"><div class="k">elapsed</div><div class="v">10m 00s</div><div class="s">initial estimate 4h 00m</div></div><div class="tile"><div class="k">tokens/sec</div><div class="v">73,239</div><div class="s">run avg 61,105</div></div><div class="tile"><div class="k">train loss</div><div class="v">2.1885</div><div class="s">update 280</div></div><div class="tile"><div class="k">val loss</div><div class="v">2.6101</div><div class="s">best 2.6101  ppl 13.6</div></div><div class="tile"><div class="k">lr</div><div class="v">9.96e-04</div><div class="s"></div></div><div class="tile"><div class="k">grad norm</div><div class="v">0.470</div><div class="s"></div></div><div class="tile"><div class="k">VRAM peak</div><div class="v">6.3 GiB</div><div class="s"></div></div><div class="tile"><div class="k">step time</div><div class="v">1706 ms</div><div class="s">fwd 134 bwd 267 opt 2 data 3</div></div></div>
+<div class="sub">generated 2026-09-13 00:44:46 · started 2026-09-13 00:30:38 · NVIDIA GeForce RTX 4080 SUPER · git d990bd26 · model 26,353,024 params</div>
+<div class="bar"><div style="width:8.30%"></div></div>
+<div class="tiles"><div class="tile"><div class="k">progress</div><div class="v">8.3%</div><div class="s">50M / 600M tokens</div></div><div class="tile"><div class="k">ETA</div><div class="v">2h 05m</div><div class="s">finish ~Sun 02:50</div></div><div class="tile"><div class="k">elapsed</div><div class="v">14m 08s</div><div class="s">initial estimate 4h 00m</div></div><div class="tile"><div class="k">tokens/sec</div><div class="v">73,086</div><div class="s">run avg 58,734</div></div><div class="tile"><div class="k">train loss</div><div class="v">2.0268</div><div class="s">update 380</div></div><div class="tile"><div class="k">val loss</div><div class="v">2.0580</div><div class="s">best 2.0580  ppl 7.8</div></div><div class="tile"><div class="k">lr</div><div class="v">9.90e-04</div><div class="s"></div></div><div class="tile"><div class="k">grad norm</div><div class="v">0.432</div><div class="s"></div></div><div class="tile"><div class="k">VRAM peak</div><div class="v">6.3 GiB</div><div class="s"></div></div><div class="tile"><div class="k">step time</div><div class="v">1748 ms</div><div class="s">fwd 1260 bwd 2520 opt 2 data 2</div></div></div>
 <div class="charts">
 <div class="chart"><h3>train loss</h3><svg id="c_loss"></svg></div>
 <div class="chart"><h3>validation loss</h3><svg id="c_val"></svg></div>
@@ -29,9 +29,104 @@ pre{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px;font
 <div class="chart"><h3>VRAM peak (GiB)</h3><svg id="c_vram"></svg></div>
 </div>
 <h2>Milestones (every 50M tokens)</h2>
-<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr><tr><td colspan=7>none yet</td></tr></table>
-<h2>Latest samples</h2><pre>(no samples yet)</pre>
-<h2>Events</h2><table><tr><th>time</th><th>kind</th><th>message</th></tr><tr><td>09-13 00:30:38</td><td>start</td><td style='text-align:left'>fresh start: 26,353,024 params, accum 4, seq 1024, mb 32, 600M tokens planned</td></tr><tr><td>09-13 00:32:10</td><td>start</td><td style='text-align:left'>initial estimate: 4h 00m total wall-clock at 41,613 tok/s</td></tr><tr><td>09-13 00:40:39</td><td>checkpoint</td><td style='text-align:left'>latest.pt saved at 37M tokens (0.5s)</td></tr></table>
+<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr><tr><td>50M</td><td>14m 04s</td><td>14m 04s</td><td>59,218</td><td>2.0268</td><td>2.0580</td><td>09-13 00:44</td></tr></table>
+<h2>Latest samples</h2><pre>tokens=50M update=382 2026-09-13 00:44:42
+================================================================================
+PROMPT: &#x27;Once upon a time, there was a little girl named Lily. She loved to&#x27;
+--- greedy:
+ play with her toys and run around outside. One day, she went to the park with her mommy and saw a big slide. She ran to it and started to climb it. 
+
+Lily&#x27;s mommy said, &quot;Lily, let&#x27;s go on the slide!&quot; Lily was excited and said, &quot;Yes, let&#x27;s go!&quot; 
+
+They went down the slide and Lily was so happy. She said, &quot;Yay! Let&#x27;s go!&quot; 
+
+They went to the slide and Lily said, &quot;Let&#x27;s go on the slide!&quot; They both laughed and had so much fun
+--- sampled:
+ play outside in the sunshine. One day, she found a shiny object on the ground. She picked it up and showed it to her mommy. 
+
+Her mommy said, &quot;That&#x27;s a special object that might be a big, rare object.&quot; Lily was so excited! She said, &quot;What is it?&quot; 
+
+Her mommy said, &quot;It&#x27;s a star thing to do. It is like a star to live in a nest.&quot; 
+
+Lily was very excited and said, &quot;Let&#x27;s go and find it!&quot; 
+
+When they arrived, Lily saw the object that was very heavy
+================================================================================
+PROMPT: &#x27;Tom and his dog went to the park. Suddenly,&#x27;
+--- greedy:
+ he saw a big dog. The dog was barking and running towards him. Tom was scared and ran away.
+
+&quot;Help, help!&quot; he cried. &quot;I&#x27;m scared!&quot;
+
+But the dog was too fast and it ran away. Tom was very scared and ran away. He never saw the dog again.
+
+The dog was very friendly and he wanted to help Tom. He ran to the dog and hugged him.
+
+&quot;Are you okay, dog?&quot; Tom asked.
+
+The dog nodded and smiled back. It was a friendly dog, but it was not a friendly dog. It was a friendly dog
+--- sampled:
+ he saw a big, scary dog. He was so scared that he ran away with his big dog. 
+
+The dog&#x27;s owner heard him and ran to him. He said, &quot;Don&#x27;t be so scared, Spot. I don&#x27;t like it.&quot; 
+
+Mom and Dad said, &quot;Don&#x27;t worry, Spot. It&#x27;s just a dog. If you get hurt, I will make you feel better.&quot; 
+
+Spot nodded and wagged his tail. He ran back to their house and knocked on the door. Dad opened the door and said, &quot;Are you okay, Spot
+================================================================================
+PROMPT: &#x27;The sun was shining and the birds were singing. Ben looked out the window and saw&#x27;
+--- greedy:
+ a beautiful bird. He was so excited that he ran to the window and started to sing. He sang a beautiful song and the birds sang. The birds sang and the birds sang. They sang and sang and sang. They all sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and sang. They sang and sang and
+--- sampled:
+ a beautiful bird. He was so happy to see the bird. He said, &quot;Hello, bird! Can I fly a little bird?&quot;
+
+The bird said, &quot;No, you can&#x27;t fly. You can fly high and far. You have to fly with me.&quot;
+
+The bird was angry and sad. He wanted to fly like the bird. He ran away with his mom.
+
+Mom and dad chased the bird to the bird. They said, &quot;Don&#x27;t worry, we&#x27;ll be safe. We can fly together.&quot; The bird did not want to fly away.
+
+The bird was angry and
+================================================================================
+PROMPT: &#x27;One day, a big red ball rolled down the hill and&#x27;
+--- greedy:
+ went over the hill. The wind was very strong and the wind was blowing. The wind blew the ball and the ball flew up the hill. The wind was very strong and the wind was blowing the wind. The wind blew the ball hard and the wind blew the ball away. The wind was so strong that it flew up and down and landed in the air. The wind blew the ball and the ball flew away. The wind was so strong that it flew up and down and landed in the air. The wind was so strong that it flew up and down and landed on the
+--- sampled:
+ went over the hill. But the wind was too strong and it fell down and hurt its tail. They were in the end of the hill and were stuck to the top of the hill.
+
+The bird was very sad and went to look for help. He found a big hole and a bright cloth. He was a bit sad, but he was also happy that he could help.
+
+The bird found a tall tree and put the cloth in a nest. The bird felt safe and safe. He thanked the bird and stayed warm and safe.
+
+When the bird had arrived, the bird was safe and sound
+================================================================================
+PROMPT: &#x27;Mom said, &quot;Do not touch the hot stove.&quot; But Tim&#x27;
+--- greedy:
+ was still curious. He wanted to see what was inside the stove.
+
+Mom said, &quot;Let&#x27;s go see the stove. It is very hot. We can see it and see what it is.&quot;
+
+Mom said, &quot;No, Tim. We have to wait until it is hot. We have to wait until we get home.&quot;
+
+Tim did not listen. He ran to the stove and grabbed a knife. He pulled and pulled, but it did not move. He did not see the smoke coming out.
+
+Mom came and saw the mess. She was very angry. She said,
+--- sampled:
+ was happy. He thought it was a good idea.
+
+&quot;Mom, can I touch the stove?&quot; he asked.
+
+Mom shook her head. &quot;No, Tim, you can&#x27;t. It&#x27;s too rough. You don&#x27;t know how to do it.&quot;
+
+Sam laughed. He thought it was too dangerous. He wanted to keep it.
+
+&quot;Okay, mom,&quot; Sue said. &quot;Let&#x27;s go to the backyard.&quot;
+
+They got on the stove. They ran to the house. They knocked on the door.
+
+&quot;Be careful, Jen. Don&#x27;t touch it,&quot; Tim said.
+</pre>
+<h2>Events</h2><table><tr><th>time</th><th>kind</th><th>message</th></tr><tr><td>09-13 00:30:38</td><td>start</td><td style='text-align:left'>fresh start: 26,353,024 params, accum 4, seq 1024, mb 32, 600M tokens planned</td></tr><tr><td>09-13 00:32:10</td><td>start</td><td style='text-align:left'>initial estimate: 4h 00m total wall-clock at 41,613 tok/s</td></tr><tr><td>09-13 00:40:39</td><td>checkpoint</td><td style='text-align:left'>latest.pt saved at 37M tokens (0.5s)</td></tr><tr><td>09-13 00:44:46</td><td>checkpoint</td><td style='text-align:left'>latest.pt saved at 50M tokens (3.7s)</td></tr></table>
 <h2>Config</h2><pre>{
  &quot;run_name&quot;: &quot;m1_tinystories_26m&quot;,
  &quot;runs_root&quot;: &quot;runs&quot;,
@@ -131,7 +226,7 @@ function chart(id, series, opts){
 }
 const fmtTok=x=>x>=1e9?(x/1e9).toFixed(2)+'B':x>=1e6?(x/1e6).toFixed(0)+'M':(x/1e3).toFixed(0)+'K';
 
-const D={"loss": [[1310720, 9.948636054992676], [2621440, 8.938405990600586], [3932160, 7.446722507476807], [5242880, 5.956034183502197], [6553600, 4.944737434387207], [7864320, 4.4310736656188965], [9175040, 4.073504447937012], [10485760, 3.8405983448028564], [11796480, 3.6309680938720703], [13107200, 3.4126954078674316], [14417920, 3.3917794227600098], [15728640, 3.1578052043914795], [17039360, 3.120109796524048], [18350080, 3.018710136413574], [19660800, 2.9636390209198], [20971520, 2.7655727863311768], [22282240, 2.8360941410064697], [23592960, 2.6324095726013184], [24903680, 2.6434226036071777], [26214400, 2.5524139404296875], [27525120, 2.5703139305114746], [28835840, 2.413841724395752], [30146560, 2.4892449378967285], [31457280, 2.3774280548095703], [32768000, 2.279294967651367], [34078720, 2.3252665996551514], [35389440, 2.318673610687256], [36700160, 2.1885180473327637]], "val": [[25034752, 2.61007022857666]], "lr": [[1310720, 0.0001179649], [2621440, 0.0002490369], [3932160, 0.00038010889999999997], [5242880, 0.0005111809000000001], [6553600, 0.0006422529], [7864320, 0.0007733249], [9175040, 0.0009043969000000001], [10485760, 0.0009999991974518425], [11796480, 0.0009999823063803514], [13107200, 0.0009999434968886304], [14417920, 0.0009998827708670715], [15728640, 0.0009998001312736093], [17039360, 0.0009996955821335784], [18350080, 0.0009995691285395174], [19660800, 0.000999420776650919], [20971520, 0.0009992505336939319], [22282240, 0.0009990584079610084], [23592960, 0.0009988444088104998], [24903680, 0.000998608546666201], [26214400, 0.0009983508330168429], [27525120, 0.0009980712804155325], [28835840, 0.0009977699024791415], [30146560, 0.0009974467138876436], [31457280, 0.0009971017303833983], [32768000, 0.000996734968770385], [34078720, 0.0009963464469133845], [35389440, 0.0009959361837371082], [36700160, 0.0009955041992252766]], "tps": [[1310720, 23142.031163539934], [2621440, 74517.91605081316], [3932160, 74398.4388399401], [5242880, 75845.96137019443], [6553600, 62555.11293379819], [7864320, 74983.01410770543], [9175040, 76412.88875304519], [10485760, 75024.64342593604], [11796480, 75094.84305132057], [13107200, 63452.845360893516], [14417920, 75678.07476463198], [15728640, 76614.179072458], [17039360, 75856.70830901794], [18350080, 76651.31238319077], [19660800, 63095.09191001279], [20971520, 74849.45532542287], [22282240, 76246.79371760803], [23592960, 74629.93431522074], [24903680, 77681.66148570672], [26214400, 17002.725649221375], [27525120, 75986.21831047111], [28835840, 76304.12063404688], [30146560, 76993.30748448963], [31457280, 64240.49455087447], [32768000, 76555.59126784481], [34078720, 75561.33560240811], [35389440, 77615.14770306417], [36700160, 76850.67810280266]], "gn": [[1310720, 2.334362506866455], [2621440, 2.3222525119781494], [3932160, 1.9695959091186523], [5242880, 1.083919882774353], [6553600, 1.033200979232788], [7864320, 1.122808814048767], [9175040, 1.6026240587234497], [10485760, 1.0605698823928833], [11796480, 0.5837476253509521], [13107200, 0.749992847442627], [14417920, 0.6133762001991272], [15728640, 1.0483828783035278], [17039360, 0.5986264944076538], [18350080, 0.6411086916923523], [19660800, 0.5186361074447632], [20971520, 1.2395758628845215], [22282240, 0.6273936033248901], [23592960, 0.4430152177810669], [24903680, 0.5352063775062561], [26214400, 0.45138975977897644], [27525120, 0.5325319170951843], [28835840, 0.7297120094299316], [30146560, 0.6608853340148926], [31457280, 0.4178985059261322], [32768000, 0.5386070609092712], [34078720, 0.6424112319946289], [35389440, 0.41957080364227295], [36700160, 0.4704451858997345]], "vram": [[1310720, 6.299367427825928], [2621440, 6.299367427825928], [3932160, 6.299367427825928], [5242880, 6.299367427825928], [6553600, 6.299367427825928], [7864320, 6.299367427825928], [9175040, 6.299367427825928], [10485760, 6.299367427825928], [11796480, 6.299367427825928], [13107200, 6.299367427825928], [14417920, 6.299367427825928], [15728640, 6.299367427825928], [17039360, 6.299367427825928], [18350080, 6.299367427825928], [19660800, 6.299367427825928], [20971520, 6.299367427825928], [22282240, 6.299367427825928], [23592960, 6.299367427825928], [24903680, 6.299367427825928], [26214400, 6.299367427825928], [27525120, 6.299367427825928], [28835840, 6.299367427825928], [30146560, 6.299367427825928], [31457280, 6.299367427825928], [32768000, 6.299367427825928], [34078720, 6.299367427825928], [35389440, 6.299367427825928], [36700160, 6.299367427825928]]};
+const D={"loss": [[1310720, 9.948636054992676], [2621440, 8.938405990600586], [3932160, 7.446722507476807], [5242880, 5.956034183502197], [6553600, 4.944737434387207], [7864320, 4.4310736656188965], [9175040, 4.073504447937012], [10485760, 3.8405983448028564], [11796480, 3.6309680938720703], [13107200, 3.4126954078674316], [14417920, 3.3917794227600098], [15728640, 3.1578052043914795], [17039360, 3.120109796524048], [18350080, 3.018710136413574], [19660800, 2.9636390209198], [20971520, 2.7655727863311768], [22282240, 2.8360941410064697], [23592960, 2.6324095726013184], [24903680, 2.6434226036071777], [26214400, 2.5524139404296875], [27525120, 2.5703139305114746], [28835840, 2.413841724395752], [30146560, 2.4892449378967285], [31457280, 2.3774280548095703], [32768000, 2.279294967651367], [34078720, 2.3252665996551514], [35389440, 2.318673610687256], [36700160, 2.1885180473327637], [38010880, 2.19330096244812], [39321600, 2.161318063735962], [40632320, 2.188830614089966], [41943040, 2.122333288192749], [43253760, 2.0287716388702393], [44564480, 2.1035027503967285], [45875200, 2.052114963531494], [47185920, 2.036273241043091], [48496640, 2.0872726440429688], [49807360, 2.026789426803589]], "val": [[25034752, 2.61007022857666], [50069504, 2.057971954345703]], "lr": [[1310720, 0.0001179649], [2621440, 0.0002490369], [3932160, 0.00038010889999999997], [5242880, 0.0005111809000000001], [6553600, 0.0006422529], [7864320, 0.0007733249], [9175040, 0.0009043969000000001], [10485760, 0.0009999991974518425], [11796480, 0.0009999823063803514], [13107200, 0.0009999434968886304], [14417920, 0.0009998827708670715], [15728640, 0.0009998001312736093], [17039360, 0.0009996955821335784], [18350080, 0.0009995691285395174], [19660800, 0.000999420776650919], [20971520, 0.0009992505336939319], [22282240, 0.0009990584079610084], [23592960, 0.0009988444088104998], [24903680, 0.000998608546666201], [26214400, 0.0009983508330168429], [27525120, 0.0009980712804155325], [28835840, 0.0009977699024791415], [30146560, 0.0009974467138876436], [31457280, 0.0009971017303833983], [32768000, 0.000996734968770385], [34078720, 0.0009963464469133845], [35389440, 0.0009959361837371082], [36700160, 0.0009955041992252766], [38010880, 0.0009950505144196461], [39321600, 0.000994575151418984], [40632320, 0.0009940781333779918], [41943040, 0.0009935594845061776], [43253760, 0.0009930192300666768], [44564480, 0.0009924573963750213], [45875200, 0.0009918740107978585], [47185920, 0.000991269101751617], [48496640, 0.000990642698701124], [49807360, 0.0009899948321581682]], "tps": [[1310720, 23142.031163539934], [2621440, 74517.91605081316], [3932160, 74398.4388399401], [5242880, 75845.96137019443], [6553600, 62555.11293379819], [7864320, 74983.01410770543], [9175040, 76412.88875304519], [10485760, 75024.64342593604], [11796480, 75094.84305132057], [13107200, 63452.845360893516], [14417920, 75678.07476463198], [15728640, 76614.179072458], [17039360, 75856.70830901794], [18350080, 76651.31238319077], [19660800, 63095.09191001279], [20971520, 74849.45532542287], [22282240, 76246.79371760803], [23592960, 74629.93431522074], [24903680, 77681.66148570672], [26214400, 17002.725649221375], [27525120, 75986.21831047111], [28835840, 76304.12063404688], [30146560, 76993.30748448963], [31457280, 64240.49455087447], [32768000, 76555.59126784481], [34078720, 75561.33560240811], [35389440, 77615.14770306417], [36700160, 76850.67810280266], [38010880, 75744.38811843451], [39321600, 64958.96413862365], [40632320, 76439.94989541151], [41943040, 76573.7698727028], [43253760, 74324.34931298732], [44564480, 76419.46474968967], [45875200, 76131.05896082168], [47185920, 76535.99986178419], [48496640, 62944.70307497108], [49807360, 74967.10296781905]], "gn": [[1310720, 2.334362506866455], [2621440, 2.3222525119781494], [3932160, 1.9695959091186523], [5242880, 1.083919882774353], [6553600, 1.033200979232788], [7864320, 1.122808814048767], [9175040, 1.6026240587234497], [10485760, 1.0605698823928833], [11796480, 0.5837476253509521], [13107200, 0.749992847442627], [14417920, 0.6133762001991272], [15728640, 1.0483828783035278], [17039360, 0.5986264944076538], [18350080, 0.6411086916923523], [19660800, 0.5186361074447632], [20971520, 1.2395758628845215], [22282240, 0.6273936033248901], [23592960, 0.4430152177810669], [24903680, 0.5352063775062561], [26214400, 0.45138975977897644], [27525120, 0.5325319170951843], [28835840, 0.7297120094299316], [30146560, 0.6608853340148926], [31457280, 0.4178985059261322], [32768000, 0.5386070609092712], [34078720, 0.6424112319946289], [35389440, 0.41957080364227295], [36700160, 0.4704451858997345], [38010880, 0.42656344175338745], [39321600, 0.5476681590080261], [40632320, 0.44608473777770996], [41943040, 0.5499516129493713], [43253760, 0.43728870153427124], [44564480, 0.38704919815063477], [45875200, 0.49825048446655273], [47185920, 0.581759512424469], [48496640, 0.453109472990036], [49807360, 0.4316195547580719]], "vram": [[1310720, 6.299367427825928], [2621440, 6.299367427825928], [3932160, 6.299367427825928], [5242880, 6.299367427825928], [6553600, 6.299367427825928], [7864320, 6.299367427825928], [9175040, 6.299367427825928], [10485760, 6.299367427825928], [11796480, 6.299367427825928], [13107200, 6.299367427825928], [14417920, 6.299367427825928], [15728640, 6.299367427825928], [17039360, 6.299367427825928], [18350080, 6.299367427825928], [19660800, 6.299367427825928], [20971520, 6.299367427825928], [22282240, 6.299367427825928], [23592960, 6.299367427825928], [24903680, 6.299367427825928], [26214400, 6.299367427825928], [27525120, 6.299367427825928], [28835840, 6.299367427825928], [30146560, 6.299367427825928], [31457280, 6.299367427825928], [32768000, 6.299367427825928], [34078720, 6.299367427825928], [35389440, 6.299367427825928], [36700160, 6.299367427825928], [38010880, 6.299367427825928], [39321600, 6.299367427825928], [40632320, 6.299367427825928], [41943040, 6.299367427825928], [43253760, 6.299367427825928], [44564480, 6.299367427825928], [45875200, 6.299367427825928], [47185920, 6.299367427825928], [48496640, 6.299367427825928], [49807360, 6.299367427825928]]};
 chart('c_loss',[{name:'train',pts:D.loss},{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
 chart('c_val',[{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
 chart('c_tps',[{name:'tok/s',pts:D.tps}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});

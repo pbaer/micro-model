@@ -168,3 +168,17 @@ remark: chftrxcdnjaqm4pzaynloy4fl74i5sup6fvlq2tocxy24xicetkp.py:18:0: 336 instru
 00:43:16 upd 370 | 48M (8.1%) | loss 2.0873 | lr 9.91e-04 | gn 0.45 | 62,945 tok/s | 2082 ms/upd (data 2) | 6.3 GiB | ETA 2h 06m
 00:43:34 upd 380 | 50M (8.3%) | loss 2.0268 | lr 9.90e-04 | gn 0.43 | 74,967 tok/s | 1748 ms/upd (data 2) | 6.3 GiB | ETA 2h 05m
 00:43:43 eval @ 50M: val loss 2.0580 ppl 7.83 (best) [9s]
+00:44:42 samples written @ 50M [60s]
+00:44:42 === milestone 50M: segment 14m 04s, elapsed 14m 04s ===
+00:44:59 upd 390 | 51M (8.5%) | loss 1.9663 | lr 9.89e-04 | gn 0.41 | 15,278 tok/s | 8579 ms/upd (data 2) | 6.3 GiB | ETA 2h 28m
+00:45:17 upd 400 | 52M (8.7%) | loss 2.0068 | lr 9.89e-04 | gn 0.77 | 75,819 tok/s | 1729 ms/upd (data 2) | 6.3 GiB | ETA 2h 21m
+00:45:34 upd 410 | 54M (9.0%) | loss 2.0402 | lr 9.88e-04 | gn 0.41 | 74,598 tok/s | 1757 ms/upd (data 1) | 6.3 GiB | ETA 2h 17m
+00:45:51 upd 420 | 55M (9.2%) | loss 1.9497 | lr 9.87e-04 | gn 0.33 | 76,103 tok/s | 1722 ms/upd (data 3) | 6.3 GiB | ETA 2h 12m
+00:46:12 upd 430 | 56M (9.4%) | loss 1.9509 | lr 9.86e-04 | gn 0.45 | 63,655 tok/s | 2059 ms/upd (data 1) | 6.3 GiB | ETA 2h 14m
+00:46:29 upd 440 | 58M (9.6%) | loss 1.9123 | lr 9.86e-04 | gn 0.50 | 76,985 tok/s | 1703 ms/upd (data 1) | 6.3 GiB | ETA 2h 10m
+00:46:46 upd 450 | 59M (9.8%) | loss 2.0322 | lr 9.85e-04 | gn 0.41 | 75,218 tok/s | 1743 ms/upd (data 3) | 6.3 GiB | ETA 2h 07m
+00:47:04 upd 460 | 60M (10.0%) | loss 1.9674 | lr 9.84e-04 | gn 0.40 | 75,585 tok/s | 1734 ms/upd (data 2) | 6.3 GiB | ETA 2h 05m
+00:47:21 upd 470 | 62M (10.3%) | loss 1.9920 | lr 9.83e-04 | gn 0.34 | 75,684 tok/s | 1732 ms/upd (data 1) | 6.3 GiB | ETA 2h 04m
+00:47:38 upd 480 | 63M (10.5%) | loss 2.0028 | lr 9.82e-04 | gn 0.37 | 76,256 tok/s | 1719 ms/upd (data 1) | 6.3 GiB | ETA 2h 02m
+00:47:56 upd 490 | 64M (10.7%) | loss 1.8194 | lr 9.81e-04 | gn 0.41 | 76,155 tok/s | 1721 ms/upd (data 4) | 6.3 GiB | ETA 2h 01m
+00:48:16 upd 500 | 66M (10.9%) | loss 1.8723 | lr 9.81e-04 | gn 0.41 | 62,821 tok/s | 2086 ms/upd (data 1) | 6.3 GiB | ETA 2h 04m

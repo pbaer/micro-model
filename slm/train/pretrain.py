@@ -263,12 +263,12 @@ class Trainer:
                     n_window.zero_()
                     data_ms = 0.0
                     if not initial_estimate_done and updates_this_session >= 3 * cfg.runtime.log_every_updates:
-                        est = (total - c["tokens"]) / self.tok_s_ema + self.elapsed
+                        est = (total - c["tokens"]) / tok_s + self.elapsed  # latest window: excludes compile warmup
                         meta = json.loads((self.run_dir / "run.json").read_text(encoding="utf-8"))
                         meta["initial_estimate_s"] = est
                         (self.run_dir / "run.json").write_text(json.dumps(meta, indent=1, default=str), encoding="utf-8")
-                        self.log.log("start", tokens=c["tokens"], msg=f"initial estimate: {fmt_duration(est)} total wall-clock at {self.tok_s_ema:,.0f} tok/s")
-                        console(f"*** initial estimate: whole run ~{fmt_duration(est)} at {self.tok_s_ema:,.0f} tok/s ***")
+                        self.log.log("start", tokens=c["tokens"], msg=f"initial estimate: {fmt_duration(est)} total wall-clock at {tok_s:,.0f} tok/s")
+                        console(f"*** initial estimate: whole run ~{fmt_duration(est)} at {tok_s:,.0f} tok/s ***")
                         initial_estimate_done = True
 
                 if c["tokens"] >= c["next_eval_at"]:

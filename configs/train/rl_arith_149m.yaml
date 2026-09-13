@@ -1,0 +1,32 @@
+# M6 stage A: GRPO on 1-2 digit arithmetic from the reasoning-SFT checkpoint.
+run_name: m6_rl_arith_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+init_from: runs/m5_reasoning_149m/checkpoints/final.pt
+tasks: [arith1, arith2]
+n_train_prompts: 4000
+n_heldout_prompts: 200
+group_size: 8
+prompts_per_step: 8
+max_new_tokens: 192
+temperature: 0.9
+top_p: 0.95
+think_required: true
+reward_scheme: binary
+lr: 2.0e-6
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.01
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 8
+total_steps: 300
+eval_every_steps: 25
+eval_max_new_tokens: 192
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 0
+notes: "Stage A curriculum. Watch: entropy collapse, length explosion, malformed rate, KL runaway."
