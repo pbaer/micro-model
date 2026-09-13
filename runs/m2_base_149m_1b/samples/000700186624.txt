@@ -1,0 +1,113 @@
+tokens=700M update=2671 2026-09-13 06:58:04
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is the capital of the country. The capital of the country is
+--- sampled:
+ the capital of the French nation. For centuries, the people of France have been called “the capital of the French nation”. The capital of the French nation is Villa.
+The capital of the country is the country’s largest city. The capital of the country is the capital of the country.
+Europe is a continent of rich and diverse people. Its population is 65 million. Brazil is the second largest city in Europe.
+The country’s largest and most populous city
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the process by which plants produce energy. It is the
+--- sampled:
+ produce sugars by using photosynthesis. It is a process in which the plant produces a lot of sugar, which makes it necessary to make sugars. Without the sugar, the plant will not work properly, and so, it becomes very difficult to regulate glucose levels, which is why in the kitchen there is a shortage of sugar. This is why in the kitchen there is a shortage of carbohydrates to digest food.
+Phase 1: sugar
+Phase 2: plant sugar
+The
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 
+--- sampled:
+ If you have 12, 7 and 24, what is the value of 12 in the word?Answer: 12 + 7 + 24 + 24 + 34 + 45 + 50 + 7 + 7 + 8 + 9 + 10 + 10 + 11 + 12 + 12 + 12 + 13 + 
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n == 1:
+         return False
+     else:
+         return False
+<|eos|>
+--- sampled:
+ return is_prime(1,1,1) if (1 < n else 1 if n % 2 == 0):
+    return is_prime(n)
+
+def is_prime(n):
+    if n < n:
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+        is_prime(n)
+       
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+# 1) 1) 2) 3) 4) 5) 6) 7) 8) 9) 10) 11) 12) 13) 14) 15) 16) 17) 18) 19) 20) 21) 22) 23) 24) 25) 
+--- sampled:
+#  	number1 file2-1 	number2-2 	number3 	number4 	number5 	number6 	number7 	number8 	number9  	number10  	number20-24 	number30-41 	number51  	number60054133333 
+#  	3. 		Example 10
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ a man named Sofia was born. He was a young man, and he was very much like him. He was very much like him, and he was very much like him. He was very much like him, and he was very much like him. He was very much like him, and he was very much like him, and he was very much like him, and he was very much like him, and he was very much like him, and he was very
+--- sampled:
+ lived two best friends named Amjad and Ruth. One day, they visited a beautiful place called Kali in the forest. When they arrived, they discovered a tall building called a kali. However, when they went to the forest, it broke with a thin layer of stone. It was so soft that everyone could see it in the shadows.
+
+"Kali," asked Amjad, "how does this happen?"
+
+Amjad replied, "Well, my dear
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+: red, green, green, and green. The red color is the red color, while the green color is the green color. The green color is the red color, while the green color is the green color. The green color is the red color, while the green color is the green color. The green color is the red color, while the green color is the green color. The green color is the red color, while the green color is the green color. The
+--- sampled:
+:
+- red: Yellow or blue, red and green, blue and green, yellow and red, red and green.
+- red: Blue or green, red and green, green and green, green and red, red and green, red and green, red and green
+- green: Blue or green, red and green, green and green, red and green, green and green
+As the main color of this chapter is the red and green, the first two main colors
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+|---|---|
+| Alice | 30 |
+
+--- sampled:
+| ---|---|
+| Alice | 35 |
+| ---|---|
+| Alice | 36 |
+| ---|---|
+| Alice | 37 |
+| ---|---|
+| Alice | 41 |
+| ---|---|
+| Alice | 44 |
+| ---|---|
+| Alice | 47 |
+| ---|---|
+| Alice | 48 |
+| ---|---|
+| Alice | 49 |
+

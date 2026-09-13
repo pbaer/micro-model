@@ -10,6 +10,7 @@ Writes are atomic (tmp file + replace).
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import random
@@ -130,6 +131,21 @@ def load_snapshot(path: Path, model: torch.nn.Module, device="cuda") -> dict:
     ck = torch.load(path, map_location=device, weights_only=False)
     unwrap(model).load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["model"].items()})
     return ck
+
+
+def update_index(ckpt_dir: Path, name: str, **fields: Any) -> None:
+    """Record exact metadata for a checkpoint file in checkpoints/index.json (torch-free readers use it)."""
+    ckpt_dir = Path(ckpt_dir)
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+    p = ckpt_dir / "index.json"
+    try:
+        idx = json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except json.JSONDecodeError:
+        idx = {}
+    idx[name] = {k: v for k, v in fields.items() if v is not None}
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps(idx, indent=1), encoding="utf-8")
+    _replace_with_retry(tmp, p)
 
 
 def snapshot_name(tokens: int) -> str:

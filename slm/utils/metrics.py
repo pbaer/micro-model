@@ -111,13 +111,19 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
     evals = [r for r in records if r["kind"] == "eval"]
     last = train[-1] if train else {}
     total = cfg.get("schedule", {}).get("total_tokens", 0)
-    tokens = last.get("tokens", 0)
+    tokens = max((r.get("tokens") or 0 for r in records), default=0)  # finish/milestone records carry the exact total
     tps = last.get("tok_s_ema") or last.get("tok_s") or 0.0
-    elapsed = active_seconds(records)
+    status = run_status(records)
+    # Elapsed = the trainer's own counter (excludes time lost to crashes before the last checkpoint),
+    # extended by the time since the last record while the run is live.
+    if last.get("elapsed_s") is not None:
+        elapsed = float(last["elapsed_s"]) + (time.time() - last["time"] if status == "running" else 0.0)
+    else:
+        elapsed = active_seconds(records)
     eta = (total - tokens) / tps if tps > 0 and total > tokens else 0.0
     return {
-        "run_name": meta.get("run_name"), "stage": meta.get("stage", "pretrain"), "status": run_status(records),
-        "tokens": tokens, "total_tokens": total, "progress": tokens / total if total else 0.0,
+        "run_name": meta.get("run_name"), "stage": meta.get("stage", "pretrain"), "status": status,
+        "tokens": tokens, "total_tokens": total, "progress": min(1.0, tokens / total) if total else 0.0,
         "update": last.get("update", 0), "loss": last.get("loss"), "lr": last.get("lr"), "grad_norm": last.get("grad_norm"),
         "tok_s": tps, "tok_s_avg": tokens / elapsed if elapsed > 0 else 0.0, "elapsed_s": elapsed, "eta_s": eta,
         "initial_estimate_s": meta.get("initial_estimate_s"),
@@ -146,10 +152,19 @@ def list_checkpoints(run_dir: Path, records: list[dict]) -> list[dict]:
     if not d.exists():
         return []
     evals = [r for r in records if r["kind"] == "eval"]
+    try:
+        index = json.loads((d / "index.json").read_text(encoding="utf-8")) if (d / "index.json").exists() else {}
+    except json.JSONDecodeError:
+        index = {}
     out = []
     for p in sorted(d.glob("*.pt")):
         st = p.stat()
         kind, tokens, val = "other", None, None
+        if p.name in index:  # exact metadata written by the trainer
+            e = index[p.name]
+            out.append({"name": p.name, "path": str(p), "kind": e.get("kind", "other"), "tokens": e.get("tokens"), "val_loss": e.get("val_loss"), "update": e.get("update"),
+                        "heldout_acc": e.get("heldout_acc"), "bytes": st.st_size, "mtime": st.st_mtime})
+            continue
         if p.name == "latest.pt":
             kind = "latest"
             tokens = next((r["tokens"] for r in reversed(records) if r["kind"] == "checkpoint"), None)

@@ -1,0 +1,139 @@
+tokens=900M update=3434 2026-09-13 07:52:56
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ the capital of the French Republic. It is located in the south of France, on the south of France, and in the south of France. It is the capital of the French Republic, and is the capital of the French Republic. The capital of the French Republic is the capital of the French Republic. The capital of the French Republic is the capital of the French Republic. The capital of the French Republic is the capital of the French Republic. The capital of the French Republic is
+--- sampled:
+ the French capital. It has recently been part of the Allied forces for four years since 1919. The capital is mainly French and the tourist sector is mostly French.
+Not only were the French capital sacked by Germany, but also it was also a significant military resort, especially in the major cities of Saint-Louis and Dicot.
+The French capital is also one of the main tourist destinations in France. The French capital is also a major tourist attraction.
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ produce energy. The process of photosynthesis is the process by which plants produce energy. The process of photosynthesis is the process by which plants produce energy. The process of photosynthesis is the process by which plants produce energy. The process by which plants produce energy is called photosynthesis. The process by which plants produce energy is called photosynthesis. The process by which plants produce energy is called photosynthesis. The process by which plants produce energy is called photosynthesis. The process by which plants produce energy is called photosynthesis
+--- sampled:
+ produce sugars by using photosynthesis. It is a process in which the plant produces light by absorbing sunlight. The photosynthesis process is a slow process, requiring the energy to produce a byproduct called photosynthesis. However, photosynthesis is much slower than photosynthesis. The plants that produce photosynthesis have a more efficient energy conversion process.
+Photosynthesis is the process by which plants produce their own sugars. The process of photosynthesis is the process by which plants produce sugars by using photosynthesis to produce a plant’s main source
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 12 + 7 = 12 + 7
+Question: What is 12 + 7?
+Answer: 12 + 7 = 12 + 7
+Question: What is 12 + 7?
+Answer: 12 + 7 = 12 + 7
+Question: What is 12 + 7?
+Answer: 12 + 7 = 12 + 7
+Question
+--- sampled:
+ 12 + 7. 2 5 4 6 16 17 18 19 20 22 24 27 28 29 20 30 31 32 33 34 35 36 37 38 39 40 41 42 43 44 45
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n == 0:
+         return 1
+     else:
+         return n * n
+     return is_prime(n - 1)
+
+
+def is_prime(n):
+    if n == 0:
+        return 1
+    else:
+        return is_prime(n - 1)
+
+
+def is_prime(n):
+    if n == 0:
+        return 1
+    else:
+        return is_prime(n - 1)
+
+
+def is_prime
+--- sampled:
+ return is_prime(n)
+
+# For nonprime() :
+# for i in range(1, n):
+#     return is_prime(i)
+
+# return is_prime(n)
+
+
+# Notation 2
+# print(is_prime(n))
+
+# Notation 3
+# print(is_prime(n))
+# print(is_prime(n))
+
+# Notation 4
+# print(is_prime(n))
+
+# Notation 5
+# print(is_prime(n))
+
+
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+# 1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.  1.
+--- sampled:
+# --- dot unshell
+#	 1.012: line number
+#	 1.112: line number
+#	 1.133: line number
+#	 1.145: line number
+#	 1.154: line number
+#	 1.176: line number
+#	 1.194: line number
+#	 1.
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ there was a village called "Bangalore," which was a place where people could gather for food and drink. The villagers were very proud of their village and wanted to make sure that they would not be forced to leave their village. So they decided to go to the village and make sure that they would not be forced to leave their village. They were very proud of their village and wanted to make sure that they would not be forced to leave their village. So they decided
+--- sampled:
+ a small village village was created. For centuries, villagers had been in an informal village. They moved to the village of Watohi, the village of Shiman.
+Shiman was built by the sages of Shiman. It was a huge village in the village of Shiman.
+For centuries, villagers have lived in a village that was usually close to Shiman. Today, villagers live in a village that was once, and they still live there
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+ red, blue, and yellow. The red color is the most common color in the world, but it is also the most common color in the world. The yellow color is the most common color in the world, but it is also the most common color in the world. The yellow color is the most common color in the world, but it is also the most common color in the world. The yellow color is the most common color in the world, but it is also the
+--- sampled:
+ orange, red, and yellow. For example, red is blue, yellow, and yellow. Orange is red, blue, and yellow. Brown is yellow, and red is orange. Brown is yellow, and red is yellow. The third is green, and black is orange. The fifth is black. The fifth is red, and red is red. Orange is orange.
+Blue is brown, and red is orange. Blue is orange, and orange is orange. Orange is orange
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 1988 | 1988 |
+| 198
+--- sampled:
+| --- |
+| 32 |
+| 33 |
+| 34 |
+| 35 |
+| 36 |
+| 37 |
+| 38 |
+| 39 |
+| 41 |
+| 42 |
+| 43 |
+| 44 |
+| 45 |
+| 46 |
+| 47 |
+| 48 |
+| 49 |
+| 50 |
+| 5

@@ -216,6 +216,18 @@ class DataCatalog:
                     out[s.name] = json.loads(m.read_text(encoding="utf-8"))
         return out
 
+    def sft_manifests(self) -> dict[str, dict[str, dict]]:
+        out: dict[str, dict[str, dict]] = {}
+        root = self.data_root / "sft"
+        if root.exists():
+            for tag in sorted(d for d in root.iterdir() if d.is_dir()):
+                out[tag.name] = {}
+                for s in sorted(tag.iterdir()):
+                    m = s / "manifest.json"
+                    if m.exists():
+                        out[tag.name][s.name] = json.loads(m.read_text(encoding="utf-8"))
+        return out
+
     def overview(self) -> dict:
         tags = self.tags()
         mani = {t: self.manifests(t) for t in tags}
@@ -228,7 +240,20 @@ class DataCatalog:
                 "raw_files": len(files), "raw_bytes": sum(f["bytes"] for f in files), "raw_rows": sum(f["rows"] for f in files),
                 "tokenized": {t: mani[t].get(name) for t in tags if mani[t].get(name)},
             })
-        return {"tags": tags, "sources": sources}
+        # Tokenized sources that are not registry entries (derived sets such as fineweb-edu-long,
+        # fineweb-edu-b, or synthetic data) must still be browsable.
+        known = {s["name"] for s in sources}
+        for t in tags:
+            for name, m in mani[t].items():
+                if name in known:
+                    continue
+                known.add(name)
+                sources.append({
+                    "name": name, "repo": f"derived from {m.get('source', '?')}", "kind": m.get("kind", "derived"), "license": "", "content_via_swh": False,
+                    "notes": f"derived tokenized set (min_doc_tokens={m.get('min_doc_tokens', '-')}); raw = {m.get('source', '?')}",
+                    "raw_files": 0, "raw_bytes": 0, "raw_rows": 0, "tokenized": {tt: mani[tt].get(name) for tt in tags if mani[tt].get(name)},
+                })
+        return {"tags": tags, "sources": sources, "sft": self.sft_manifests()}
 
     def raw(self, name: str) -> RawSource:
         with self.lock:

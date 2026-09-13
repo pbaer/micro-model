@@ -1,0 +1,121 @@
+tokens=600M update=2289 2026-09-13 06:30:37
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ the capital of the French Republic. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France. The capital of France is the capital of France
+--- sampled:
+ the French capital. The capital, the Hague, was founded in 1861 by François de Léonard, who lived until 1868. The capital was occupied by the French Parliament in 1858 and was then purchased by the French Government in 1869.
+The Hague is a period of political chaos that existed in the late 1800s, and was, and will continue to be
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ convert light into energy. The process is called photosynthesis. Photosynthesis is the process by which plants convert light into energy. Photosynthesis is the process by which plants convert light into energy. Photosynthesis is the process by which plants convert light into energy. Photosynthesis is the process by which plants convert light into energy. Photosynthesis is the process by which plants convert light into energy. Photosynthesis is the process by which plants convert light into energy
+--- sampled:
+ convert sugars to complex sugars or amino acids to form complex sugars. When an enzyme called glycerin is produced in the cell, glycerin becomes the macromolecule polymer that transforms sugars into chemical products that are used in the production of new proteins.
+Glucose is a type of sugar that is used to make proteins and in the production of proteins. It is a sugar that is created by the cell, and is also a known part of most plant cells. The
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 12 + 7 = 12 + 7
+Answer: 12 + 7 = 12 + 7
+Answer: 12 + 7 = 12 + 7
+Answer: 12 + 7 = 12 + 7
+Answer: 12 + 7 = 12 + 7
+Answer: 12 + 7 = 12 + 7
+Answer:
+--- sampled:
+ 12.132121524966
+Answer: 12.17821291321217
+Explanation: 12.9911291291321217
+Answer: 12.99112912912912912912912912912
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n % 2 == 0:
+         return 1
+     else:
+         return 1
+     if n % 2 == 0:
+         return 1
+     if n % 2 == 0:
+         return 1
+     if n % 2 == 0:
+         return 1
+     if n % 2 == 0:
+         return 1
+     if n % 2 == 0:
+         return 1
+--- sampled:
+ return is_prime(n)
+
+# For nonprime in range(1, n):
+#   1 === 1 === n:
+#   2 === n:
+#       2 === n:
+#       2 === n:
+#       n === n:
+#       n === n:
+#       n === n:
+#       n === n:
+#       n === n:
+#       n === n:
+#
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the .py files
+# for each file in the
+--- sampled:
+# --- dotton-code
+#  - FILE: filename for testing
+#
+# TODO 1: in /proc/macs/dirs/dirs/dirs/dirs/dirs
+#
+# TODO 2: in /proc/macs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs/dirs
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ a woman was asked to give her a gift of food and a gift of food. She asked her husband, who was a farmer, to give her a gift of food. The woman replied, “I have a gift of food and a gift of food.” The woman replied, “I have a gift of food and a gift of food.” The woman replied, “I have a gift of food and a gift of food.” The woman replied, “I have a gift of
+--- sampled:
+ a small village village was created. For centuries, villagers had been working in a village that would hold its own in the morning. When the village was closed to the public, all the villagers were invited to share a feast of rice. The villagers would bring their guests to the village, or they would bring the entire village to the villagers in the morning. Their meals were about the size of a cup of rice. When the villagers came to the village, the villagers were asked to
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+ the red, green, and green. The red is the color of the red, green, and green colors. The green is the color of the green, green, and green colors. The green is the color of the green, green, and green colors. The green is the color of the green, green, and green colors. The green is the color of the green, green, and green colors. The green is the color of the green, green, and green
+--- sampled:
+ orange, white, and yellow. For example, the yellow color is green, yellow, and green. Note that the color of the yellow color is the red color and the yellow color is the green color.
+The color of blue is an important symbol for understanding and selecting colors. It is important to remember that the color of blue is not the color of the gray color of the color. Instead, the color of blue is a visual representation of the color and the color of the
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|
+--- sampled:
+| ---|---|
+| .12 - 2016 | 111.9667 | 11.1928667 | 12.199910975 | 13.199910983 | 14.199910973 | 15.099910983 | 1

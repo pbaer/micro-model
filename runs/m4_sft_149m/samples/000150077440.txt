@@ -1,0 +1,62 @@
+tokens=150M update=1145 2026-09-13 09:08:25
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ Paris.<|end|>
+The capital of France is Paris.<|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|>The. is
+
+,,
+
+,, the the you in the
+ you that the you.
+ up tol-lois
+?<|end|>
+, what
+ expensive other you.<|end|>
+,
+--- sampled:
+ Paris.<|end|>You can also calculate the area of the city by dividing the area by 2, which gives you the area of the city divided by the square footage.
+
+The capital of Paris is Paris' port, Paris' capital.<|end|>You can also calculate the area of the city by dividing the area by 1, which gives you the area divided by 100.
+
+The largest city in Paris is Paris, at 3.8 million square feet.<|end|>You
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n < 2:
+            return False
+        return True
+    else:
+        return False
+
+# Example usage:
+def is_prime(n):
+    if n < 2:
+        return False
+    return True
+
+# Example usage:
+def is_prime(n):
+    if n < 2:
+        return False
+    return True
+
+# Example usage:
+def is_prime(n):
+    if n < 2:
+        return False
+    return True
+
+
+--- sampled:
+ return is_prime(n)
+
+# Example usage:
+if __name__ == "__main__":
+    print(abs(x)  # Output: True
+    print(abs(-x))  # Output: False
+    print(abs(4))  # Output: 4
+    print(abs(4))  # Output: False
+    print(abs(5))  # Output: False
+    print(abs(5))  # Output: True
+

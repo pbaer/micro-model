@@ -1,0 +1,112 @@
+tokens=500M update=1908 2026-09-13 06:03:14
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic. The capital is the capital of the French Republic
+--- sampled:
+ the French capital. The capital, at its center, was founded in 1465 by François de Louligno, the French capital of Leipzig, and by then, it became the capital of Leipzig.
+Since the 17th century, the capital was divided into two halves. The first part was known as the Saint-Etienne des Turck, or “the Steins”, and the second part was
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ produce energy. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce energy through photosynthesis, which is the process of photosynthesis. Plants produce
+--- sampled:
+ produce sugars by using photosynthesis. It is a process in which the plant produces enzymes that convert sugars into sugars, in the process of fermentation. Without the enzymes to convert sugars into sugars, plants produce sugars that are excreted by the plant. The number of sugars stored in the roots of roots can be reduced to 300 in the process. In other words, the plant needs 300 - 350 per cent of its capacity in water. The
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 
+--- sampled:
+ 12 + 7 = 12 + 7 + 12 + 13 + 14 + 15 + 17 + 18 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 19 + 1
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ return n
+<|eos|>
+--- sampled:
+ return is_prime(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 15, 17, 18, 19, 19, 11, 11, 11, 11, 11, 11, 11, 
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .py files
+# count lines in all .
+--- sampled:
+# count dotfiles in each .py directory
+# count directories in each directory
+# count directories in each .py directory
+# count remaining directories in each directory
+# count common directorys in all .py files
+# count of directories in each directory
+# count of directories in each directory
+# count of directories in each directory
+# count of directories in each directory
+# count of directories in each directory
+# count of directories in each directory
+# count of
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ there was a group of people who lived in a village. They were called the "Mohammad," and they were called the "Mohammad." They were called the "Mohammad," and they were called the "Mohammad." They were called the "Mohammad," and they were called the "Mohammad." They were called the "Mohammad," and they were called the "Mohammad."
+--- sampled:
+ a small village was known for its history, and its people. When an informal village was settled in the village in the early part of the 11th century, the town became known for its people, which were of a variety of geographical and cultural characteristics. The village was a large town in the northwest corner of the village, in the north and south, of the village to the north.
+Until the 16th century, the village was a small town. The
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+ the red, the red, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green, the green,
+--- sampled:
+ the white dotted lines or the brown lines. The yellow dotted lines have yellow bars as it is red in the background. When the red dots are red in the background, they are red in the background, so they are white in the background.
+When the red dots are red in the background, they are red in the background. When the red dots are red in the background, they are red in the background.
+The red dotted lines, and the blue dotted
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|---|---|
+|
+--- sampled:
+| ---|---|
+| . . . 5|
+| 36 |
+| 19 |
+| 78 |
+| 31 |
+| 19 |
+| 42 |
+| 79 |
+| 55 |
+| 79 |
+| 70 |
+| 30 |
+| 102 |
+| 55 |
+| 130 |
+| 131 |
+| 190 |
+

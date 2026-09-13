@@ -24,7 +24,7 @@ export function Chart({ title, series, xmode = "tokens", logy = false, height = 
       scales: { x: { time: false }, y: { distr: logy ? 3 : 1, range: ymin === undefined ? undefined : (u, min, max) => [Math.min(ymin, min), max] } },
       axes: [
         { values: (u, vals) => vals.map(xfmt), stroke: "#666", grid: { stroke: "#eee" } },
-        { stroke: "#666", grid: { stroke: "#eee" }, size: 60, values: (u, vals) => vals.map((v) => (Math.abs(v) >= 1000 ? v.toPrecision(4) : Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(1) : +v.toPrecision(4))) },
+        { stroke: "#666", grid: { stroke: "#eee" }, size: 60, values: (u, vals) => vals.map((v) => (v == null || !isFinite(v) ? "" : Math.abs(v) >= 1000 ? v.toPrecision(4) : Math.abs(v) < 0.01 && v !== 0 ? v.toExponential(1) : +v.toPrecision(4))) },
       ],
       series: [
         { label: xmode, value: (u, v) => (v == null ? "-" : xfmt(v)) },

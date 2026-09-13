@@ -1,0 +1,48 @@
+tokens=300M update=2289 2026-09-13 09:50:58
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ Paris.<|end|>
+The capital of France is Paris.<|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|><|end|>-
+éra
+ the your flowers to be
+
+
+
+
+
+
+
+ the the,ly
+ the thelys, the thely to be, the the 100
+--- sampled:
+ Paris.<|end|>
+
+The aftermath of the Civil War in 1914 marked a turning point in the lives of the people of France. As the war continued to raze France, the fate of the country became entangled in an increasingly brutal war with Nazi Germany. In 1914, a German army, led by General Hôtel Leipzig, was forced to launch an invasion of France. This victory would eventually lead to the end of
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n < 2:
+            return False
+        return True
+    else:
+        return False
+
+# Example usage:
+print(is_prime(10))
+print(is_prime(10))
+```
+
+This function takes a `n` parameter and returns a boolean value indicating whether the number is prime or not. It uses a `for` loop to iterate through the range from 2 to 10. If the number is divisible by any of the numbers in the
+--- sampled:
+ return is_prime(n)
+
+# Example usage:
+if __name__ == "__main__":
+    print(abs(x)  # Output: True
+    print(abs(-x))  # Output: False
+    print(abs(4))  # Output: 4
+    print(abs(4))  # Output: False
+    print(abs(5))  # Output: False
+    print(abs(5))  # Output: True
+

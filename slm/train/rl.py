@@ -266,6 +266,7 @@ class RlTrainer:
                     self.log.log("eval", tokens=self.tokens, update=self.step, step=self.step, val_loss=1.0 - ev["heldout_acc"], val_ppl=0.0, best=False, **ev)
                     console(f"eval step {self.step}: heldout acc {ev['heldout_acc']:.3f} (malformed {ev['heldout_malformed']:.2f}, len {ev['heldout_len']:.0f}) | train acc {ev['train_acc']:.3f}")
                     ckpt.save_snapshot(self.ckpt_dir / f"step_{self.step:05d}.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "heldout_acc": ev["heldout_acc"], "tokenizer_sha256": self.tok.sha256})
+                    ckpt.update_index(self.ckpt_dir, f"step_{self.step:05d}.pt", kind="snapshot", tokens=self.tokens, update=self.step, heldout_acc=ev["heldout_acc"])
                 if time.time() - t_ckpt > c.ckpt_every_minutes * 60:
                     self._save()
                     t_ckpt = time.time()
@@ -278,6 +279,7 @@ class RlTrainer:
         finished = self.step >= c.total_steps
         if finished:
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "tokenizer_sha256": self.tok.sha256})
+            ckpt.update_index(self.ckpt_dir, "final.pt", kind="final", tokens=self.tokens, update=self.step)
         self._save()
         self.log.log("finish" if finished else "stop", tokens=self.tokens, msg=f"{'finished' if finished else 'stopped'} at step {self.step} after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")

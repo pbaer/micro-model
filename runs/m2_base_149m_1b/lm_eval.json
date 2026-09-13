@@ -1,0 +1,27 @@
+{
+ "checkpoint": "runs/m2_base_149m_1b/checkpoints/final.pt",
+ "limit": null,
+ "results": {
+  "hellaswag": {
+   "sample_len": 10042,
+   "acc,none": 0.2756423023302131,
+   "acc_stderr,none": 0.004459241474518529,
+   "acc_norm,none": 0.29047998406691894,
+   "acc_norm_stderr,none": 0.004530560646902496
+  },
+  "arc_easy": {
+   "sample_len": 2376,
+   "acc,none": 0.47053872053872053,
+   "acc_stderr,none": 0.010241957728409551,
+   "acc_norm,none": 0.4145622895622896,
+   "acc_norm_stderr,none": 0.010108889212447719
+  },
+  "piqa": {
+   "sample_len": 1838,
+   "acc,none": 0.6033732317736671,
+   "acc_stderr,none": 0.011413778810510448,
+   "acc_norm,none": 0.5865070729053319,
+   "acc_norm_stderr,none": 0.011489895831821244
+  }
+ }
+}

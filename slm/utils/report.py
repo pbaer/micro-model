@@ -80,7 +80,7 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
     events = [r for r in recs if r["kind"] in ("start", "resume", "stop", "finish", "checkpoint")]
     last = train[-1] if train else {}
     total_tokens = cfg.get("schedule", {}).get("total_tokens", 0)
-    tokens = last.get("tokens", 0)
+    tokens = max((r.get("tokens") or 0 for r in recs), default=0)  # finish/milestone records carry the exact total
     now = time.time()
     last_time = recs[-1]["time"] if recs else now
     if status is None:

@@ -126,7 +126,7 @@ export function ModelPage() {
       <span class="muted">seed</span><input type="number" value=${sampling.seed} onChange=${(e) => setSampling({ ...sampling, seed: Number(e.target.value) })} style="width:80px" />
       <button onClick=${() => setSampling({ ...sampling, temperature: 0 })}>greedy</button>
       <label class="muted"><input type="checkbox" checked=${useBoth} onChange=${(e) => setUseBoth(e.target.checked)} /> A and B side by side</label>
-      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force <|think|> (reasoning models)</label>`}
+      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label>`}
     </div>
     ${mode === "completion" ? html`<textarea value=${text} onInput=${(e) => setText(e.target.value)}></textarea>` : html`<div class="panel">
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">

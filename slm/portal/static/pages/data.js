@@ -28,6 +28,10 @@ function Sources() {
       ${ov.tags.map((t) => { const m = s.tokenized[t]; return m ? html`<td>${fmtTok(m.train_tokens)}</td><td>${fmtTok(m.val_tokens)}</td><td>${fmtInt(m.train_docs)}</td><td>${(m.docs_dropped / Math.max(1, m.docs_seen) * 100).toFixed(2)}%</td>` : html`<td colspan="4" class="muted">not tokenized</td>`; })}
       <td class="l">${s.notes}</td></tr>`)}
     </table>
+    ${Object.keys(ov.sft || {}).length > 0 && html`<h2>SFT / reasoning sets (chat-formatted, with loss masks)</h2>
+      ${Object.entries(ov.sft).map(([tag, sets]) => html`<div class="sub">tokenizer ${tag}</div>
+      <table><tr><th>set</th><th>train examples</th><th>train tokens</th><th>loss targets</th><th>val examples</th><th>max len</th><th>think span</th><th>dropped / too long</th></tr>
+      ${Object.entries(sets).map(([name, m]) => html`<tr><td>${name}</td><td>${fmtInt(m.train_examples)}</td><td>${fmtTok(m.train_tokens)}</td><td>${m.train_tokens ? (m.train_targets / m.train_tokens * 100).toFixed(0) + "%" : "-"}</td><td>${fmtInt(m.val_examples)}</td><td>${m.max_len || "-"}</td><td>${m.think_required ? "mandatory" : "no"}</td><td>${fmtInt(m.dropped || 0)} / ${fmtInt(m.too_long || 0)}</td></tr>`)}</table>`)}`}
   </div>`;
 }
 
@@ -103,7 +107,7 @@ function Tokenized() {
             <button onClick=${() => setWinStart(Math.max(0, winStart - winLen))}>‹ prev</button><button onClick=${() => setWinStart(winStart + winLen)}>next ›</button>
             ${win && html`<span class="muted">${win.doc_starts.length} document boundaries (red) · shard has ${fmtTok(win.shard_tokens)} tokens</span>`}</div>
           ${win ? html`<${TokenChips} pieces=${win.pieces} boundaries=${win.doc_starts} showIds=${showIds} />` : html`<div class="empty-note">…</div>`}
-          <div class="legend" style="margin-top:6px">This is exactly what one training row of this length looks like: a contiguous slice of the token stream, which may start mid-document; <|bos|>/<|eos|> mark boundaries.</div></div>`}
+          <div class="legend" style="margin-top:6px">This is exactly what one training row of this length looks like: a contiguous slice of the token stream, which may start mid-document; ${"<|bos|>"}/${"<|eos|>"} mark boundaries.</div></div>`}
         ${view === "stats" && (stats ? html`<div>
           <div class="tiles">
             <div class="tile"><div class="k">docs</div><div class="v">${fmtInt(stats.docs)}</div></div>

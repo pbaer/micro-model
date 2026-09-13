@@ -1,0 +1,59 @@
+tokens=100M update=763 2026-09-13 08:54:24
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital of France is Paris.<|end|>
+The capital
+--- sampled:
+ Paris.<|end|>
+
+1. Paris: It is a city of immense wealth and power. Paris is home to several notable landmarks such as the Eiffel Tower, Louvre Museum, and the Louvre Museum. Its capital is Paris.
+
+2. Paris: It is a serene city of architecture. Paris is famous for its beautiful museums and is known for its numerous museums. The Eiffel Tower, Louvre Museum, and the Louvre Museum are
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n % 2 == 0:
+        return False
+    return is_prime(n - 1) + is_prime(n - 2)
+
+# Example usage:
+def is_prime(n):
+    if n % 2 == 0:
+        return False
+    return is_prime(n - 1) + is_prime(n - 2)
+
+# Example usage:
+def is_prime(n):
+    if n % 2 == 0:
+       
+--- sampled:
+ return is_prime(n)
+
+# Example usage:
+def is_prime(n):
+    if n <= 1:
+        return False
+    for i in range(1, n+1):
+        if n % i == 1:
+            return False
+    return True
+
+# Example usage:
+if __name__ == '__main__':
+    is_prime()
+    print(is_prime(10))
+    print(is_prime(25))
+```
+
+The `is_

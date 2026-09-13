@@ -52,7 +52,7 @@ export function TokenizerPage() {
         <textarea style="min-height:40px;flex:2" value=${m.content} onInput=${(e) => setMessages(messages.map((x, j) => (j === i ? { ...x, content: e.target.value } : x)))}></textarea>
         <button onClick=${() => setMessages(messages.filter((_, j) => j !== i))}>✕</button></div>`)}
       <button onClick=${() => setMessages([...messages, { role: "user", content: "" }])}>+ message</button>
-      <div class="legend" style="margin-top:6px"><span><b style="color:#15803d">green</b> = loss target (assistant content + <|end|>)</span><span><b>grey</b> = masked (prompt tokens, <|eos|>)</span></div>
+      <div class="legend" style="margin-top:6px"><span><b style="color:#15803d">green</b> = loss target (assistant content + ${"<|end|>"})</span><span><b>grey</b> = masked (prompt tokens, ${"<|eos|>"})</span></div>
     </div>`}
     <div style="margin-top:10px">${enc ? html`<${TokenChips} pieces=${enc.pieces} showIds=${showIds} lossMask=${mode === "chat"} onHover=${setHover} />` : html`<div class="empty-note">…</div>`}</div>
     <h2>Vocabulary</h2>

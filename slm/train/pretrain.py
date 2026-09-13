@@ -105,7 +105,8 @@ class Trainer:
 
     def _meta(self) -> dict:
         return {
-            "run_name": self.cfg.run_name, "config": to_dict(self.cfg), "model_config": to_dict(self.mcfg),
+            "run_name": self.cfg.run_name, "stage": "sft" if self.cfg.data.kind == "sft" else "pretrain",
+            "config": to_dict(self.cfg), "model_config": to_dict(self.mcfg),
             "n_params": self.n_params, "n_params_nonembed": self.model.num_params(non_embedding=True),
             "tokenizer_sha256": self.tok.sha256, "env": ckpt.env_info(),
             "grad_accum": self.accum, "started": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -155,6 +156,7 @@ class Trainer:
         ckpt.save_full(self.latest_path, self.model, self.optimizer, self.loader.state_dict(), dict(self.counters),
                        to_dict(self.cfg), {"tokenizer_sha256": self.tok.sha256, "git_commit": ckpt.git_commit(), "model_config": to_dict(self.mcfg)},
                        keep_prev=self.cfg.ckpt.keep_prev_latest)
+        ckpt.update_index(self.ckpt_dir, "latest.pt", kind="latest", tokens=self.counters["tokens"], update=self.counters["update"], val_loss=self.counters["last_val"] if self.counters["last_val"] == self.counters["last_val"] else None)
         self.log.log("checkpoint", tokens=self.counters["tokens"], msg=f"latest.pt saved at {fmt_tokens(self.counters['tokens'])} tokens ({time.time() - t0:.1f}s)")
 
     @torch.no_grad()
@@ -279,6 +281,7 @@ class Trainer:
                     if improved:
                         c["best_val"] = vl
                         ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
+                        ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
                     self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=improved, eval_s=time.time() - t0, val_pt_loss=self.last_extra_val)
                     console(f"eval @ {fmt_tokens(c['tokens'])}: val loss {vl:.4f} ppl {ppl:.2f}{' (best)' if improved else ''}"
                             + (f" | pretrain-val {self.last_extra_val:.4f}" if self.last_extra_val is not None else "") + f" [{time.time() - t0:.0f}s]")
@@ -298,6 +301,7 @@ class Trainer:
                     c["next_milestone_at"] += cfg.milestone_tokens
                     if cfg.ckpt.snapshot_at_milestones:
                         ckpt.save_snapshot(self.ckpt_dir / ckpt.snapshot_name(c["tokens"]), self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": c["last_val"], "tokenizer_sha256": self.tok.sha256})
+                        ckpt.update_index(self.ckpt_dir, ckpt.snapshot_name(c["tokens"]), kind="snapshot", tokens=c["tokens"], update=c["update"], val_loss=c["last_val"] if c["last_val"] == c["last_val"] else None)
                     self._save_latest()
                     t_last_ckpt = time.time()
                     write_report(self.run_dir, "running")
@@ -324,6 +328,9 @@ class Trainer:
             self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=vl <= c["best_val"], eval_s=0, val_pt_loss=self.last_extra_val)
             self.generate_samples()
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
+            ckpt.update_index(self.ckpt_dir, "final.pt", kind="final", tokens=c["tokens"], update=c["update"], val_loss=vl)
+            if vl <= c["best_val"]:
+                ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
         self._save_latest()
         self.log.log("finish" if finished else "stop", tokens=c["tokens"], msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")

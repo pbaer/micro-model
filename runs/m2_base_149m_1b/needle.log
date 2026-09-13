@@ -1,0 +1,32 @@
+D:\dev\micro-model\slm\config.py:124: FutureWarning: In the future `np.str` will be defined as the corresponding NumPy scalar.
+  obj = getattr(mod, name, None)
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "D:\dev\micro-model\slm\eval\long_context.py", line 131, in <module>
+    sys.exit(main())
+             ~~~~^^
+  File "D:\dev\micro-model\slm\eval\long_context.py", line 121, in main
+    res = run_needle(model, tok, a.lengths, a.depths, a.n, multi=a.multi)
+  File "D:\dev\micro-model\slm\eval\long_context.py", line 85, in run_needle
+    out = answer(model, tok, ids)
+  File "D:\dev\micro-model\.venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "D:\dev\micro-model\slm\eval\long_context.py", line 56, in answer
+    out = model.generate(x, max_new, temperature=0.0, stop_ids=(tok.eos_id,))
+  File "D:\dev\micro-model\.venv\Lib\site-packages\torch\utils\_contextlib.py", line 124, in decorate_context
+    return func(*args, **kwargs)
+  File "D:\dev\micro-model\slm\model\transformer.py", line 145, in generate
+    logits = self(cur, cache=cache, last_only=True)[:, -1, :].float()
+             ~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "D:\dev\micro-model\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1783, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "D:\dev\micro-model\.venv\Lib\site-packages\torch\nn\modules\module.py", line 1794, in _call_impl
+    return forward_call(*args, **kwargs)
+  File "D:\dev\micro-model\slm\model\transformer.py", line 119, in forward
+    h = self.hidden_states(idx, cache, attn_mask)
+  File "D:\dev\micro-model\slm\model\transformer.py", line 93, in hidden_states
+    assert start + T <= self.rope_cos.shape[0], f"sequence {start + T} exceeds RoPE table {self.rope_cos.shape[0]}"
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: sequence 8193 exceeds RoPE table 8192

@@ -1,0 +1,123 @@
+tokens=400M update=1526 2026-09-13 05:35:48
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ the capital of France. The capital of France is the capital of France, the capital of France. The capital of France is the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the capital of France, the
+--- sampled:
+ the French capital. France has recently been well established in the country for about a century. France is home to a wide range of income, from production to construction, to building infrastructure. The capital is then known as the largest private capital in the world, with a significant share of energy and housing in the state. The country is home to one of the most important oil reserves in the world. While the capital is located in the southwestern United States, the capital of France is located
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ produce and produce food. The plant is a plant that is native to the United States, but is not native to the United States. The plant is native to the United States, but is native to the United States. The plant is native to the United States, but is not native to the United States. The plant is native to the United States, but is not native to the United States. The plant is native to the United States, but is not native to the United
+--- sampled:
+ produce the plant cells’ oxygen, oxygen, and water. When a plant produces ammonia, its oxidation is caused by the breakdown of dissolved oxygen in the water. This is done by photosynthesis, which is then converted into energy. As the water is converted from water to oxygen, the energy is converted into energy.
+For plants, photosynthesis is an essential part of life. It is the essence of life. Plants use sunlight, to produce energy, and to produce energy in abundance. The
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 7 = 12 + 
+--- sampled:
+ If you have 12, 7 5 4 6 1 1 1 1 1 2 1 1 2 1 1 2 2 1 1 1 1 1 2 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ if n == 0:
+     return n
+    return n
+def is_prime(n):
+    if n == 0:
+        return n
+    return n
+def is_prime(n):
+    if n == 0:
+        return n
+    return n
+def is_prime(n):
+    if n == 0:
+        return n
+    return n
+def is_prime(n):
+    if n == 0:
+        return n
+    return
+--- sampled:
+ return n
+
+number1 = int(n)
+number2 = (1, 1, 10, 100000000000000000, 100000000000000000, 10000000000000000000, 10000000000
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+# for .py files in .py files
+# do
+# find .py files
+# for .py files in .py files
+# do
+# find .py files
+# for .py files in .py files
+# do
+# find .py files
+# for .py files in .py files
+# do
+# find .py files
+# for .py files in .py files
+# do
+# find .py files
+#
+--- sampled:
+# --- dot unix
+# --- black -e --reset 2>&1
+
+# display error
+function echo >&2 "$@"
+	exit 1
+}
+<|eos|>
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ lived a young boy named Hannah. He loved learning about different cultures and learning about different cultures. One day, he decided to learn about the history of the Hannah. Hannah loved learning about the history of the Hannah and how it was written. Hannah loved learning about the history of the Hannah and how it was written. Hannah loved learning about the history of the Hannah and how it was written. Hannah loved learning about the history of the H
+--- sampled:
+ lived a mad cow named Amelia, who lived in a small village about a mile away. This happened to her mother's father, a boy named Amelia, who was trying to find a drug treatment for her grandmother. As the story progresses, he found his way in the kitchen, going to the bathroom to be sure to stay in the kitchen.
+
+One day, Amelia asked her mother, "Mom, what's your turn?" she asked her mother, "What
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+ the red, green, and blue. The red, green, and blue colors are the red, green, and blue colors. The red, green, and blue colors are the red, green, and blue colors. The red, green, and blue colors are the red, green, and blue colors. The red, green, and blue colors are the red, green, and blue colors. The red, green, and blue colors are the red, green, and blue
+--- sampled:
+ the white dotted lines or the brown lines. The yellow dotted lines have yellowing lines. They appear in the background of the flat lines. The blue dotted lines are often white, but they are sometimes white. They are not allowed to appear on black lines in the pink background.
+There are two general colors of blue and white. Green and blue colors have yellowing lines. They are purple and red, and yellow.
+Red and blue colors are the blue. The
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 30 |
+|Alice | 3
+--- sampled:
+|Emilie | 21 |
+|Alice | 22 |
+|Tony | 16 |
+|Alice | 17 |
+|Alice | 18 |
+|Alice | 22 |
+|Alice | 23 |
+|Alice | 14 |
+|Alice | 13 |
+|Alice | 12 |
+|Alice | 13 |
+|Alice | 14 |
+|Alice | 14 |
+|Alice

@@ -120,7 +120,7 @@ export function RunDetail({ run }) {
     </div>
     ${tab === "charts" && html`<div class="charts">
       <${Chart} title="train / val loss" xmode=${xmode} logy=${logy} series=${[{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
-      <${Chart} title="validation loss" xmode=${xmode} logy=${logy} series=${[{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />
+      <${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />
       <${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
