@@ -23,3 +23,30 @@ remark: c6f75pqkww5ovuqdxbwkbvvceinnirolws7iio2f3fqn3akbwbvx.py:18:0: 298 instru
 remark: c2bdhz343whwtst44ajzwqocd7c6wvsgvjqqqg4tfghm753mfglm.py:18:0: 286 instructions in function
 remark: cipn4jkfu3tkiveev3v7osadwfi7xbv4i5hn4pcxsq2hemp7ynl3.py:18:0: 18 instructions in function
 remark: cs4qogdg7mhwf35bfgkfuwyxpbu3jbpjjqyc37yujysy77xqacsk.py:18:0: 12 instructions in function
+remark: cylthqkura2tbs5pqjohzzyuxuihcgnzcp3nqwso4zq676spzvcd.py:18:0: 437 instructions in function
+remark: comiehuzqddti54duet2ylve7i4bxcpgecqjxgfugzmwjmlrvaic.py:18:0: 281 instructions in function
+remark: cxen4sxeoraqxl2ey6gjl5oxlbwks67u4c7ygl2uilc2eexjwjwn.py:18:0: 290 instructions in function
+remark: cxen4sxeoraqxl2ey6gjl5oxlbwks67u4c7ygl2uilc2eexjwjwn.py:18:0: 104 instructions in function
+remark: cqolnno6doxycjgwadyb5islhmncwd2ggeghrk4pq7h3gebvhftl.py:18:0: 303 instructions in function
+remark: ch7i3z5ea3htlyk6ods5zr5l6t4vjelbbewqlxy3qeox2jo7ynzj.py:18:0: 79 instructions in function
+remark: ch7i3z5ea3htlyk6ods5zr5l6t4vjelbbewqlxy3qeox2jo7ynzj.py:18:0: 246 instructions in function
+remark: ch7i3z5ea3htlyk6ods5zr5l6t4vjelbbewqlxy3qeox2jo7ynzj.py:18:0: 771 instructions in function
+remark: cwuoduyt2hyiqm2ttwpzfuhlcytxvo4y2ypgvdkc2ipkrxp53ugh.py:18:0: 153 instructions in function
+remark: cwuoduyt2hyiqm2ttwpzfuhlcytxvo4y2ypgvdkc2ipkrxp53ugh.py:18:0: 57 instructions in function
+remark: cec4s6bgpcswcjurz3cdhc7fhpcjfjvzqpbwhoczz6om6xgmhola.py:18:0: 179 instructions in function
+remark: ce7ddg2k4ztgsb7ykgmeft57ulg6gnfwisvbtwuscqj6b5vdekls.py:18:0: 391 instructions in function
+remark: ce7ddg2k4ztgsb7ykgmeft57ulg6gnfwisvbtwuscqj6b5vdekls.py:18:0: 326 instructions in function
+remark: ce7ddg2k4ztgsb7ykgmeft57ulg6gnfwisvbtwuscqj6b5vdekls.py:18:0: 278 instructions in function
+remark: cnxeuh6gjum2xf3374uozuf73fqyhpj6gis4csh6rofx63cmpj72.py:18:0: 296 instructions in function
+remark: cnxeuh6gjum2xf3374uozuf73fqyhpj6gis4csh6rofx63cmpj72.py:18:0: 95 instructions in function
+remark: coddlht7fzb2oogx5tx7qgt6ihtgcyj7ojeffulnbc5okja4wd35.py:18:0: 278 instructions in function
+remark: coddlht7fzb2oogx5tx7qgt6ihtgcyj7ojeffulnbc5okja4wd35.py:18:0: 95 instructions in function
+remark: cpu4nzrpbqhgju4u4g7qt3l6ec4nbbhm4qc5gzyx4o45d3tf5o73.py:18:0: 17 instructions in function
+remark: cpu4nzrpbqhgju4u4g7qt3l6ec4nbbhm4qc5gzyx4o45d3tf5o73.py:18:0: 17 instructions in function
+remark: c4rn4pg4sxzro67f23guxhcu7zanwdl3bilzpyss35khobu4cuss.py:18:0: 579 instructions in function
+remark: cdk2tqopxwwlfqobob24mozwwgg3qohkf2ksp6vqadf7rsu3cbdl.py:18:0: 507 instructions in function
+03:46:03 upd 10 | 3M (0.3%) | loss 9.8342 | lr 5.90e-05 | gn 2.31 | 37,879 tok/s | 6921 ms/upd (data 13) | 12.1 GiB | ETA 7h 18m
+03:46:44 upd 20 | 5M (0.5%) | loss 8.8673 | lr 1.25e-04 | gn 1.60 | 63,087 tok/s | 4155 ms/upd (data 15) | 12.1 GiB | ETA 6h 26m
+03:47:26 upd 30 | 8M (0.8%) | loss 7.9895 | lr 1.90e-04 | gn 1.00 | 62,960 tok/s | 4164 ms/upd (data 13) | 12.1 GiB | ETA 5h 52m
+03:47:26 *** initial estimate: whole run ~4h 25m at 62,960 tok/s ***
+03:48:08 upd 40 | 10M (1.0%) | loss 7.3909 | lr 2.56e-04 | gn 1.35 | 62,797 tok/s | 4174 ms/upd (data 14) | 12.1 GiB | ETA 5h 29m

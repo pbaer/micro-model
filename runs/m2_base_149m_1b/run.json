@@ -121,5 +121,6 @@
   "git_commit": "574e45d1e5f364a723033cbe0a5bc046594d200e"
  },
  "grad_accum": 16,
- "started": "2026-09-13 03:44:53"
+ "started": "2026-09-13 03:44:53",
+ "initial_estimate_s": 15910.64391522482
 }
