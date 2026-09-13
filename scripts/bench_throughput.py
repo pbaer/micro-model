@@ -117,6 +117,9 @@ def main() -> None:
                     torch.cuda.empty_cache()
                     print(f"{seq:5d} {mb:3d} {c:3d}   OOM")
                     break
+                if r["peak_vram_gib"] > 14.5:  # WDDM spills to host memory instead of raising OOM: treat as failure
+                    print(f"{seq:5d} {mb:3d} {c:3d}   SPILL (peak {r['peak_vram_gib']:.1f} GiB > VRAM, {r['tokens_per_sec']:.0f} tok/s)")
+                    break
                 results.append(r)
                 print(
                     f"{seq:5d} {mb:3d} {c:3d} {r['tokens_per_sec']:8.0f} {r['step_ms']:8.1f} {r['fwd_ms']:6.1f} "

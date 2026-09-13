@@ -1,0 +1,25 @@
+D:\dev\micro-model\slm\config.py:124: FutureWarning: In the future `np.str` will be defined as the corresponding NumPy scalar.
+  obj = getattr(mod, name, None)
+03:44:53 [m2_base_149m_1b] fresh start. model 149,059,584 params (123,893,760 non-embed); 16x8x2048 = 262,144 tokens/update; data 4219M tokens available; val 4.0M tokens
+remark: csu7rycylf2xrzwv2unb5u63xstvcqivikq57by7dozkmphgday3.py:18:0: 323 instructions in function
+remark: chqvbko37ah7hparmyfik6uplang325rjxhaym44mgtay7h7qa6h.py:18:0: 39 instructions in function
+remark: chqvbko37ah7hparmyfik6uplang325rjxhaym44mgtay7h7qa6h.py:18:0: 39 instructions in function
+remark: cyukaxpm62pcihhyq4j36g36ye5uwxdjk23ydfilkxo5vlujlijy.py:18:0: 265 instructions in function
+remark: cudpfenu5amzarucch6xzuul3tjqmz5uk473iycqmdtqgryn47tp.py:18:0: 16 instructions in function
+remark: cudpfenu5amzarucch6xzuul3tjqmz5uk473iycqmdtqgryn47tp.py:18:0: 12 instructions in function
+remark: cbtvytb54vrqnlrqsulvgxtnuowdvsts3dm5hzr66tgq5nlqtenb.py:18:0: 16 instructions in function
+remark: cbtvytb54vrqnlrqsulvgxtnuowdvsts3dm5hzr66tgq5nlqtenb.py:18:0: 12 instructions in function
+remark: cuat3ctwtd5rafd2llcargptqojghi4damvwo7oldrttbjsc45ej.py:18:0: 156 instructions in function
+remark: cuat3ctwtd5rafd2llcargptqojghi4damvwo7oldrttbjsc45ej.py:18:0: 57 instructions in function
+remark: co4kgootogbk7jubhoptyztd3qszrd77mbiirclal5z3whneppac.py:18:0: 471 instructions in function
+remark: cii4zit6vm4ttypb4yenvdz5qkbqa7elvoqsvsa63gwhrk3tfhma.py:18:0: 556 instructions in function
+remark: cvgsiabrm6wa3d6r23x6o7ei3ue3g4q6m4r6sf4ge5wyg6a67fqw.py:18:0: 753 instructions in function
+remark: cifmxfjd3clavfbt5v6wvs2fhk4fzmuragar3bmzmzbmroobtj2d.py:18:0: 386 instructions in function
+remark: cn2y6iqdvwela6vox3smostselgpclc7k6df2bxkzlt3zimhns43.py:18:0: 752 instructions in function
+remark: csapywpzlbpnsshx6hsouc6qu7pmgjpf3wkz5kpo7hyf2wsirgeh.py:18:0: 640 instructions in function
+remark: crq37mutzfefksmc2pjeaoh422kufbn453z2cu34qswfacg5tsae.py:18:0: 16 instructions in function
+remark: crq37mutzfefksmc2pjeaoh422kufbn453z2cu34qswfacg5tsae.py:18:0: 12 instructions in function
+remark: c6f75pqkww5ovuqdxbwkbvvceinnirolws7iio2f3fqn3akbwbvx.py:18:0: 298 instructions in function
+remark: c2bdhz343whwtst44ajzwqocd7c6wvsgvjqqqg4tfghm753mfglm.py:18:0: 286 instructions in function
+remark: cipn4jkfu3tkiveev3v7osadwfi7xbv4i5hn4pcxsq2hemp7ynl3.py:18:0: 18 instructions in function
+remark: cs4qogdg7mhwf35bfgkfuwyxpbu3jbpjjqyc37yujysy77xqacsk.py:18:0: 12 instructions in function
