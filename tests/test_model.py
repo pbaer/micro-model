@@ -214,3 +214,31 @@ def test_diagnostics_runs_on_tiny_model():
     assert len(d["ablation"]["head_loss_delta"]) == cfg.n_layers and len(d["ablation"]["layer_loss_delta"]) == cfg.n_layers
     assert "blocks.0.attn.wqkv.weight" in d["spectra"]
     assert "<svg" in render_html(d)
+
+
+def test_lm_eval_wrapper_scoring(tmp_path):
+    """Context/continuation loglikelihood equals a direct computation, and greedy flag is consistent."""
+    import types
+
+    from slm.config import to_dict
+    from slm.data.tokenizer import SlmTokenizer, train_bpe
+    from slm.eval.lm_eval_wrapper import SlmLM
+    from slm.utils.checkpoint import save_snapshot
+
+    tok = SlmTokenizer(train_bpe(["the cat sat on the mat " * 60, "dogs run fast " * 60], vocab_size=300))
+    tok.save(tmp_path / "tok")
+    cfg = tiny(vocab_size=tok.vocab_size)
+    m = Transformer(cfg)
+    save_snapshot(tmp_path / "ck.pt", m, to_dict(cfg), {"tokenizer_sha256": tok.sha256})
+    lm = SlmLM(str(tmp_path / "ck.pt"), str(tmp_path / "tok"), batch_size=4, device="cpu")
+    reqs = [types.SimpleNamespace(args=("the cat", " sat on the mat")), types.SimpleNamespace(args=("dogs", " run fast")), types.SimpleNamespace(args=("", "the cat sat"))]
+    res = lm.loglikelihood(reqs)
+    assert len(res) == 3 and all(lp < 0 for lp, _ in res)
+    # direct check for the first request
+    ctx, cont = lm._encode_pair("the cat", " sat on the mat")
+    ids = torch.tensor([ctx + cont])
+    with torch.no_grad():
+        logp = torch.log_softmax(lm.model(ids).float(), -1)[0]
+    direct = sum(float(logp[len(ctx) - 1 + i, t]) for i, t in enumerate(cont))
+    assert abs(direct - res[0][0]) < 1e-3
+    assert lm.generate_until([types.SimpleNamespace(args=("the", {"until": ["\n"], "max_gen_toks": 5}))])[0] is not None
