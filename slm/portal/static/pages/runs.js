@@ -83,8 +83,15 @@ export function RunDetail({ run }) {
       <${Tile} k="ETA" v=${eta != null ? fmtDur(eta) : "-"} s=${eta != null ? "finish ~" + new Date(Date.now() + eta * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""} />
       <${Tile} k="elapsed" v=${fmtDur(s.elapsed_s)} s=${s.initial_estimate_s ? "initial estimate " + fmtDur(s.initial_estimate_s) : ""} />
       <${Tile} k="tokens/sec" v=${fmtInt(s.tok_s)} s=${"run avg " + fmtInt(s.tok_s_avg)} />
-      <${Tile} k="train loss" v=${fmtNum(s.loss, 4)} s=${"update " + fmtInt(s.update)} />
-      <${Tile} k="val loss" v=${fmtNum(s.val_loss, 4)} s=${s.val_loss != null ? `best ${fmtNum(s.best_val, 4)} · ppl ${fmtNum(s.val_ppl, 1)}` : ""} />
+      ${s.is_rl ? html`
+        <${Tile} k="reward (rollouts)" v=${fmtNum(s.rl.reward_mean, 3)} s=${`success ${(s.rl.success_rate * 100).toFixed(0)}% · step ${fmtInt(s.update)}`} />
+        <${Tile} k="held-out accuracy" v=${s.heldout_acc != null ? (s.heldout_acc * 100).toFixed(1) + "%" : "-"} s="greedy, unseen prompts" />
+        <${Tile} k="KL to reference" v=${fmtNum(s.rl.kl, 4)} s=${`entropy ${fmtNum(s.rl.entropy, 2)} · clip ${(s.rl.clip_frac * 100).toFixed(0)}%`} />
+        <${Tile} k="completion length" v=${fmtNum(s.rl.len_mean, 0)} s=${`malformed ${(s.rl.malformed_rate * 100).toFixed(0)}% · no-signal groups ${(s.rl.groups_no_signal * 100).toFixed(0)}%`} />
+        <${Tile} k="policy objective" v=${fmtNum(s.loss, 4)} s="≈0 by construction (zero-mean advantages)" />`
+      : html`
+        <${Tile} k="train loss" v=${fmtNum(s.loss, 4)} s=${"update " + fmtInt(s.update)} />
+        <${Tile} k="val loss" v=${fmtNum(s.val_loss, 4)} s=${s.val_loss != null ? `best ${fmtNum(s.best_val, 4)} · ppl ${fmtNum(s.val_ppl, 1)}` : ""} />`}
       <${Tile} k="lr" v=${fmtSci(s.lr)} />
       <${Tile} k="grad norm" v=${fmtNum(s.grad_norm, 3)} />
       <${Tile} k="VRAM peak" v=${fmtNum(s.vram_gib, 1) + " GiB"} />
@@ -97,9 +104,9 @@ export function RunDetail({ run }) {
         <button class=${logy ? "active" : ""} onClick=${() => setLogy(!logy)}>log y</button>`}
     </div>
     ${tab === "charts" && html`<div class="charts">
-      <${Chart} title="train / val loss" xmode=${xmode} logy=${logy} series=${[{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
-      <${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />
-      <${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />
+      <${Chart} title=${series.is_rl ? "policy objective (≈0 by construction; advantages are zero-mean per group)" : "train / val loss"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
+      ${!series.is_rl && html`<${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />`}
+      ${!series.is_rl && html`<${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />`}
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
       <${Chart} title="step time (ms)" xmode=${xmode} ymin=${0} series=${[{ label: "step", x: tokensX, y: t.step_ms }, { label: "fwd", x: tokensX, y: t.fwd_ms }, { label: "bwd", x: tokensX, y: t.bwd_ms }, { label: "opt", x: tokensX, y: t.opt_ms }, { label: "data", x: tokensX, y: t.data_ms }]} />
