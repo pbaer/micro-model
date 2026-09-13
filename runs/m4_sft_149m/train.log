@@ -338,3 +338,11 @@ remark: covklxej4o7hgiit23bxb3m5a35gacotswww7gbjtti7hyrnr6vt.py:18:0: 414 instru
 10:09:09 upd 2780 | 364M (81.0%) | loss 1.6692 | lr 3.59e-06 | gn 0.34 | 62,877 tok/s | 2085 ms/upd (data 10) | 12.1 GiB | ETA 23m 55s
 10:09:30 upd 2790 | 366M (81.3%) | loss 1.6795 | lr 3.54e-06 | gn 0.32 | 62,894 tok/s | 2084 ms/upd (data 11) | 12.1 GiB | ETA 23m 17s
 10:09:51 upd 2800 | 367M (81.6%) | loss 1.6317 | lr 3.50e-06 | gn 0.33 | 62,905 tok/s | 2084 ms/upd (data 8) | 12.1 GiB | ETA 22m 42s
+10:10:12 upd 2810 | 368M (81.9%) | loss 1.6654 | lr 3.45e-06 | gn 0.42 | 62,903 tok/s | 2084 ms/upd (data 8) | 12.1 GiB | ETA 22m 11s
+10:10:33 upd 2820 | 370M (82.2%) | loss 1.6721 | lr 3.41e-06 | gn 0.32 | 61,607 tok/s | 2128 ms/upd (data 6) | 12.1 GiB | ETA 21m 48s
+10:10:54 upd 2830 | 371M (82.5%) | loss 1.6536 | lr 3.36e-06 | gn 0.37 | 62,857 tok/s | 2085 ms/upd (data 8) | 12.1 GiB | ETA 21m 19s
+10:11:15 upd 2840 | 372M (82.8%) | loss 1.6726 | lr 3.32e-06 | gn 0.36 | 62,856 tok/s | 2085 ms/upd (data 8) | 12.1 GiB | ETA 20m 53s
+10:11:35 upd 2850 | 374M (83.1%) | loss 1.6621 | lr 3.28e-06 | gn 0.33 | 62,852 tok/s | 2085 ms/upd (data 12) | 12.1 GiB | ETA 20m 28s
+10:11:56 upd 2860 | 375M (83.4%) | loss 1.6693 | lr 3.23e-06 | gn 0.36 | 62,893 tok/s | 2084 ms/upd (data 10) | 12.1 GiB | ETA 20m 03s
+10:12:17 upd 2870 | 376M (83.6%) | loss 1.6928 | lr 3.19e-06 | gn 0.38 | 62,861 tok/s | 2085 ms/upd (data 12) | 12.1 GiB | ETA 19m 39s
+10:12:38 upd 2880 | 377M (83.9%) | loss 1.6784 | lr 3.15e-06 | gn 0.31 | 62,857 tok/s | 2085 ms/upd (data 13) | 12.1 GiB | ETA 19m 16s

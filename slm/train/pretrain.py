@@ -332,7 +332,7 @@ class Trainer:
             if vl <= c["best_val"]:
                 ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
         self._save_latest()
-        self.log.log("finish" if finished else "stop", tokens=c["tokens"], msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
+        self.log.log("finish" if finished else "stop", tokens=c["tokens"], elapsed_s=self.elapsed, msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")
         self.loader.close()
         console(f"{'FINISHED' if finished else 'STOPPED'} at {fmt_tokens(c['tokens'])} tokens, elapsed {fmt_duration(self.elapsed)}, best val {c['best_val']:.4f}. Report: {self.run_dir / 'report.html'}")

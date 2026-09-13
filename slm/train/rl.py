@@ -281,7 +281,7 @@ class RlTrainer:
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "tokenizer_sha256": self.tok.sha256})
             ckpt.update_index(self.ckpt_dir, "final.pt", kind="final", tokens=self.tokens, update=self.step)
         self._save()
-        self.log.log("finish" if finished else "stop", tokens=self.tokens, msg=f"{'finished' if finished else 'stopped'} at step {self.step} after {fmt_duration(self.elapsed)}")
+        self.log.log("finish" if finished else "stop", tokens=self.tokens, elapsed_s=self.elapsed, msg=f"{'finished' if finished else 'stopped'} at step {self.step} after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")
         console(f"{'FINISHED' if finished else 'STOPPED'} at step {self.step}")
 
