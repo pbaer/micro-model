@@ -1,0 +1,79 @@
+import json
+import time
+from pathlib import Path
+
+from fastapi.testclient import TestClient
+
+from slm.portal.app import create_app
+from slm.portal.settings import PortalSettings
+from slm.utils import metrics as M
+from slm.utils.logging import MetricsLogger
+
+
+def make_run(root: Path, name: str, n: int = 20, finished: bool = False) -> Path:
+    d = root / name
+    d.mkdir(parents=True)
+    (d / "run.json").write_text(json.dumps({"run_name": name, "stage": "pretrain", "n_params": 123, "config": {"schedule": {"total_tokens": 100 * n * 2}, "milestone_tokens": 500}, "env": {"gpu": "g", "git_commit": "abcdef12"}}))
+    lg = MetricsLogger(d)
+    lg.log("start", msg="go")
+    for i in range(1, n + 1):
+        lg.log("train", tokens=i * 100, update=i, loss=5 - i * 0.05, lr=1e-4, grad_norm=1.0, tok_s=1000.0, tok_s_ema=1000.0, step_ms=100.0, fwd_ms=30.0, bwd_ms=60.0, opt_ms=10.0, data_ms=1.0, vram_gib=3.0, elapsed_s=i, eta_s=5)
+        if i % 5 == 0:
+            lg.log("eval", tokens=i * 100, update=i, val_loss=4.9 - i * 0.05, val_ppl=100.0, best=True, eval_s=1)
+            lg.log("milestone", tokens=i * 100, update=i, segment_s=5.0, elapsed_s=i, tok_s=1000.0, loss=4.6, val_loss=4.5)
+    lg.log("checkpoint", tokens=n * 100, msg="latest.pt saved")
+    if finished:
+        lg.log("finish", tokens=n * 100, msg="done")
+    lg.close()
+    ck = d / "checkpoints"
+    ck.mkdir()
+    for f in ("latest.pt", "best.pt", "snap_1K.pt", "snap_1p50K.pt"):
+        (ck / f).write_bytes(b"x" * 10)
+    (d / "samples").mkdir()
+    (d / "samples" / f"{1000:012d}.txt").write_text("tokens=1K update=10 t\n" + "=" * 80 + "\nPROMPT: 'Once'\n--- greedy:\nupon a time\n--- sampled:\nthere was\n", encoding="utf-8")
+    return d
+
+
+def test_jsonl_tail_partial_line(tmp_path):
+    p = tmp_path / "m.jsonl"
+    p.write_text('{"kind":"train","time":1,"tokens":1}\n{"kind":"tr', encoding="utf-8")
+    t = M.JsonlTail(p)
+    assert len(t.refresh()) == 1
+    with open(p, "a", encoding="utf-8") as f:
+        f.write('ain","time":2,"tokens":2}\n')
+    assert [r["tokens"] for r in t.refresh()] == [2]
+    assert t.refresh() == []
+
+
+def test_snapshot_name_parse():
+    assert M.parse_snapshot_tokens("snap_400M.pt") == 400_000_000
+    assert M.parse_snapshot_tokens("snap_1p20B.pt") == 1_200_000_000
+    assert M.parse_snapshot_tokens("best.pt") is None
+
+
+def test_api_runs(tmp_path):
+    make_run(tmp_path / "runs", "alpha", finished=True)
+    make_run(tmp_path / "runs", "beta")
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", open_browser=False))
+    c = TestClient(app)
+    runs = c.get("/api/runs").json()
+    assert {r["run_name"] for r in runs} == {"alpha", "beta"}
+    a = next(r for r in runs if r["run_name"] == "alpha")
+    assert a["status"] == "finished" and a["tokens"] == 2000 and a["best_val"] < 4.0
+    d = c.get("/api/runs/alpha").json()
+    assert d["summary"]["progress"] == 0.5 and d["config"]["schedule"]["total_tokens"] == 4000
+    s = c.get("/api/runs/alpha/series?max_points=5").json()
+    assert len(s["train"]["tokens"]) <= 6 and len(s["eval"]["val_loss"]) == 4 and len(s["milestones"]) == 4
+    ck = c.get("/api/runs/alpha/checkpoints").json()
+    kinds = {x["name"]: x for x in ck}
+    assert kinds["snap_1K.pt"]["tokens"] == 1000 and kinds["snap_1K.pt"]["val_loss"] is not None
+    assert kinds["snap_1p50K.pt"]["tokens"] == 1500 and kinds["best.pt"]["kind"] == "best" and kinds["latest.pt"]["tokens"] == 2000
+    smp = c.get("/api/runs/alpha/samples").json()
+    assert smp == [{"tokens": 1000, "path": smp[0]["path"]}]
+    one = c.get("/api/runs/alpha/samples/1000").json()
+    assert one["items"][0]["greedy"] == "upon a time" and one["items"][0]["sampled"] == "there was"
+    assert c.get("/api/runs/nope").status_code == 404
+    assert c.get("/api/meta").json()["pages"][0]["id"] == "home"
+    assert c.get("/").status_code == 200 and "app.js" in c.get("/").text
+    for asset in ("/static/app.js", "/static/pages/runs.js", "/static/components/chart.js", "/static/vendor/preact.mjs", "/static/vendor/uplot.iife.min.js"):
+        assert c.get(asset).status_code == 200, asset

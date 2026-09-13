@@ -1,0 +1,7 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {"name": "portal", "runtimeExecutable": ".venv/Scripts/python.exe", "runtimeArgs": ["-m", "slm.portal", "--no-browser", "--port", "8765"], "port": 8765},
+    {"name": "portal-demo", "runtimeExecutable": ".venv/Scripts/python.exe", "runtimeArgs": ["-m", "slm.portal", "--no-browser", "--port", "8766", "--runs-root", "C:/Users/peter/AppData/Local/Temp/claude/D--dev-micro-model/ed209f26-cab7-42d3-aa0e-634f910b7497/scratchpad/demo_runs"], "port": 8766}
+  ]
+}
