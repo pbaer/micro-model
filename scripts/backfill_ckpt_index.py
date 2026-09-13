@@ -1,7 +1,7 @@
 """Backfill checkpoints/index.json for runs created before the trainer wrote it (exact tokens from
 milestone/eval records; snapshot names are matched through snapshot_name()).
 
-    python scripts/backfill_ckpt_index.py runs/m1_tinystories_26m runs/m2_base_149m_1b
+    python scripts/backfill_ckpt_index.py runs/m1_tinystories_26m runs/m2_base_149m
 """
 
 import json

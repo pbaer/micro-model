@@ -1,9 +1,9 @@
 # M3a: continue the 2K stable phase from the M2 pre-decay snapshot (WSD keeps LR flat, so this is a
 # straight continuation). Total counts from this run's start; ~3.4B more tokens at 2K.
-run_name: m3_base_149m_stable
+run_name: m3_base_stable_149m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_149m.yaml
-init_from: runs/m2_base_149m_1b/checkpoints/snap_800M.pt
+init_from: runs/m2_base_149m/checkpoints/snap_800M.pt
 data:
   tokenized_root: C:\slm-data\tokenized\v1
   mixture: {fineweb-edu-b: 0.80, cosmopedia: 0.10, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}  # fineweb-edu-b = 7 files, 5.3B tokens

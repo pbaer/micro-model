@@ -27,12 +27,12 @@ Data root is `C:\slm-data` (override with `SLM_DATA_ROOT`). Code, configs, runs,
 | evaluate tokenizer | `python scripts/eval_tokenizer.py C:/slm-data/tokenizer/v1` |
 | tokenize to shards | `python -m slm.data.prepare tinystories fineweb-edu --tokenizer C:/slm-data/tokenizer/v1` |
 | benchmark throughput | `python scripts/bench_throughput.py --config configs/model/base_149m.yaml` |
-| pretrain | `python -m slm.train.pretrain --config configs/train/tinystories_26m.yaml` |
+| pretrain | `python -m slm.train.pretrain --config configs/train/m1_tinystories_26m.yaml` |
 | diagnostics | `python scripts/diagnose.py runs/<run>/checkpoints/best.pt --root ... --source ...` |
 | SFT data | `python -m slm.data.sft smoltalk-openhermes-100k --tokenizer C:/slm-data/tokenizer/v1` (`--think-required` for reasoning sets) |
 | synthetic reasoning traces | `python -m slm.rl.synth --tokenizer C:/slm-data/tokenizer/v1 --n 40000` |
-| instruct / reasoning SFT | `python -m slm.train.pretrain --config configs/train/sft_149m.yaml` (same loop, `data.kind: sft`, `init_from`) |
-| GRPO RL | `python -m slm.train.rl --config configs/train/rl_arith_149m.yaml` |
+| instruct / reasoning SFT | `python -m slm.train.pretrain --config configs/train/m4_sft_149m.yaml` (same loop, `data.kind: sft`, `init_from`) |
+| GRPO RL | `python -m slm.train.rl --config configs/train/m6_rl_arith_149m.yaml` |
 | reasoning benchmark | `python -m slm.eval.reasoning --checkpoint ... --gsm8k 200` |
 | long-context needle eval | `python -m slm.eval.long_context --checkpoint ... --lengths 1024 4096 8192 16384` |
 | command center (web) | `python -m slm.portal` then open http://127.0.0.1:8765 |

@@ -1,10 +1,10 @@
 # M3b: final phase at 8K context on long-document-upsampled data, with the WSD decay (last 60%).
 # ~800M tokens: 40% stable at 8K, then linear decay to 10% LR. Produces the 8K base checkpoint.
-run_name: m3_base_149m_8k
+run_name: m3_base_8k_149m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_149m.yaml
 model: {loss_chunk_size: 4096}
-init_from: runs/m3_base_149m_stable/checkpoints/final.pt
+init_from: runs/m3_base_stable_149m/checkpoints/final.pt
 data:
   tokenized_root: C:\slm-data\tokenized\v1
   mixture: {fineweb-edu-long: 0.45, fineweb-edu-b: 0.35, cosmopedia: 0.08, finemath: 0.05, python-edu: 0.05, stack-edu-shell: 0.02}

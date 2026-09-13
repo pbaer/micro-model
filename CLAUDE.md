@@ -50,3 +50,12 @@ placeholder and may change, so don't bake it into code.
   failure; keep training configs around 11 GiB. Benchmark table: artifacts/bench/base_149m_full.log.
 - Measured 149M throughput (compiled, cuDNN SDPA): 2K x mb8 = 58k tok/s (69% MFU), 4K x mb4 = 43k,
   eager 2K x mb8 = 9.5k (torch.compile is a 6x win here, not optional).
+
+## Run naming convention
+`m<milestone>_<role>_<params>`, e.g. `m2_base_149m`, `m3_base_stable_149m`, `m3_base_8k_149m`, `m4_sft_149m`,
+`m6_rl_arith_149m`, `m7_ctx16k_149m`. Roles say what the run produces (`base_stable` = flat-LR continuation with no
+finished model; `base_8k` = 8K phase + decay that yields the base checkpoint). Token counts never go in names:
+exact counts live in `checkpoints/index.json` and the overview shows cumulative tokens along the init_from chain.
+Config files are named after the run they define (`configs/train/<run_name>.yaml`).
+Pending: the live run `runs/m3_base_149m_stable` keeps its old directory name until it finishes (Windows locks
+open files); rename it to `m3_base_stable_149m` afterwards (a background job does this).

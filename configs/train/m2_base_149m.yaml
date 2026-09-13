@@ -1,6 +1,6 @@
 # M2: 149M base model, first serious run. 1B tokens at 2K context, WSD schedule so the pre-decay
 # checkpoint can be continued to 5-10B tokens later without re-warming.
-run_name: m2_base_149m_1b
+run_name: m2_base_149m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_149m.yaml
 model:

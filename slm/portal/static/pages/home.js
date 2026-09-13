@@ -48,12 +48,12 @@ export function Home() {
       <div class="bar"><div style=${"width:" + (r.progress * 100).toFixed(1) + "%"}></div></div>
       <div class="muted">${r.total_steps ? `step ${fmtInt(r.update)} / ${fmtInt(r.total_steps)}` : `${fmtTok(r.tokens)} / ${fmtTok(r.total_tokens)}`} · ${r.is_rl ? `reward ${fmtNum(r.rl.reward_mean, 3)}` : `loss ${fmtNum(r.loss, 3)}`} · ${bestMetric(r)}${r.total_steps ? "" : ` · ${fmtInt(r.tok_s)} tok/s`} · ETA ${fmtDur(r.eta_s)}</div></a>`)}
     <h2>Pipeline and runs</h2>
-    <table><tr><th class="l">stage</th><th class="l">run</th><th>status</th><th>tokens</th><th>progress</th><th>loss</th><th>result</th><th>tok/s</th><th>elapsed</th><th>ETA</th><th>started</th><th>git</th><th class="l">starts from</th></tr>
+    <table><tr><th class="l">stage</th><th class="l">run</th><th>status</th><th>tokens (this run)</th><th>tokens seen (cumulative)</th><th>progress</th><th>loss</th><th>result</th><th>tok/s</th><th>elapsed</th><th>ETA</th><th>started</th><th>git</th><th class="l">starts from</th></tr>
       ${STAGES.map((s) => { const rs = byStage[s.id] || []; return rs.length === 0
-        ? html`<tr><td class="l"><b>${s.label}</b><div class="legend">${s.hint}</div></td><td class="l muted" colspan="12">not started</td></tr>`
+        ? html`<tr><td class="l"><b>${s.label}</b><div class="legend">${s.hint}</div></td><td class="l muted" colspan="13">not started</td></tr>`
         : rs.map((r, i) => html`<tr class="click" onClick=${() => open(r)}>${i === 0 ? html`<td class="l" rowspan=${rs.length}><b>${s.label}</b><div class="legend">${s.hint}</div></td>` : ""}
             <td class="l"><a href=${"#/runs/" + encodeURIComponent(r.run_name)}>${r.run_name}</a></td><td><span class=${"status " + r.status}>${r.status}</span></td>
-            <td>${r.total_steps ? `step ${fmtInt(r.update)} / ${fmtInt(r.total_steps)}` : `${fmtTok(r.tokens)}${r.total_tokens ? ` / ${fmtTok(r.total_tokens)}` : ""}`}</td><td>${(r.progress * 100).toFixed(1)}%</td><td>${r.is_rl ? `reward ${fmtNum(r.rl.reward_mean, 3)}` : fmtNum(r.loss, 4)}</td><td>${bestMetric(r)}</td>
+            <td>${r.total_steps ? `step ${fmtInt(r.update)} / ${fmtInt(r.total_steps)}` : `${fmtTok(r.tokens)}${r.total_tokens ? ` / ${fmtTok(r.total_tokens)}` : ""}`}</td><td>${r.cumulative_tokens > r.tokens ? fmtTok(r.cumulative_tokens) : fmtTok(r.tokens)}</td><td>${(r.progress * 100).toFixed(1)}%</td><td>${r.is_rl ? `reward ${fmtNum(r.rl.reward_mean, 3)}` : fmtNum(r.loss, 4)}</td><td>${bestMetric(r)}</td>
             <td>${fmtInt(r.tok_s)}</td><td>${fmtDur(r.elapsed_s)}</td><td>${r.status === "running" ? fmtDur(r.eta_s) : "-"}</td><td>${r.started || "-"}</td><td>${(r.git_commit || "").slice(0, 8)}</td>
             <td class="l muted">${r.init_from ? r.init_from.replace(/^runs[\\/]/, "").replace(/[\\/]checkpoints[\\/]/, " › ") : "random init"}</td></tr>`); })}
     </table>

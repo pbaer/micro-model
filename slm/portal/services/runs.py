@@ -94,8 +94,34 @@ class RunIndex:
 
     def summaries(self) -> list[dict]:
         out = [self.get(n).summary() for n in self.names()]
+        by_name = {s["run_name"]: s for s in out}
+        for s in out:
+            s["cumulative_tokens"] = self._cumulative_tokens(s, by_name, depth=0)
         out.sort(key=lambda s: s.get("last_record_time") or 0, reverse=True)
         return out
+
+    def _cumulative_tokens(self, s: dict, by_name: dict, depth: int) -> int:
+        """Tokens seen by the weights: this run's tokens plus those of the checkpoint it started from
+        (exact per-file counts from that run's checkpoints/index.json), followed recursively."""
+        own = int(s.get("tokens") or 0)
+        init = s.get("init_from") or ""
+        if not init or depth > 8:
+            return own
+        p = Path(init)
+        parent_name = p.parent.parent.name if p.parent.name == "checkpoints" else None
+        if parent_name not in by_name:
+            return own
+        idx_path = self.root / parent_name / "checkpoints" / "index.json"
+        base = None
+        if idx_path.exists():
+            try:
+                base = json.loads(idx_path.read_text(encoding="utf-8")).get(p.name, {}).get("tokens")
+            except json.JSONDecodeError:
+                base = None
+        if base is None:
+            base = by_name[parent_name].get("tokens") or 0
+        parent_cum = self._cumulative_tokens(by_name[parent_name], by_name, depth + 1) - int(by_name[parent_name].get("tokens") or 0)
+        return own + int(base) + max(0, parent_cum)
 
     def live_runs(self, within_s: float = 120.0) -> list[str]:
         import time

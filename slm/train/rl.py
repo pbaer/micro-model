@@ -1,6 +1,6 @@
 """GRPO-style RL with programmatic rewards (no critic, no reward model).
 
-    python -m slm.train.rl --config configs/train/rl_arith_149m.yaml
+    python -m slm.train.rl --config configs/train/m6_rl_arith_149m.yaml
 
 Per step: sample P prompts, roll out G completions each with the current policy, compute rewards and
 group-relative advantages, then optimize the clipped policy objective (+ KL to the frozen reference)

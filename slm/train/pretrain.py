@@ -1,6 +1,6 @@
 """Pretraining loop: resumable, token-indexed, instrumented, with an HTML progress report.
 
-    python -m slm.train.pretrain --config configs/train/tinystories_26m.yaml [key=value ...]
+    python -m slm.train.pretrain --config configs/train/m1_tinystories_26m.yaml [key=value ...]
     python -m slm.train.pretrain --config ... --fresh        # ignore an existing latest.pt
 
 Stopping: Ctrl-C, or create the file runs/<run>/STOP. Either finishes the current update, writes a

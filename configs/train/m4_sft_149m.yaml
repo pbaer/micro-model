@@ -2,7 +2,7 @@
 run_name: m4_sft_149m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_149m.yaml
-init_from: runs/m2_base_149m_1b/checkpoints/final.pt
+init_from: runs/m2_base_149m/checkpoints/final.pt
 data:
   kind: sft
   sft_root: C:\slm-data\sft\v1
