@@ -82,7 +82,7 @@ export function RunDetail({ run }) {
       <${Tile} k="progress" v=${(s.progress * 100).toFixed(1) + "%"} s=${s.total_steps ? `step ${fmtInt(s.update)} / ${fmtInt(s.total_steps)} · ${fmtTok(s.tokens)} completion tokens` : `${fmtTok(s.tokens)} / ${fmtTok(s.total_tokens)} tokens`} />
       <${Tile} k="ETA" v=${eta != null ? fmtDur(eta) : "-"} s=${eta != null ? "finish ~" + new Date(Date.now() + eta * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""} />
       <${Tile} k="elapsed" v=${fmtDur(s.elapsed_s)} s=${s.initial_estimate_s ? "initial estimate " + fmtDur(s.initial_estimate_s) : ""} />
-      <${Tile} k="tokens/sec" v=${fmtInt(s.tok_s)} s=${"run avg " + fmtInt(s.tok_s_avg)} />
+      ${!s.is_rl && html`<${Tile} k="tokens/sec" v=${fmtInt(s.tok_s)} s=${"run avg " + fmtInt(s.tok_s_avg)} />`}
       ${s.is_rl ? html`
         <${Tile} k="reward (rollouts)" v=${fmtNum(s.rl.reward_mean, 3)} s=${`success ${(s.rl.success_rate * 100).toFixed(0)}% · step ${fmtInt(s.update)}`} />
         <${Tile} k="held-out accuracy" v=${s.heldout_acc != null ? (s.heldout_acc * 100).toFixed(1) + "%" : "-"} s="greedy, unseen prompts" />
