@@ -4,6 +4,8 @@ import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum } from "./components/util.js";
 import { Home } from "./pages/home.js";
 import { Runs, RunDetail } from "./pages/runs.js";
+import { DataPage } from "./pages/data.js";
+import { TokenizerPage } from "./pages/tokenizer.js";
 
 const html = htm.bind(h);
 
@@ -48,6 +50,8 @@ function App() {
   if (page === "home") body = html`<${Home} />`;
   else if (page === "runs" && parts[1]) body = html`<${RunDetail} run=${decodeURIComponent(parts[1])} key=${parts[1]} />`;
   else if (page === "runs") body = html`<${Runs} />`;
+  else if (page === "data") body = html`<${DataPage} />`;
+  else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
   else body = html`<${Placeholder} name=${page} />`;
   const pages = meta ? meta.pages : [{ id: "home", label: "Home" }, { id: "runs", label: "Runs" }];
   return html`<div class="layout">

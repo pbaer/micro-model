@@ -34,3 +34,16 @@ button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
 .card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px}
 .muted{color:var(--muted)}
+.chips{line-height:1.9;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-all;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px;max-height:560px;overflow:auto}
+.chip{display:inline;border:1px solid #ddd;border-radius:3px;padding:1px 1px;margin:0 1px}
+.chip.special{background:#111827;color:#fbbf24;border-color:#111827;font-weight:600}
+.chip.boundary{outline:2px solid #dc2626;outline-offset:1px}
+.chip.target{background:#dcfce7;border-color:#86efac}.chip.masked{background:#f3f4f6;color:#9ca3af}
+.chip sub{font-size:8px;color:#6b7280;margin-left:1px}
+textarea{width:100%;min-height:120px;font:13px var(--mono);padding:8px;border:1px solid var(--border);border-radius:8px}
+input[type=text],input[type=number]{font:inherit;padding:4px 8px;border:1px solid var(--border);border-radius:6px}
+.hist{display:flex;align-items:flex-end;gap:3px;height:120px;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px}
+.hist div{flex:1;background:var(--accent);min-height:1px;position:relative}.hist div span{position:absolute;bottom:-16px;left:0;right:0;text-align:center;font-size:9px;color:var(--muted)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:10px 12px}
+.legend{font-size:11.5px;color:var(--muted)}.legend span{display:inline-block;margin-right:12px}
