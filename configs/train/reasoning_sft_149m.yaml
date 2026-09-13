@@ -24,7 +24,7 @@ schedule:
   warmup_tokens: 2000000
   min_lr_ratio: 0.1
 batch:
-  microbatch: 32
+  microbatch: 16
   tokens_per_update: 131072
 runtime:
   compile: true

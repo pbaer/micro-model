@@ -17,9 +17,9 @@ pre{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px;font
 .running{background:#dbeafe;color:#1d4ed8}.finished{background:#dcfce7;color:#15803d}.stopped{background:#fee2e2;color:#b91c1c}.stale{background:#fef3c7;color:#b45309}
 </style></head><body>
 <h1>m2_base_149m_1b <span class="status running">running</span></h1>
-<div class="sub">generated 2026-09-13 03:44:53 · started 2026-09-13 03:44:53 · NVIDIA GeForce RTX 4080 SUPER · git 574e45d1 · model 149,059,584 params</div>
-<div class="bar"><div style="width:0.00%"></div></div>
-<div class="tiles"><div class="tile"><div class="k">progress</div><div class="v">0.0%</div><div class="s">0K / 1.00B tokens</div></div><div class="tile"><div class="k">ETA</div><div class="v">?</div><div class="s"></div></div><div class="tile"><div class="k">elapsed</div><div class="v">0m 00s</div><div class="s"></div></div><div class="tile"><div class="k">tokens/sec</div><div class="v">0</div><div class="s">run avg 0</div></div><div class="tile"><div class="k">train loss</div><div class="v">nan</div><div class="s">update 0</div></div><div class="tile"><div class="k">val loss</div><div class="v">-</div><div class="s"></div></div><div class="tile"><div class="k">lr</div><div class="v">0.00e+00</div><div class="s"></div></div><div class="tile"><div class="k">grad norm</div><div class="v">0.000</div><div class="s"></div></div><div class="tile"><div class="k">VRAM peak</div><div class="v">0.0 GiB</div><div class="s"></div></div><div class="tile"><div class="k">step time</div><div class="v">0 ms</div><div class="s">fwd 0 bwd 0 opt 0 data 0</div></div></div>
+<div class="sub">generated 2026-09-13 04:13:31 · started 2026-09-13 03:44:53 · NVIDIA GeForce RTX 4080 SUPER · git 574e45d1 · model 149,059,584 params</div>
+<div class="bar"><div style="width:9.96%"></div></div>
+<div class="tiles"><div class="tile"><div class="k">progress</div><div class="v">10.0%</div><div class="s">100M / 1.00B tokens</div></div><div class="tile"><div class="k">ETA</div><div class="v">3h 59m</div><div class="s">finish ~Sun 08:12</div></div><div class="tile"><div class="k">elapsed</div><div class="v">28m 37s</div><div class="s">initial estimate 4h 25m</div></div><div class="tile"><div class="k">tokens/sec</div><div class="v">62,748</div><div class="s">run avg 58,002</div></div><div class="tile"><div class="k">train loss</div><div class="v">4.6250</div><div class="s">update 380</div></div><div class="tile"><div class="k">val loss</div><div class="v">4.5929</div><div class="s">best 4.5929  ppl 98.8</div></div><div class="tile"><div class="k">lr</div><div class="v">5.00e-04</div><div class="s"></div></div><div class="tile"><div class="k">grad norm</div><div class="v">0.338</div><div class="s"></div></div><div class="tile"><div class="k">VRAM peak</div><div class="v">12.1 GiB</div><div class="s"></div></div><div class="tile"><div class="k">step time</div><div class="v">4169 ms</div><div class="s">fwd 1386 bwd 2773 opt 9 data 9</div></div></div>
 <div class="charts">
 <div class="chart"><h3>train loss</h3><svg id="c_loss"></svg></div>
 <div class="chart"><h3>validation loss</h3><svg id="c_val"></svg></div>
@@ -29,9 +29,151 @@ pre{background:#fff;border:1px solid #e3e3e3;border-radius:8px;padding:10px;font
 <div class="chart"><h3>VRAM peak (GiB)</h3><svg id="c_vram"></svg></div>
 </div>
 <h2>Milestones (every 100M tokens)</h2>
-<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr><tr><td colspan=7>none yet</td></tr></table>
-<h2>Latest samples</h2><pre>(no samples yet)</pre>
-<h2>Events</h2><table><tr><th>time</th><th>kind</th><th>message</th></tr><tr><td>09-13 03:44:53</td><td>start</td><td style='text-align:left'>fresh start: 149,059,584 params, accum 16, seq 2048, mb 8, 1.00B tokens planned</td></tr></table>
+<table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr><tr><td>100M</td><td>28m 35s</td><td>28m 35s</td><td>58,282</td><td>4.6250</td><td>4.5929</td><td>09-13 04:13</td></tr></table>
+<h2>Latest samples</h2><pre>tokens=100M update=382 2026-09-13 04:13:29
+================================================================================
+PROMPT: &#x27;The capital of France is&#x27;
+--- greedy:
+ a great place in the United States. The United States is a nation of the United States and the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of
+--- sampled:
+ a small traffil of the district of Jefferson in 2006. The far more than the interness of the city of Wattayne is the &quot;nindle&quot; of the country.
+The state of Greece is the number of western Africa in the world. It is the largest general population of Britain, in the Middle East and the state of Japan. It is the largest city in the country. The population of the country is the largest nation in
+================================================================================
+PROMPT: &#x27;Photosynthesis is the process by which plants&#x27;
+--- greedy:
+ and plants are used to create a variety of species that are used to create a variety of species that are used to create a variety of species that are used to provide a variety of species and to provide a variety of species and species that are used to provide a variety of species and species. The species are also used to describe the species that are used to be used to identify the species and to provide a variety of species and species that are used to provide a variety of species and
+--- sampled:
+ and plants have been completely healthy. For example, in 2005, zoos are discarded using in the Creative Commons Attribution-National Research Society (NIH) in 2002, which is an essential resource for self-care, including a number of regional, unitsprimated, general public health care workers in the United States.
+The identification of the ARPUD is described as “darkin, as one of the most important ethical procedures
+================================================================================
+PROMPT: &#x27;Question: What is 12 + 7?\nAnswer:&#x27;
+--- greedy:
+ 1 = 1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+
+--- sampled:
+ If you have 1 or 1, you have 22 or 3 or 1. Note: If you have 1 or 1, you will need to work with 4, or 5 of 10.
+If you want to use 4, or 3 of 4 or 5, you are you&#x27;ve 2 or 5 to 3.
+So you need to to have 3 or 4 and 5. The
+================================================================================
+PROMPT: &#x27;def is_prime(n):\n    &#x27;
+--- greedy:
+ # This is the function that is the function
+        # This is the function that is the function
+        # This is the function that is the function
+        # This is the function
+        # This is the function that is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is
+--- sampled:
+ x is equal to 1. For example, in 29:
+    x is 1. x in (x) is 1.1.2 is n
+
+#       x is 2. x is a 0.55 ( x)
+
+
+## n is 1.54 x 0 x 1 0 2 05
+= 1
+x - 0.43
+x, a
+x = 
+================================================================================
+PROMPT: &#x27;#!/bin/bash\n# count lines in all .py files\n&#x27;
+--- greedy:
+#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	
+--- sampled:
+#   dotnumbers
+#  	#     --name for file in
+	if [ &quot;$#&quot; -gt 1 ]; then
+    echo &quot;1 to exit&quot;
+    echo &quot;;;
+    echo &quot;ERROR: ${0}&quot;
+      exit 1
+    echo &quot;  $1 is $1&quot;
+  fi
+}
+
+#   ip1 is not a temporary directory.
+function ARRLU_LON_DID to check if it exists
+   echo &quot;hello&quot;)
+   
+================================================================================
+PROMPT: &#x27;Once upon a time, in a small village,&#x27;
+--- greedy:
+ the city of the city was built in a city of the city. The city of the city was built in the city of the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of
+--- sampled:
+ the estuary of the church, the kind of community that lies in an informal community. There are three powerful in the country: the city of the family. The center of the city of the city is the country of the state. The trail of the city is the city of the city of the city.
+For some time, the city was a famous time to day. For the time, the city had been located to the city, and to the most important meeting. The
+================================================================================
+PROMPT: &#x27;The three primary colors are&#x27;
+--- greedy:
+:
+- The first three colors in the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first three hundredth of the first three hundredth of the first three hundredth of the first three hundredth of the
+--- sampled:
+:
+- The first two or more items to be registered to make a new ball
+- The first three rounds in the wordline
+The third part is to be used for all the recipes to understand all the dice.
+The following sentences are valid to be added to the right section of the left ones.
+- The following exercises are used in the first two directions to help the children to know about the eight-hour numbers.
+- The first focus is to show a second meeting. The
+================================================================================
+PROMPT: &#x27;| name | age |\n|---|---|\n| Alice | 30 |\n&#x27;
+--- greedy:
+|1||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||
+--- sampled:
+|Employ||102-20||2012||1031-10||782||1913)||||1983||42||189||104)||||1983||1993||1883||69||1922||65||19||1922||1933||1903||1
+</pre>
+<h2>Events</h2><table><tr><th>time</th><th>kind</th><th>message</th></tr><tr><td>09-13 03:44:53</td><td>start</td><td style='text-align:left'>fresh start: 149,059,584 params, accum 16, seq 2048, mb 8, 1.00B tokens planned</td></tr><tr><td>09-13 03:47:26</td><td>start</td><td style='text-align:left'>initial estimate: 4h 25m total wall-clock at 62,960 tok/s</td></tr><tr><td>09-13 03:59:57</td><td>checkpoint</td><td style='text-align:left'>latest.pt saved at 52M tokens (1.6s)</td></tr><tr><td>09-13 04:13:31</td><td>checkpoint</td><td style='text-align:left'>latest.pt saved at 100M tokens (1.4s)</td></tr></table>
 <h2>Config</h2><pre>{
  &quot;run_name&quot;: &quot;m2_base_149m_1b&quot;,
  &quot;runs_root&quot;: &quot;runs&quot;,
@@ -146,7 +288,7 @@ function chart(id, series, opts){
 }
 const fmtTok=x=>x>=1e9?(x/1e9).toFixed(2)+'B':x>=1e6?(x/1e6).toFixed(0)+'M':(x/1e3).toFixed(0)+'K';
 
-const D={"loss": [], "val": [], "lr": [], "tps": [], "gn": [], "vram": []};
+const D={"loss": [[2621440, 9.834203720092773], [5242880, 8.867314338684082], [7864320, 7.989462375640869], [10485760, 7.3908538818359375], [13107200, 7.017584323883057], [15728640, 6.744873046875], [18350080, 6.520240783691406], [20971520, 6.367420196533203], [23592960, 6.262337684631348], [26214400, 6.150266170501709], [28835840, 6.069398403167725], [31457280, 5.9592413902282715], [34078720, 5.879061698913574], [36700160, 5.842497825622559], [39321600, 5.737724781036377], [41943040, 5.7106733322143555], [44564480, 5.61283016204834], [47185920, 5.524890899658203], [49807360, 5.463505744934082], [52428800, 5.37050724029541], [55050240, 5.329929828643799], [57671680, 5.226021766662598], [60293120, 5.163566589355469], [62914560, 5.105828762054443], [65536000, 5.072726726531982], [68157440, 5.061725616455078], [70778880, 5.003039836883545], [73400320, 4.9849653244018555], [76021760, 4.929819583892822], [78643200, 4.921119689941406], [81264640, 4.8436737060546875], [83886080, 4.814391613006592], [86507520, 4.8138203620910645], [89128960, 4.714847087860107], [91750400, 4.668003082275391], [94371840, 4.657351016998291], [96993280, 4.67782735824585], [99614720, 4.624950408935547]], "val": [[50069504, 5.411874294281006], [100139008, 4.59290075302124]], "lr": [[2621440, 5.8982425e-05], [5242880, 0.000124518425], [7864320, 0.000190054425], [10485760, 0.000255590425], [13107200, 0.000321126425], [15728640, 0.00038666242500000006], [18350080, 0.00045219842500000005], [20971520, 0.0005], [23592960, 0.0005], [26214400, 0.0005], [28835840, 0.0005], [31457280, 0.0005], [34078720, 0.0005], [36700160, 0.0005], [39321600, 0.0005], [41943040, 0.0005], [44564480, 0.0005], [47185920, 0.0005], [49807360, 0.0005], [52428800, 0.0005], [55050240, 0.0005], [57671680, 0.0005], [60293120, 0.0005], [62914560, 0.0005], [65536000, 0.0005], [68157440, 0.0005], [70778880, 0.0005], [73400320, 0.0005], [76021760, 0.0005], [78643200, 0.0005], [81264640, 0.0005], [83886080, 0.0005], [86507520, 0.0005], [89128960, 0.0005], [91750400, 0.0005], [94371840, 0.0005], [96993280, 0.0005], [99614720, 0.0005]], "tps": [[2621440, 37879.271984834944], [5242880, 63087.185676212575], [7864320, 62959.921962818], [10485760, 62797.1250115905], [13107200, 62860.500890042684], [15728640, 62942.03159021147], [18350080, 62807.161488488506], [20971520, 62841.683912759065], [23592960, 62828.43777224475], [26214400, 62842.62099208491], [28835840, 62843.25027683031], [31457280, 62846.51794710382], [34078720, 62842.586151916395], [36700160, 62844.17339426576], [39321600, 62839.65396937494], [41943040, 62845.66157414137], [44564480, 62837.44495672343], [47185920, 62837.42915553412], [49807360, 62839.4600326029], [52428800, 27320.690792546993], [55050240, 62879.274121329625], [57671680, 62884.293047841165], [60293120, 62853.26952653507], [62914560, 62883.0198995001], [65536000, 62890.61171932849], [68157440, 62877.02276951639], [70778880, 62886.44960541415], [73400320, 62883.52303868638], [76021760, 62874.78524161921], [78643200, 62884.15530077368], [81264640, 62884.69118701392], [83886080, 62881.37351461126], [86507520, 62890.94734546439], [89128960, 62886.108272489975], [91750400, 62882.63005308633], [94371840, 62883.034285069094], [96993280, 62881.58964716103], [99614720, 62881.41738831981]], "gn": [[2621440, 2.309743642807007], [5242880, 1.5992456674575806], [7864320, 1.0018506050109863], [10485760, 1.3497769832611084], [13107200, 0.7049984335899353], [15728640, 0.5564851760864258], [18350080, 0.6299046277999878], [20971520, 0.5846666693687439], [23592960, 0.6586477160453796], [26214400, 0.5136814117431641], [28835840, 0.7181983590126038], [31457280, 0.545983076095581], [34078720, 0.34829699993133545], [36700160, 0.5989999771118164], [39321600, 0.7546791434288025], [41943040, 0.6701459288597107], [44564480, 0.4913022518157959], [47185920, 0.7211952209472656], [49807360, 0.4785626530647278], [52428800, 0.3862534761428833], [55050240, 0.47221022844314575], [57671680, 0.4894295930862427], [60293120, 0.490246444940567], [62914560, 0.4584958851337433], [65536000, 0.38030195236206055], [68157440, 0.45071157813072205], [70778880, 0.5147291421890259], [73400320, 0.39943090081214905], [76021760, 0.5588276982307434], [78643200, 0.4000372588634491], [81264640, 0.3797502815723419], [83886080, 0.4683572053909302], [86507520, 0.3654886782169342], [89128960, 0.6114434003829956], [91750400, 0.425495445728302], [94371840, 0.4097408652305603], [96993280, 0.40786460041999817], [99614720, 0.33789312839508057]], "vram": [[2621440, 12.121013164520264], [5242880, 12.121013164520264], [7864320, 12.121013164520264], [10485760, 12.121013164520264], [13107200, 12.121013164520264], [15728640, 12.121013164520264], [18350080, 12.121013164520264], [20971520, 12.121013164520264], [23592960, 12.121013164520264], [26214400, 12.121013164520264], [28835840, 12.121013164520264], [31457280, 12.121013164520264], [34078720, 12.121013164520264], [36700160, 12.121013164520264], [39321600, 12.121013164520264], [41943040, 12.121013164520264], [44564480, 12.121013164520264], [47185920, 12.121013164520264], [49807360, 12.121013164520264], [52428800, 12.121013164520264], [55050240, 12.121013164520264], [57671680, 12.121013164520264], [60293120, 12.121013164520264], [62914560, 12.121013164520264], [65536000, 12.121013164520264], [68157440, 12.121013164520264], [70778880, 12.121013164520264], [73400320, 12.121013164520264], [76021760, 12.121013164520264], [78643200, 12.121013164520264], [81264640, 12.121013164520264], [83886080, 12.121013164520264], [86507520, 12.121013164520264], [89128960, 12.121013164520264], [91750400, 12.121013164520264], [94371840, 12.121013164520264], [96993280, 12.121013164520264], [99614720, 12.121013164520264]]};
 chart('c_loss',[{name:'train',pts:D.loss},{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
 chart('c_val',[{name:'val',pts:D.val,dots:true,w:2}],{xfmt:fmtTok,xlabel:'tokens'});
 chart('c_tps',[{name:'tok/s',pts:D.tps}],{xfmt:fmtTok,xlabel:'tokens',ymin:0});

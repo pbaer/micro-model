@@ -50,3 +50,96 @@ remark: cdk2tqopxwwlfqobob24mozwwgg3qohkf2ksp6vqadf7rsu3cbdl.py:18:0: 507 instru
 03:47:26 upd 30 | 8M (0.8%) | loss 7.9895 | lr 1.90e-04 | gn 1.00 | 62,960 tok/s | 4164 ms/upd (data 13) | 12.1 GiB | ETA 5h 52m
 03:47:26 *** initial estimate: whole run ~4h 25m at 62,960 tok/s ***
 03:48:08 upd 40 | 10M (1.0%) | loss 7.3909 | lr 2.56e-04 | gn 1.35 | 62,797 tok/s | 4174 ms/upd (data 14) | 12.1 GiB | ETA 5h 29m
+03:48:49 upd 50 | 13M (1.3%) | loss 7.0176 | lr 3.21e-04 | gn 0.70 | 62,861 tok/s | 4170 ms/upd (data 14) | 12.1 GiB | ETA 5h 12m
+03:49:31 upd 60 | 16M (1.6%) | loss 6.7449 | lr 3.87e-04 | gn 0.56 | 62,942 tok/s | 4165 ms/upd (data 8) | 12.1 GiB | ETA 4h 59m
+03:50:13 upd 70 | 18M (1.8%) | loss 6.5202 | lr 4.52e-04 | gn 0.63 | 62,807 tok/s | 4174 ms/upd (data 11) | 12.1 GiB | ETA 4h 50m
+03:50:54 upd 80 | 21M (2.1%) | loss 6.3674 | lr 5.00e-04 | gn 0.58 | 62,842 tok/s | 4171 ms/upd (data 13) | 12.1 GiB | ETA 4h 43m
+03:51:36 upd 90 | 24M (2.4%) | loss 6.2623 | lr 5.00e-04 | gn 0.66 | 62,828 tok/s | 4172 ms/upd (data 14) | 12.1 GiB | ETA 4h 37m
+03:52:18 upd 100 | 26M (2.6%) | loss 6.1503 | lr 5.00e-04 | gn 0.51 | 62,843 tok/s | 4171 ms/upd (data 12) | 12.1 GiB | ETA 4h 32m
+03:53:00 upd 110 | 29M (2.9%) | loss 6.0694 | lr 5.00e-04 | gn 0.72 | 62,843 tok/s | 4171 ms/upd (data 15) | 12.1 GiB | ETA 4h 28m
+03:53:41 upd 120 | 31M (3.1%) | loss 5.9592 | lr 5.00e-04 | gn 0.55 | 62,847 tok/s | 4171 ms/upd (data 12) | 12.1 GiB | ETA 4h 25m
+03:54:23 upd 130 | 34M (3.4%) | loss 5.8791 | lr 5.00e-04 | gn 0.35 | 62,843 tok/s | 4171 ms/upd (data 12) | 12.1 GiB | ETA 4h 23m
+03:55:05 upd 140 | 37M (3.7%) | loss 5.8425 | lr 5.00e-04 | gn 0.60 | 62,844 tok/s | 4171 ms/upd (data 14) | 12.1 GiB | ETA 4h 21m
+03:55:46 upd 150 | 39M (3.9%) | loss 5.7377 | lr 5.00e-04 | gn 0.75 | 62,840 tok/s | 4172 ms/upd (data 13) | 12.1 GiB | ETA 4h 19m
+03:56:28 upd 160 | 42M (4.2%) | loss 5.7107 | lr 5.00e-04 | gn 0.67 | 62,846 tok/s | 4171 ms/upd (data 13) | 12.1 GiB | ETA 4h 17m
+03:57:10 upd 170 | 45M (4.5%) | loss 5.6128 | lr 5.00e-04 | gn 0.49 | 62,837 tok/s | 4172 ms/upd (data 19) | 12.1 GiB | ETA 4h 16m
+03:57:52 upd 180 | 47M (4.7%) | loss 5.5249 | lr 5.00e-04 | gn 0.72 | 62,837 tok/s | 4172 ms/upd (data 14) | 12.1 GiB | ETA 4h 14m
+03:58:33 upd 190 | 50M (5.0%) | loss 5.4635 | lr 5.00e-04 | gn 0.48 | 62,839 tok/s | 4172 ms/upd (data 11) | 12.1 GiB | ETA 4h 13m
+remark: ciuc55bekgf4znbpgggk2jyuyk24u3r6s7cgu447ohz5dteyelwe.py:18:0: 199 instructions in function
+remark: cyazfrs7j3egjgs3thfy2pil7z4zxe6yx6wu6fycnivatbdialed.py:18:0: 16 instructions in function
+remark: cyazfrs7j3egjgs3thfy2pil7z4zxe6yx6wu6fycnivatbdialed.py:18:0: 12 instructions in function
+remark: cnfxipqritprql5eofobtjvc42iwansqfdkxy7hj7aqmcji7i6w4.py:18:0: 78 instructions in function
+remark: cnfxipqritprql5eofobtjvc42iwansqfdkxy7hj7aqmcji7i6w4.py:18:0: 210 instructions in function
+remark: cnfxipqritprql5eofobtjvc42iwansqfdkxy7hj7aqmcji7i6w4.py:18:0: 751 instructions in function
+remark: cqgyfcm2ku7xfft5vs4ycx6qnhzt3f4hv235gtzdpl7mnnlkggta.py:18:0: 81 instructions in function
+remark: cqgyfcm2ku7xfft5vs4ycx6qnhzt3f4hv235gtzdpl7mnnlkggta.py:18:0: 213 instructions in function
+remark: cqgyfcm2ku7xfft5vs4ycx6qnhzt3f4hv235gtzdpl7mnnlkggta.py:18:0: 719 instructions in function
+remark: cikee6ayqzproeft63jv3ktlxiexekg6cfhfvacu2zsxm4wtjekh.py:18:0: 39 instructions in function
+remark: cikee6ayqzproeft63jv3ktlxiexekg6cfhfvacu2zsxm4wtjekh.py:18:0: 39 instructions in function
+remark: cvs5vkxopmi3wtjw3uiy5dc54v56uxofnu2qronhc3fkjzoohlfa.py:18:0: 16 instructions in function
+remark: cvs5vkxopmi3wtjw3uiy5dc54v56uxofnu2qronhc3fkjzoohlfa.py:18:0: 12 instructions in function
+remark: cgvhu6poql7jleupaq4wuk5wf4lhkot3qeclgwp27hx6hiljknnp.py:18:0: 288 instructions in function
+remark: ci2qyvcidcm25voyzx3cfcqa6urtu5ypxintfj3y7tthmmjrvjuv.py:18:0: 16 instructions in function
+remark: ci2qyvcidcm25voyzx3cfcqa6urtu5ypxintfj3y7tthmmjrvjuv.py:18:0: 12 instructions in function
+remark: chejz7ocux4d24hdixivobqnmzhk2uyfdt43lcky4zowakxdj23g.py:18:0: 156 instructions in function
+remark: chejz7ocux4d24hdixivobqnmzhk2uyfdt43lcky4zowakxdj23g.py:18:0: 57 instructions in function
+remark: cgxj52yfvk2gcv2qsvuvngxqe7cc4ffcebz3jsfslxsriuc4ewcj.py:18:0: 16 instructions in function
+remark: cgxj52yfvk2gcv2qsvuvngxqe7cc4ffcebz3jsfslxsriuc4ewcj.py:18:0: 12 instructions in function
+remark: cnvwtgwoy5hdqvk6tw4aleeih4fuka46wd3sjgn6gyd7rw5w44gp.py:18:0: 377 instructions in function
+remark: cm2nwgcgbtfy6fuktscyzgiaai6obutuopho3cr3rdfyuqpovgdz.py:18:0: 585 instructions in function
+remark: cnnnsgx46irk3f23xbpbgnxcf7tjxtbyuvgxrbhtkosax3oagmws.py:18:0: 262 instructions in function
+remark: ckrfx5p6s4l2cuxxe2nkrpofzsavmcz6tapzbth6s7wm2gdrroft.py:18:0: 347 instructions in function
+remark: ca46nexazmsiqxpjzc4x4tjqpa4joetty2ju2xai5f4mryvna7ju.py:18:0: 432 instructions in function
+remark: cscdmnaehosxoxg3pykgzjapqnht633ryhbatly5jsr4brfdcxbo.py:18:0: 637 instructions in function
+remark: cgx27yiqfzdrgd6hkvmpsbpnku7okjuf4kgu5pb5qexxulzyvge7.py:18:0: 253 instructions in function
+remark: ctqa7uwojf7x2jvj5qjctdcdty66uovjbz5beb35izeejhz76rqy.py:18:0: 16 instructions in function
+remark: ctqa7uwojf7x2jvj5qjctdcdty66uovjbz5beb35izeejhz76rqy.py:18:0: 12 instructions in function
+remark: cmmf3y4yqai7bdkmbvknn63cigro7itadh6o3dq2ma3p5fkteket.py:18:0: 259 instructions in function
+remark: c3mq2q3rzt2vtlyd73fzobax5ooj2z6mjeyadd6fpvcescfghzup.py:18:0: 414 instructions in function
+remark: ckl2337y4qfg2gsbacfqt67qzhywybqzwt5tygzr7hezaa34ug3c.py:18:0: 12 instructions in function
+remark: c7hkdwjrubqnpemkd6jaezhv6a3ugz4wunx3a45e5oyayeugraoh.py:18:0: 203 instructions in function
+remark: cnkdhs3moytv7hkluhiafb3mgjixcsagrxnsegr46jvdwmuu7qpn.py:18:0: 78 instructions in function
+remark: cnkdhs3moytv7hkluhiafb3mgjixcsagrxnsegr46jvdwmuu7qpn.py:18:0: 210 instructions in function
+remark: cnkdhs3moytv7hkluhiafb3mgjixcsagrxnsegr46jvdwmuu7qpn.py:18:0: 751 instructions in function
+remark: c5thrnu4fcakdff7d3gwc3ieuje3s6vwpaeqnru4tjiq65h32r7z.py:18:0: 81 instructions in function
+remark: c5thrnu4fcakdff7d3gwc3ieuje3s6vwpaeqnru4tjiq65h32r7z.py:18:0: 213 instructions in function
+remark: c5thrnu4fcakdff7d3gwc3ieuje3s6vwpaeqnru4tjiq65h32r7z.py:18:0: 719 instructions in function
+remark: cotv7m7xmid2hzwbpwon7qcmni6yd6iwdut4nxhynka3363zuwrb.py:18:0: 39 instructions in function
+remark: cotv7m7xmid2hzwbpwon7qcmni6yd6iwdut4nxhynka3363zuwrb.py:18:0: 39 instructions in function
+remark: cs7kcx2mpfvazsy762yomuyukxyk4j3gtivm3sljpcdxhctrjtwh.py:18:0: 292 instructions in function
+remark: ch7pyafbm45fnihzbgkicjqpcxrlt26sdtivy53isxveo4vwgxfu.py:18:0: 156 instructions in function
+remark: ch7pyafbm45fnihzbgkicjqpcxrlt26sdtivy53isxveo4vwgxfu.py:18:0: 57 instructions in function
+remark: cnq5hriwrz7tppndhept5oi37wltnxkyjwqv73ymus2osyduhmds.py:18:0: 381 instructions in function
+remark: cdqfem5vrxekvoybtdok2crds5e5lhwp5tnsrvqqno6igjkr7xal.py:18:0: 589 instructions in function
+remark: cb66v27nuullqdr3rmigjckl3aakcpvmrst4qxt36foxfqeqx3a7.py:18:0: 264 instructions in function
+remark: c6s4ayjbkrz4ikzpui5samcijzjxtfj76elmgguxktvyinwjzkh2.py:18:0: 349 instructions in function
+remark: craoyqijk4hybnfsikf3krsnkkqlqrbvb5oxqg2aimovgsgsrtvw.py:18:0: 434 instructions in function
+remark: csrftydxbdcvjzvqb644hs7austvpiv6pckkm747g2hz7rmle5b7.py:18:0: 639 instructions in function
+remark: cg7xv4tt65cm4auo3qp2irbtgvfcjooarhnqxdf6umsvcqfg5zg4.py:18:0: 255 instructions in function
+remark: czgbzlolsa35luzw45joioukque7dxpv4esaqay25y2xevn3pg27.py:18:0: 264 instructions in function
+remark: cusqofoenvejm4af3wpxyk3fkmpam7hlugpcc3j5avpbyzw5jkfr.py:18:0: 429 instructions in function
+03:59:30 eval @ 50M: val loss 5.4119 ppl 224.05 (best) [53s]
+04:00:09 upd 200 | 52M (5.2%) | loss 5.3705 | lr 5.00e-04 | gn 0.39 | 27,321 tok/s | 9595 ms/upd (data 9) | 12.1 GiB | ETA 4h 45m
+04:00:51 upd 210 | 55M (5.5%) | loss 5.3299 | lr 5.00e-04 | gn 0.47 | 62,879 tok/s | 4169 ms/upd (data 10) | 12.1 GiB | ETA 4h 36m
+04:01:33 upd 220 | 58M (5.8%) | loss 5.2260 | lr 5.00e-04 | gn 0.49 | 62,884 tok/s | 4169 ms/upd (data 12) | 12.1 GiB | ETA 4h 30m
+04:02:14 upd 230 | 60M (6.0%) | loss 5.1636 | lr 5.00e-04 | gn 0.49 | 62,853 tok/s | 4171 ms/upd (data 13) | 12.1 GiB | ETA 4h 25m
+04:02:56 upd 240 | 63M (6.3%) | loss 5.1058 | lr 5.00e-04 | gn 0.46 | 62,883 tok/s | 4169 ms/upd (data 13) | 12.1 GiB | ETA 4h 21m
+04:03:38 upd 250 | 66M (6.6%) | loss 5.0727 | lr 5.00e-04 | gn 0.38 | 62,891 tok/s | 4168 ms/upd (data 18) | 12.1 GiB | ETA 4h 17m
+04:04:19 upd 260 | 68M (6.8%) | loss 5.0617 | lr 5.00e-04 | gn 0.45 | 62,877 tok/s | 4169 ms/upd (data 14) | 12.1 GiB | ETA 4h 14m
+04:05:01 upd 270 | 71M (7.1%) | loss 5.0030 | lr 5.00e-04 | gn 0.51 | 62,886 tok/s | 4169 ms/upd (data 13) | 12.1 GiB | ETA 4h 12m
+04:05:43 upd 280 | 73M (7.3%) | loss 4.9850 | lr 5.00e-04 | gn 0.40 | 62,884 tok/s | 4169 ms/upd (data 16) | 12.1 GiB | ETA 4h 10m
+04:06:24 upd 290 | 76M (7.6%) | loss 4.9298 | lr 5.00e-04 | gn 0.56 | 62,875 tok/s | 4169 ms/upd (data 12) | 12.1 GiB | ETA 4h 08m
+04:07:06 upd 300 | 79M (7.9%) | loss 4.9211 | lr 5.00e-04 | gn 0.40 | 62,884 tok/s | 4169 ms/upd (data 16) | 12.1 GiB | ETA 4h 07m
+04:07:48 upd 310 | 81M (8.1%) | loss 4.8437 | lr 5.00e-04 | gn 0.38 | 62,885 tok/s | 4169 ms/upd (data 19) | 12.1 GiB | ETA 4h 06m
+04:08:29 upd 320 | 84M (8.4%) | loss 4.8144 | lr 5.00e-04 | gn 0.47 | 62,881 tok/s | 4169 ms/upd (data 14) | 12.1 GiB | ETA 4h 04m
+04:09:11 upd 330 | 87M (8.7%) | loss 4.8138 | lr 5.00e-04 | gn 0.37 | 62,891 tok/s | 4168 ms/upd (data 11) | 12.1 GiB | ETA 4h 03m
+04:09:53 upd 340 | 89M (8.9%) | loss 4.7148 | lr 5.00e-04 | gn 0.61 | 62,886 tok/s | 4169 ms/upd (data 10) | 12.1 GiB | ETA 4h 02m
+04:10:35 upd 350 | 92M (9.2%) | loss 4.6680 | lr 5.00e-04 | gn 0.43 | 62,883 tok/s | 4169 ms/upd (data 12) | 12.1 GiB | ETA 4h 01m
+04:11:16 upd 360 | 94M (9.4%) | loss 4.6574 | lr 5.00e-04 | gn 0.41 | 62,883 tok/s | 4169 ms/upd (data 13) | 12.1 GiB | ETA 4h 00m
+04:11:58 upd 370 | 97M (9.7%) | loss 4.6778 | lr 5.00e-04 | gn 0.41 | 62,882 tok/s | 4169 ms/upd (data 12) | 12.1 GiB | ETA 3h 59m
+04:12:40 upd 380 | 100M (10.0%) | loss 4.6250 | lr 5.00e-04 | gn 0.34 | 62,881 tok/s | 4169 ms/upd (data 9) | 12.1 GiB | ETA 3h 59m
+04:13:07 eval @ 100M: val loss 4.5929 ppl 98.78 (best) [19s]
+04:13:29 samples written @ 100M [22s]
+04:13:29 === milestone 100M: segment 28m 35s, elapsed 28m 35s ===
+04:14:04 upd 390 | 102M (10.2%) | loss 4.6099 | lr 5.00e-04 | gn 0.44 | 30,891 tok/s | 8486 ms/upd (data 13) | 12.1 GiB | ETA 4h 25m
+04:14:46 upd 400 | 105M (10.5%) | loss 4.5752 | lr 5.00e-04 | gn 0.35 | 62,784 tok/s | 4175 ms/upd (data 12) | 12.1 GiB | ETA 4h 18m

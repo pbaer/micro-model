@@ -1,0 +1,142 @@
+tokens=100M update=382 2026-09-13 04:13:29
+================================================================================
+PROMPT: 'The capital of France is'
+--- greedy:
+ a great place in the United States. The United States is a nation of the United States and the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of the United States. The United States is a nation of
+--- sampled:
+ a small traffil of the district of Jefferson in 2006. The far more than the interness of the city of Wattayne is the "nindle" of the country.
+The state of Greece is the number of western Africa in the world. It is the largest general population of Britain, in the Middle East and the state of Japan. It is the largest city in the country. The population of the country is the largest nation in
+================================================================================
+PROMPT: 'Photosynthesis is the process by which plants'
+--- greedy:
+ and plants are used to create a variety of species that are used to create a variety of species that are used to create a variety of species that are used to provide a variety of species and to provide a variety of species and species that are used to provide a variety of species and species. The species are also used to describe the species that are used to be used to identify the species and to provide a variety of species and species that are used to provide a variety of species and
+--- sampled:
+ and plants have been completely healthy. For example, in 2005, zoos are discarded using in the Creative Commons Attribution-National Research Society (NIH) in 2002, which is an essential resource for self-care, including a number of regional, unitsprimated, general public health care workers in the United States.
+The identification of the ARPUD is described as “darkin, as one of the most important ethical procedures
+================================================================================
+PROMPT: 'Question: What is 12 + 7?\nAnswer:'
+--- greedy:
+ 1 = 1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+1
+
+--- sampled:
+ If you have 1 or 1, you have 22 or 3 or 1. Note: If you have 1 or 1, you will need to work with 4, or 5 of 10.
+If you want to use 4, or 3 of 4 or 5, you are you've 2 or 5 to 3.
+So you need to to have 3 or 4 and 5. The
+================================================================================
+PROMPT: 'def is_prime(n):\n    '
+--- greedy:
+ # This is the function that is the function
+        # This is the function that is the function
+        # This is the function that is the function
+        # This is the function
+        # This is the function that is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is the function
+        # This is
+--- sampled:
+ x is equal to 1. For example, in 29:
+    x is 1. x in (x) is 1.1.2 is n
+
+#       x is 2. x is a 0.55 ( x)
+
+
+## n is 1.54 x 0 x 1 0 2 05
+= 1
+x - 0.43
+x, a
+x = 
+================================================================================
+PROMPT: '#!/bin/bash\n# count lines in all .py files\n'
+--- greedy:
+#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	#	
+--- sampled:
+#   dotnumbers
+#  	#     --name for file in
+	if [ "$#" -gt 1 ]; then
+    echo "1 to exit"
+    echo ";;
+    echo "ERROR: ${0}"
+      exit 1
+    echo "  $1 is $1"
+  fi
+}
+
+#   ip1 is not a temporary directory.
+function ARRLU_LON_DID to check if it exists
+   echo "hello")
+   
+================================================================================
+PROMPT: 'Once upon a time, in a small village,'
+--- greedy:
+ the city of the city was built in a city of the city. The city of the city was built in the city of the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of the city of the city of the city. The city was built in the city of
+--- sampled:
+ the estuary of the church, the kind of community that lies in an informal community. There are three powerful in the country: the city of the family. The center of the city of the city is the country of the state. The trail of the city is the city of the city of the city.
+For some time, the city was a famous time to day. For the time, the city had been located to the city, and to the most important meeting. The
+================================================================================
+PROMPT: 'The three primary colors are'
+--- greedy:
+:
+- The first three colors in the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first half of the first three hundredth of the first three hundredth of the first three hundredth of the first three hundredth of the
+--- sampled:
+:
+- The first two or more items to be registered to make a new ball
+- The first three rounds in the wordline
+The third part is to be used for all the recipes to understand all the dice.
+The following sentences are valid to be added to the right section of the left ones.
+- The following exercises are used in the first two directions to help the children to know about the eight-hour numbers.
+- The first focus is to show a second meeting. The
+================================================================================
+PROMPT: '| name | age |\n|---|---|\n| Alice | 30 |\n'
+--- greedy:
+|1||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||10||
+--- sampled:
+|Employ||102-20||2012||1031-10||782||1913)||||1983||42||189||104)||||1983||1993||1883||69||1922||65||19||1922||1933||1903||1

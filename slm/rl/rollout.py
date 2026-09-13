@@ -71,6 +71,58 @@ def teacher_forced_logprobs(model: Transformer, prompt_ids: list[int], completio
 
 
 @torch.no_grad()
+def sample_completions(
+    model: Transformer,
+    tok: SlmTokenizer,
+    prompts: list[list[int]],
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float = 1.0,
+    top_k: int = 0,
+    generator: torch.Generator | None = None,
+    stop: set[int] | None = None,
+) -> list[list[int]]:
+    """Sample one completion per prompt. All prompts must have the same length (no padding needed)."""
+    device = next(model.parameters()).device
+    B, P = len(prompts), len(prompts[0])
+    assert all(len(p) == P for p in prompts), "prompts must share a length"
+    max_new_tokens = max(1, min(max_new_tokens, model.cfg.max_seq_len - P))
+    stop = stop or {tok.end_id, tok.eos_id}
+    cache = KVCache(model.cfg, B, P + max_new_tokens, device, model.output_weight.dtype)
+    cur = torch.tensor(prompts, device=device)
+    done = torch.zeros(B, dtype=torch.bool, device=device)
+    comps: list[list[int]] = [[] for _ in range(B)]
+    with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
+        for _ in range(max_new_tokens):
+            logits = model(cur, cache=cache, last_only=True)[:, -1, :].float()
+            nxt = sample_next(logits, temperature, top_p, top_k, generator)
+            nl = nxt.tolist()
+            dl = done.tolist()
+            for i in range(B):
+                if not dl[i]:
+                    comps[i].append(nl[i])
+                    if nl[i] in stop:
+                        done[i] = True
+            if bool(done.all()):
+                break
+            cur = nxt[:, None]
+    return comps
+
+
+def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, reward_scheme, checkpoint, step) -> Rollout:
+    parsed = parse_assistant(tok, c)
+    v = verify_numeric(parsed["answer"], task.answer)
+    malformed = bool(parsed["malformed"]) or not parsed["terminated"]
+    return Rollout(
+        prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
+        text=tok.decode(c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
+        reward=reward_from_verdict(v, malformed, reward_scheme), verifier=v.reason, malformed=malformed,
+        termination="stop" if parsed["terminated"] else "length", n_tokens=len(c), old_logprobs=old_lp,
+        ref_logprobs=ref_lp, temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
+    )
+
+
+@torch.no_grad()
 def rollout_group(
     model: Transformer,
     tok: SlmTokenizer,
@@ -91,45 +143,15 @@ def rollout_group(
     was_training = model.training
     model.eval()
     prompt_ids = format_chat(tok, prompt_messages(task), add_generation_prompt=True, think_required=think_required).ids
-    B, P = group_size, len(prompt_ids)
-    max_new_tokens = max(1, min(max_new_tokens, model.cfg.max_seq_len - P))
     gen = torch.Generator(device=device)
     if seed is not None:
         gen.manual_seed(seed)
-    cache = KVCache(model.cfg, B, P + max_new_tokens, device, model.output_weight.dtype)
-    cur = torch.tensor([prompt_ids] * B, device=device)
-    stop = {tok.end_id, tok.eos_id}
-    done = torch.zeros(B, dtype=torch.bool, device=device)
-    comps: list[list[int]] = [[] for _ in range(B)]
-    with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device.type == "cuda"):
-        for _ in range(max_new_tokens):
-            logits = model(cur, cache=cache, last_only=True)[:, -1, :].float()
-            nxt = sample_next(logits, temperature, top_p, top_k, gen)
-            for i in range(B):
-                if not done[i]:
-                    comps[i].append(int(nxt[i]))
-                    if int(nxt[i]) in stop:
-                        done[i] = True
-            if bool(done.all()):
-                break
-            cur = nxt[:, None]
+    comps = sample_completions(model, tok, [prompt_ids] * group_size, max_new_tokens, temperature, top_p, top_k, gen)
     old_lp = teacher_forced_logprobs(model, prompt_ids, comps, tok.pad_id)
     ref_lp = teacher_forced_logprobs(ref_model, prompt_ids, comps, tok.pad_id) if ref_model is not None else None
     if was_training:
         model.train()
-    out = []
-    for i, c in enumerate(comps):
-        parsed = parse_assistant(tok, c)
-        v = verify_numeric(parsed["answer"], task.answer)
-        malformed = bool(parsed["malformed"]) or not parsed["terminated"]
-        out.append(Rollout(
-            prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
-            text=tok.decode(c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
-            reward=reward_from_verdict(v, malformed, reward_scheme), verifier=v.reason, malformed=malformed,
-            termination="stop" if parsed["terminated"] else "length", n_tokens=len(c), old_logprobs=old_lp[i],
-            ref_logprobs=ref_lp[i] if ref_lp is not None else None, temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
-        ))
-    return out
+    return [_make_rollout(tok, task, prompt_ids, c, old_lp[i], ref_lp[i] if ref_lp is not None else None, temperature, top_p, reward_scheme, checkpoint, step) for i, c in enumerate(comps)]
 
 
 def save_rollouts(rollouts: list[Rollout], path: Path) -> None:
@@ -140,15 +162,26 @@ def save_rollouts(rollouts: list[Rollout], path: Path) -> None:
 
 
 @torch.no_grad()
-def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], max_new_tokens: int = 256, think_required: bool = True, batch: int = 16) -> dict:
-    """Greedy decode each task once (one prompt per row; prompts padded on the LEFT via grouping by length)."""
-    correct = 0
-    malformed = 0
+def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], max_new_tokens: int = 256, think_required: bool = True, batch: int = 32) -> dict:
+    """Greedy decode every task once, batched over prompts of equal token length."""
+    was_training = model.training
+    model.eval()
+    enc = [(t, format_chat(tok, prompt_messages(t), add_generation_prompt=True, think_required=think_required).ids) for t in tasks]
+    by_len: dict[int, list] = {}
+    for t, ids in enc:
+        by_len.setdefault(len(ids), []).append((t, ids))
+    correct = malformed = 0
     lengths = []
-    for t in tasks:
-        r = rollout_group(model, tok, t, group_size=1, max_new_tokens=max_new_tokens, temperature=0.0, think_required=think_required)[0]
-        correct += int(r.correct)
-        malformed += int(r.malformed)
-        lengths.append(r.n_tokens)
+    for group in by_len.values():
+        for b in range(0, len(group), batch):
+            chunk = group[b : b + batch]
+            comps = sample_completions(model, tok, [ids for _, ids in chunk], max_new_tokens, 0.0)
+            for (t, ids), c in zip(chunk, comps):
+                r = _make_rollout(tok, t, ids, c, [], None, 0.0, 1.0, "binary", "", 0)
+                correct += int(r.correct)
+                malformed += int(r.malformed)
+                lengths.append(r.n_tokens)
+    if was_training:
+        model.train()
     n = max(1, len(tasks))
     return {"accuracy": correct / n, "malformed_rate": malformed / n, "mean_len": sum(lengths) / n, "n": len(tasks)}

@@ -5,7 +5,7 @@ model_file: configs/model/base_149m.yaml
 init_from: runs/m5_reasoning_149m/checkpoints/final.pt
 tasks: [arith1, arith2]
 n_train_prompts: 4000
-n_heldout_prompts: 200
+n_heldout_prompts: 100
 group_size: 8
 prompts_per_step: 8
 max_new_tokens: 192
@@ -23,7 +23,7 @@ kl_kind: k3
 normalize_std: true
 ppo_epochs: 1
 microbatch: 8
-total_steps: 300
+total_steps: 200
 eval_every_steps: 25
 eval_max_new_tokens: 192
 ckpt_every_minutes: 15
