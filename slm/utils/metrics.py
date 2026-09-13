@@ -110,7 +110,8 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
     train = [r for r in records if r["kind"] == "train"]
     evals = [r for r in records if r["kind"] == "eval"]
     last = train[-1] if train else {}
-    total = cfg.get("schedule", {}).get("total_tokens", 0)
+    total = (cfg.get("schedule") or {}).get("total_tokens", 0) if isinstance(cfg.get("schedule"), dict) else 0
+    total_steps = cfg.get("total_steps") or 0  # RL runs progress by optimizer step, not tokens
     tokens = max((r.get("tokens") or 0 for r in records), default=0)  # finish/milestone records carry the exact total
     tps = last.get("tok_s_ema") or last.get("tok_s") or 0.0
     status = run_status(records)
@@ -123,10 +124,16 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
         elapsed = float(last["elapsed_s"]) + (time.time() - last["time"] if status == "running" else 0.0)
     else:
         elapsed = active_seconds(records)
-    eta = (total - tokens) / tps if tps > 0 and total > tokens else 0.0
+    step = last.get("update", 0)
+    if total_steps:
+        progress = min(1.0, step / total_steps)
+        eta = last.get("eta_s") or 0.0
+    else:
+        progress = min(1.0, tokens / total) if total else 0.0
+        eta = (total - tokens) / tps if tps > 0 and total > tokens else 0.0
     return {
         "run_name": meta.get("run_name"), "stage": meta.get("stage", "pretrain"), "status": status,
-        "tokens": tokens, "total_tokens": total, "progress": min(1.0, tokens / total) if total else 0.0,
+        "tokens": tokens, "total_tokens": total, "progress": progress, "total_steps": total_steps,
         "update": last.get("update", 0), "loss": last.get("loss"), "lr": last.get("lr"), "grad_norm": last.get("grad_norm"),
         "tok_s": tps, "tok_s_avg": tokens / elapsed if elapsed > 0 else 0.0, "elapsed_s": elapsed, "eta_s": eta,
         "initial_estimate_s": meta.get("initial_estimate_s"),

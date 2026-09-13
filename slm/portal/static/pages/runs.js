@@ -79,7 +79,7 @@ export function RunDetail({ run }) {
     <div class="sub">${s.stage} · started ${s.started || "?"} · ${s.gpu || ""} · git ${(s.git_commit || "").slice(0, 8)} · ${fmtInt(s.n_params)} params · ${s.has_report ? html`<a href=${`/api/runs/${encodeURIComponent(run)}/report`} target="_blank">report.html</a>` : ""}</div>
     <div class="bar"><div style=${"width:" + (s.progress * 100).toFixed(2) + "%"}></div></div>
     <div class="tiles">
-      <${Tile} k="progress" v=${(s.progress * 100).toFixed(1) + "%"} s=${`${fmtTok(s.tokens)} / ${fmtTok(s.total_tokens)} tokens`} />
+      <${Tile} k="progress" v=${(s.progress * 100).toFixed(1) + "%"} s=${s.total_steps ? `step ${fmtInt(s.update)} / ${fmtInt(s.total_steps)} · ${fmtTok(s.tokens)} completion tokens` : `${fmtTok(s.tokens)} / ${fmtTok(s.total_tokens)} tokens`} />
       <${Tile} k="ETA" v=${eta != null ? fmtDur(eta) : "-"} s=${eta != null ? "finish ~" + new Date(Date.now() + eta * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : ""} />
       <${Tile} k="elapsed" v=${fmtDur(s.elapsed_s)} s=${s.initial_estimate_s ? "initial estimate " + fmtDur(s.initial_estimate_s) : ""} />
       <${Tile} k="tokens/sec" v=${fmtInt(s.tok_s)} s=${"run avg " + fmtInt(s.tok_s_avg)} />
