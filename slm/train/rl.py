@@ -159,8 +159,9 @@ class RlTrainer:
         rollouts: list[Rollout] = []
         group_stds, all_zero = [], 0
         for t in tasks:
-            g = rollout_group(self.model, self.tok, t, c.group_size, c.max_new_tokens, c.temperature, c.top_p, c.top_k, seed=self.rng.randrange(2**31),
-                              think_required=c.think_required, reward_scheme=c.reward_scheme, ref_model=self.ref, checkpoint=c.init_from, step=self.step)
+            with sdpa_context("decode"):
+                g = rollout_group(self.model, self.tok, t, c.group_size, c.max_new_tokens, c.temperature, c.top_p, c.top_k, seed=self.rng.randrange(2**31),
+                                  think_required=c.think_required, reward_scheme=c.reward_scheme, ref_model=self.ref, checkpoint=c.init_from, step=self.step)
             r = torch.tensor([x.reward for x in g])
             adv = group_advantages(r, c.normalize_std)
             for x, a in zip(g, adv.tolist()):
@@ -230,9 +231,10 @@ class RlTrainer:
     def evaluate(self) -> dict:
         c = self.cfg
         self.model.eval()
-        held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required)
-        train_sub = self.rng.sample(self.train_tasks, min(len(self.heldout_tasks), len(self.train_tasks)))
-        tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required)
+        with sdpa_context("decode"):
+            held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required)
+            train_sub = self.rng.sample(self.train_tasks, min(len(self.heldout_tasks), len(self.train_tasks)))
+            tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required)
         self.model.train()
         return {"heldout_acc": held["accuracy"], "heldout_malformed": held["malformed_rate"], "heldout_len": held["mean_len"], "train_acc": tr["accuracy"], "train_len": tr["mean_len"]}
 

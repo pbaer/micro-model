@@ -21,6 +21,7 @@ from slm.config import ModelConfig, RopeScaling, from_dict
 from slm.data.tokenizer import SlmTokenizer
 from slm.model import Transformer
 from slm.rl.rewards import _NUM_RE  # noqa: PLC2701
+from slm.utils.sdpa import sdpa_context
 
 FILLER = [
     "The village market opened early, and the vendors arranged their goods in neat rows along the square.",
@@ -51,7 +52,7 @@ def build_haystack(tok: SlmTokenizer, total_tokens: int, depth: float, needle: s
 @torch.no_grad()
 def answer(model: Transformer, tok: SlmTokenizer, ids: list[int], max_new: int = 12) -> str:
     x = torch.tensor([ids], device=next(model.parameters()).device)
-    with torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
+    with sdpa_context("decode"), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
         out = model.generate(x, max_new, temperature=0.0, stop_ids=(tok.eos_id,))
     return tok.decode(out[0, len(ids) :].tolist())
 

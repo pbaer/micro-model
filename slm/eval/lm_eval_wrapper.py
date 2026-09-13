@@ -100,7 +100,7 @@ class SlmLM(LM):
 
     def generate_until(self, requests, disable_tqdm: bool = False):
         out = []
-        with sdpa_context("auto"), torch.no_grad():
+        with sdpa_context("decode"), torch.no_grad():
             for r in requests:
                 context, gen_kwargs = r.args
                 until = gen_kwargs.get("until", []) or []

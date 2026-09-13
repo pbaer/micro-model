@@ -58,11 +58,27 @@ def best_backend(exclude_math: bool = True) -> str:
     return min(ok, key=ok.get)
 
 
+# cuDNN attention builds an execution plan per new tensor shape. Incremental decoding changes the
+# KV length every step, so cuDNN makes generation pathologically slow (minutes for a 26M model).
+# Use these for any KV-cache decode path; keep cuDNN for fixed-shape training.
+DECODE_BACKENDS = [SDPBackend.EFFICIENT_ATTENTION, SDPBackend.MATH]
+ALL_BACKENDS = [SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION, SDPBackend.CUDNN_ATTENTION, SDPBackend.MATH]
+
+
 @contextlib.contextmanager
 def sdpa_context(backend: str | None):
-    """Context manager restricting SDPA to one backend ('auto'/None = PyTorch default)."""
-    if backend in (None, "auto"):
+    """Restrict SDPA to a backend. 'decode' = efficient+math (for generation); 'auto' = all backends
+    (explicitly re-enabled, so it also *escapes* an enclosing restriction); None = no change."""
+    if backend is None:
         yield
+        return
+    if backend == "auto":
+        with sdpa_kernel(ALL_BACKENDS):
+            yield
+        return
+    if backend == "decode":
+        with sdpa_kernel(DECODE_BACKENDS):
+            yield
         return
     with sdpa_kernel(BACKENDS[backend]):
         yield

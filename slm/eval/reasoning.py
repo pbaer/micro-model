@@ -60,7 +60,7 @@ def main() -> None:
     model = load_model(a.checkpoint)
     res = {"checkpoint": a.checkpoint, "per_task": {}}
     t0 = time.time()
-    with sdpa_context("auto"):
+    with sdpa_context("decode"):
         for name in a.tasks:
             tasks = make_tasks([name], a.n, "heldout", a.seed)
             r = greedy_accuracy(model, tok, tasks, a.max_new)

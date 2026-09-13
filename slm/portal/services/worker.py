@@ -21,7 +21,7 @@ def worker_main(conn, tokenizer_root: str) -> None:  # pragma: no cover - runs i
     from slm.utils.sdpa import sdpa_context
 
     h = Harness(Path(tokenizer_root))
-    with sdpa_context("auto"):
+    with sdpa_context("decode"):
         while True:
             try:
                 msg = conn.recv()

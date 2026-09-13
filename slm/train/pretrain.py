@@ -180,7 +180,7 @@ class Trainer:
         if not self.cfg.eval.prompts:
             return
         e = self.cfg.eval
-        with sdpa_context("auto"):
+        with sdpa_context("decode"):
             samples = sample_suite(self.model, self.tok, e.prompts, e.gen_max_new_tokens, e.gen_temperature, e.gen_top_p)
         text = f"tokens={fmt_tokens(self.counters['tokens'])} update={self.counters['update']} {time.strftime('%Y-%m-%d %H:%M:%S')}\n" + format_samples(samples)
         (self.run_dir / "samples" / f"{self.counters['tokens']:012d}.txt").write_text(text, encoding="utf-8")
