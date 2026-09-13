@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from slm.portal.api import arch as arch_api
 from slm.portal.api import data as data_api
 from slm.portal.api import runs as runs_api
 from slm.portal.api import system as system_api
@@ -29,6 +30,7 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
     app.include_router(runs_api.router)
     app.include_router(data_api.router)
     app.include_router(tokenizer_api.router)
+    app.include_router(arch_api.router)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)

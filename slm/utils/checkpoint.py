@@ -56,9 +56,9 @@ def rng_state() -> dict[str, Any]:
 def set_rng_state(s: dict[str, Any]) -> None:
     random.setstate(s["python"])
     np.random.set_state(s["numpy"])
-    torch.set_rng_state(s["torch_cpu"])
+    torch.set_rng_state(s["torch_cpu"].cpu())
     if s.get("torch_cuda") is not None and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(s["torch_cuda"])
+        torch.cuda.set_rng_state_all([t.cpu() for t in s["torch_cuda"]])
 
 
 def _replace_with_retry(src: Path, dst: Path, attempts: int = 10, wait_s: float = 1.0) -> None:
