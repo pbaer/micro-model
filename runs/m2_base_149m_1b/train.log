@@ -143,3 +143,25 @@ remark: cusqofoenvejm4af3wpxyk3fkmpam7hlugpcc3j5avpbyzw5jkfr.py:18:0: 429 instru
 04:13:29 === milestone 100M: segment 28m 35s, elapsed 28m 35s ===
 04:14:04 upd 390 | 102M (10.2%) | loss 4.6099 | lr 5.00e-04 | gn 0.44 | 30,891 tok/s | 8486 ms/upd (data 13) | 12.1 GiB | ETA 4h 25m
 04:14:46 upd 400 | 105M (10.5%) | loss 4.5752 | lr 5.00e-04 | gn 0.35 | 62,784 tok/s | 4175 ms/upd (data 12) | 12.1 GiB | ETA 4h 18m
+04:15:28 upd 410 | 107M (10.7%) | loss 4.5397 | lr 5.00e-04 | gn 0.34 | 62,772 tok/s | 4176 ms/upd (data 12) | 12.1 GiB | ETA 4h 13m
+04:16:10 upd 420 | 110M (11.0%) | loss 4.5528 | lr 5.00e-04 | gn 0.41 | 62,798 tok/s | 4174 ms/upd (data 12) | 12.1 GiB | ETA 4h 09m
+04:16:51 upd 430 | 113M (11.3%) | loss 4.4994 | lr 5.00e-04 | gn 0.36 | 62,787 tok/s | 4175 ms/upd (data 13) | 12.1 GiB | ETA 4h 05m
+04:17:33 upd 440 | 115M (11.5%) | loss 4.4534 | lr 5.00e-04 | gn 0.32 | 62,800 tok/s | 4174 ms/upd (data 14) | 12.1 GiB | ETA 4h 02m
+04:18:15 upd 450 | 118M (11.8%) | loss 4.4164 | lr 5.00e-04 | gn 0.39 | 62,794 tok/s | 4175 ms/upd (data 9) | 12.1 GiB | ETA 4h 00m
+04:18:57 upd 460 | 121M (12.1%) | loss 4.3593 | lr 5.00e-04 | gn 0.43 | 62,803 tok/s | 4174 ms/upd (data 15) | 12.1 GiB | ETA 3h 58m
+04:19:38 upd 470 | 123M (12.3%) | loss 4.2999 | lr 5.00e-04 | gn 0.35 | 62,796 tok/s | 4175 ms/upd (data 15) | 12.1 GiB | ETA 3h 56m
+04:20:20 upd 480 | 126M (12.6%) | loss 4.2780 | lr 5.00e-04 | gn 0.35 | 62,804 tok/s | 4174 ms/upd (data 16) | 12.1 GiB | ETA 3h 55m
+04:21:02 upd 490 | 128M (12.8%) | loss 4.3303 | lr 5.00e-04 | gn 0.34 | 62,803 tok/s | 4174 ms/upd (data 14) | 12.1 GiB | ETA 3h 53m
+04:21:44 upd 500 | 131M (13.1%) | loss 4.3190 | lr 5.00e-04 | gn 0.41 | 62,798 tok/s | 4174 ms/upd (data 13) | 12.1 GiB | ETA 3h 52m
+04:22:25 upd 510 | 134M (13.4%) | loss 4.2913 | lr 5.00e-04 | gn 0.34 | 62,797 tok/s | 4174 ms/upd (data 13) | 12.1 GiB | ETA 3h 51m
+04:23:07 upd 520 | 136M (13.6%) | loss 4.2452 | lr 5.00e-04 | gn 0.36 | 62,797 tok/s | 4174 ms/upd (data 13) | 12.1 GiB | ETA 3h 50m
+04:23:49 upd 530 | 139M (13.9%) | loss 4.2392 | lr 5.00e-04 | gn 0.64 | 62,787 tok/s | 4175 ms/upd (data 12) | 12.1 GiB | ETA 3h 49m
+04:24:31 upd 540 | 142M (14.2%) | loss 4.1940 | lr 5.00e-04 | gn 0.45 | 62,801 tok/s | 4174 ms/upd (data 14) | 12.1 GiB | ETA 3h 48m
+04:25:12 upd 550 | 144M (14.4%) | loss 4.1411 | lr 5.00e-04 | gn 0.36 | 62,793 tok/s | 4175 ms/upd (data 11) | 12.1 GiB | ETA 3h 47m
+04:25:54 upd 560 | 147M (14.7%) | loss 4.0801 | lr 5.00e-04 | gn 0.32 | 62,796 tok/s | 4175 ms/upd (data 15) | 12.1 GiB | ETA 3h 46m
+04:26:36 upd 570 | 149M (14.9%) | loss 4.1215 | lr 5.00e-04 | gn 0.37 | 62,800 tok/s | 4174 ms/upd (data 11) | 12.1 GiB | ETA 3h 46m
+04:27:07 eval @ 150M: val loss 4.0878 ppl 59.61 (best) [19s]
+04:27:37 upd 580 | 152M (15.2%) | loss 4.0269 | lr 5.00e-04 | gn 0.37 | 43,081 tok/s | 6085 ms/upd (data 13) | 12.1 GiB | ETA 4h 00m
+04:28:18 upd 590 | 155M (15.5%) | loss 4.0137 | lr 5.00e-04 | gn 0.34 | 62,785 tok/s | 4175 ms/upd (data 12) | 12.1 GiB | ETA 3h 56m
+04:29:02 upd 600 | 157M (15.7%) | loss 3.9961 | lr 5.00e-04 | gn 0.34 | 60,773 tok/s | 4313 ms/upd (data 13) | 12.1 GiB | ETA 3h 54m
+04:29:43 upd 610 | 160M (16.0%) | loss 4.0794 | lr 5.00e-04 | gn 0.31 | 62,790 tok/s | 4175 ms/upd (data 14) | 12.1 GiB | ETA 3h 51m

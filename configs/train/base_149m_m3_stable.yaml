@@ -6,7 +6,7 @@ model_file: configs/model/base_149m.yaml
 init_from: runs/m2_base_149m_1b/checkpoints/snap_800M.pt
 data:
   tokenized_root: C:\slm-data\tokenized\v1
-  mixture: {fineweb-edu: 0.80, cosmopedia: 0.10, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+  mixture: {fineweb-edu-b: 0.80, cosmopedia: 0.10, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}  # fineweb-edu-b = 7 files, 5.3B tokens
   seq_len: 2048
   val_tokens: 4000000
 optim: {lr: 5.0e-4, betas: [0.9, 0.95], weight_decay: 0.1, grad_clip: 1.0}
