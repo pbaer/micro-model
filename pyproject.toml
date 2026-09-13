@@ -17,6 +17,10 @@ dependencies = [
     "pytest>=8.0",
 ]
 
+[project.optional-dependencies]
+portal = ["fastapi>=0.115", "uvicorn>=0.30"]
+dev = ["playwright>=1.45", "pytest-playwright>=0.5"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
