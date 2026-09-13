@@ -6,35 +6,6 @@ import { Chart } from "../components/chart.js";
 
 const html = htm.bind(h);
 
-export function Runs() {
-  const [runs, setRuns] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    const tick = () => api("/api/runs").then((r) => alive && setRuns(r)).catch(() => {});
-    tick();
-    const id = setInterval(tick, 10000);
-    return () => { alive = false; clearInterval(id); };
-  }, []);
-  if (!runs) return html`<div>loading…</div>`;
-  const live = runs.filter((r) => r.status === "running");
-  return html`<div>
-    <h1>Runs</h1><div class="sub">${runs.length} runs · ${live.length} live</div>
-    ${live.length > 0 && html`<div class="cards" style="margin-bottom:12px">${live.map((r) => html`
-      <a class="card" href=${"#/runs/" + encodeURIComponent(r.run_name)}>
-        <div><b>${r.run_name}</b> <span class="status running">running</span></div>
-        <div class="bar"><div style=${"width:" + (r.progress * 100).toFixed(1) + "%"}></div></div>
-        <div class="muted">${fmtTok(r.tokens)} / ${fmtTok(r.total_tokens)} · loss ${fmtNum(r.loss, 3)} · val ${fmtNum(r.val_loss, 3)} · ${fmtInt(r.tok_s)} tok/s · ETA ${fmtDur(r.eta_s)}</div>
-      </a>`)}</div>`}
-    <table><tr><th>run</th><th>stage</th><th>status</th><th>tokens</th><th>progress</th><th>loss</th><th>best val</th><th>tok/s</th><th>elapsed</th><th>ETA</th><th>started</th><th>git</th></tr>
-    ${runs.map((r) => html`<tr class="click" onClick=${() => (location.hash = "#/runs/" + encodeURIComponent(r.run_name))}>
-      <td>${r.run_name}</td><td>${r.stage}</td><td><span class=${"status " + r.status}>${r.status}</span></td>
-      <td>${fmtTok(r.tokens)} / ${fmtTok(r.total_tokens)}</td><td>${(r.progress * 100).toFixed(1)}%</td><td>${fmtNum(r.loss, 4)}</td><td>${fmtNum(r.best_val, 4)}</td>
-      <td>${fmtInt(r.tok_s)}</td><td>${fmtDur(r.elapsed_s)}</td><td>${r.status === "running" ? fmtDur(r.eta_s) : "-"}</td><td>${r.started || "-"}</td><td>${(r.git_commit || "").slice(0, 8)}</td></tr>`)}
-    </table>
-    ${runs.length === 0 && html`<div class="empty-note">No runs yet.</div>`}
-  </div>`;
-}
-
 function Tile({ k, v, s }) {
   return html`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s || ""}</div></div>`;
 }

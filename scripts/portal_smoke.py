@@ -76,12 +76,10 @@ def main() -> int:
         pg.goto(a.url + "/#/")
         settle(800)
         print(f"home ok ({time.time() - t0:.1f}s)")
-        pg.goto(a.url + "/#/runs")
-        settle(800)
         rows = pg.locator("tr.click").all()
         print(f"runs: {len(rows)} rows")
         for i in range(len(rows)):
-            pg.goto(a.url + "/#/runs")
+            pg.goto(a.url + "/#/")
             settle(600)
             pg.locator("tr.click").nth(i).click()
             settle(1200)
@@ -94,7 +92,7 @@ def main() -> int:
                 settle()
             cycle_selects()
             print(f"  run {name!r}: clicked {sorted(clicked)}")
-        for page in ("data", "tokenizer", "arch", "model"):
+        for page in ("data", "tokenizer", "arch", "model"):  # overview already exercised above
             t0 = time.time()
             pg.goto(a.url + "/#/" + page)
             settle(1200)

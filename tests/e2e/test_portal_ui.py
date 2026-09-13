@@ -178,12 +178,9 @@ def test_home_and_runs(server, browser):
     p = Page(browser, server)
     p.goto("/")
     body = p.page.inner_text("main")
-    assert "Pipeline" in body and "Data readiness" in body
-    assert body.count("live") >= 1 and "Pretraining (base model)" in body and "not started" in body
-    p.goto("/runs")
-    body = p.page.inner_text("main")
+    assert "Pipeline and runs" in body and "Data readiness" in body and "Pretraining (base model)" in body and "not started" in body
     assert "fin" in body and "live" in body and "100.0%" in body  # finished run shows exactly 100%
-    assert body.count("live running") == 1 or body.count("live") >= 1
+    assert body.count("live running") == 1  # the live run appears once in the table (card shows it without the word twice)
     p.page.locator("tr.click", has_text="fin").first.click()
     p.settle(800)
     assert "finished" in p.page.inner_text("main")
@@ -196,6 +193,9 @@ def test_home_and_runs(server, browser):
         p.settle()
     assert p.page.locator(".chart .u-legend").count() >= 5
     p.cycle_selects()
+    # legacy #/runs route lands on the overview
+    p.goto("/runs")
+    assert "Pipeline and runs" in p.page.inner_text("main")
     assert not p.errors, p.errors
 
 

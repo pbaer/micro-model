@@ -3,7 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum } from "./components/util.js";
 import { Home } from "./pages/home.js";
-import { Runs, RunDetail } from "./pages/runs.js";
+import { RunDetail } from "./pages/runs.js";
 import { DataPage } from "./pages/data.js";
 import { TokenizerPage } from "./pages/tokenizer.js";
 import { ArchPage } from "./pages/arch.js";
@@ -51,7 +51,7 @@ function App() {
   let body;
   if (page === "home") body = html`<${Home} />`;
   else if (page === "runs" && parts[1]) body = html`<${RunDetail} run=${decodeURIComponent(parts[1])} key=${parts[1]} />`;
-  else if (page === "runs") body = html`<${Runs} />`;
+  else if (page === "runs") body = html`<${Home} />`;
   else if (page === "data") body = html`<${DataPage} />`;
   else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
   else if (page === "arch") body = html`<${ArchPage} />`;
@@ -61,7 +61,7 @@ function App() {
   return html`<div class="layout">
     <nav>
       <div class="brand">slm command center</div>
-      ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id ? "active" : ""}>${p.label}</a>`)}
+      ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id || (p.id === "home" && page === "runs") ? "active" : ""}>${p.label}</a>`)}
       <${GpuTile} />
     </nav>
     <main>${body}</main>
