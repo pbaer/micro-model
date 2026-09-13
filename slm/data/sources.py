@@ -64,5 +64,19 @@ SOURCES: dict[str, Source] = {
             "tinystories", "roneneldan/TinyStories", "data/*.parquet", kind="prose", license="CDLA-Sharing-1.0",
             notes="M1 sanity corpus. Not part of the main mixture.",
         ),
+        # ---- SFT / reasoning sources (chat-formatted `messages` columns; Apache-2.0 SmolTalk)
+        *[
+            Source(f"smoltalk-{sub}", "HuggingFaceTB/smoltalk", f"data/{sub}/*.parquet", text_col="messages", kind="chat", license="Apache-2.0", notes=note)
+            for sub, note in [
+                ("everyday-conversations", "2k short multi-turn chats; good first SFT sanity set"),
+                ("smol-magpie-ultra", "~400k Magpie conversations, 6 train files x ~240 MB; take 1-2 files"),
+                ("openhermes-100k", "100k general instruction pairs"),
+                ("systemchats-30k", "system-prompt following"),
+                ("smol-constraints", "instruction following with constraints"),
+                ("metamathqa-50k", "math word problems with CoT solutions (reasoning SFT source)"),
+                ("numina-cot-100k", "competition-style math with CoT (reasoning SFT source)"),
+            ]
+        ],
+        Source("gsm8k", "openai/gsm8k", "main/*.parquet", text_col="answer", kind="math_qa", license="MIT", notes="grade-school math with '#### answer' format; test split is the held-out benchmark"),
     ]
 }

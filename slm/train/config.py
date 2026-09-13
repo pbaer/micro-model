@@ -11,11 +11,16 @@ from slm.config import ModelConfig, apply_overrides, from_dict, load_yaml
 
 @dataclass
 class DataConfig:
+    kind: str = "pretrain"  # pretrain | sft
     tokenized_root: str = r"C:\slm-data\tokenized\v1"
+    sft_root: str = r"C:\slm-data\sft\v1"
     mixture: dict[str, float] = field(default_factory=lambda: {"fineweb-edu": 1.0})
     seq_len: int = 2048
     val_tokens: int = 2_000_000
     prefetch: int = 4
+    # Optional second validation set from the pretraining mixture (tracks base-model perplexity
+    # drift during SFT/RL). Uses tokenized_root.
+    extra_val_mixture: dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
@@ -34,6 +39,8 @@ class OptimConfig:
 class ScheduleConfig:
     type: str = "cosine"  # cosine | wsd (warmup-stable-decay) | constant
     total_tokens: int = 1_000_000_000
+    # If > 0, total_tokens = epochs * tokens in the training data and one milestone = one epoch.
+    epochs: float = 0.0
     warmup_tokens: int = 10_000_000
     min_lr_ratio: float = 0.1
     decay_frac: float = 0.2  # wsd: final fraction of tokens spent decaying linearly to min_lr

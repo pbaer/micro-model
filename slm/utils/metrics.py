@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "elapsed_s", "eta_s"]
-EVAL_FIELDS = ["val_loss", "val_ppl"]
+EVAL_FIELDS = ["val_loss", "val_ppl", "val_pt_loss"]
 EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint")
 
 

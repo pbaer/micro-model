@@ -57,9 +57,22 @@ class Trainer:
         self.optimizer = self._build_optimizer()
         self.accum = cfg.grad_accum
 
-        spec = MixtureSpec(Path(cfg.data.tokenized_root), cfg.data.mixture, "train")
-        self.loader = PretrainLoader(spec, cfg.data.seq_len, cfg.batch.microbatch, cfg.runtime.seed, "cuda", cfg.data.prefetch)
-        self.val_loader = ValLoader(MixtureSpec(Path(cfg.data.tokenized_root), cfg.data.mixture, "val"), cfg.data.seq_len, cfg.batch.microbatch, cfg.data.val_tokens)
+        if cfg.data.kind == "sft":
+            from slm.data.sft import SftLoader, SftValLoader
+
+            self.loader = SftLoader(Path(cfg.data.sft_root), cfg.data.mixture, cfg.data.seq_len, cfg.batch.microbatch, cfg.runtime.seed, "cuda", cfg.data.prefetch)
+            self.val_loader = SftValLoader(Path(cfg.data.sft_root), cfg.data.mixture, cfg.data.seq_len, cfg.batch.microbatch, cfg.data.val_tokens)
+        else:
+            spec = MixtureSpec(Path(cfg.data.tokenized_root), cfg.data.mixture, "train")
+            self.loader = PretrainLoader(spec, cfg.data.seq_len, cfg.batch.microbatch, cfg.runtime.seed, "cuda", cfg.data.prefetch)
+            self.val_loader = ValLoader(MixtureSpec(Path(cfg.data.tokenized_root), cfg.data.mixture, "val"), cfg.data.seq_len, cfg.batch.microbatch, cfg.data.val_tokens)
+        self.extra_val = None
+        if cfg.data.extra_val_mixture:
+            self.extra_val = ValLoader(MixtureSpec(Path(cfg.data.tokenized_root), cfg.data.extra_val_mixture, "val"), cfg.data.seq_len, cfg.batch.microbatch, cfg.data.val_tokens)
+        if cfg.schedule.epochs > 0:
+            cfg.schedule.total_tokens = int(cfg.schedule.epochs * self.loader.total_tokens)
+            cfg.milestone_tokens = int(self.loader.total_tokens)
+            console(f"[{cfg.run_name}] {cfg.schedule.epochs} epochs x {fmt_tokens(self.loader.total_tokens)} tokens = {fmt_tokens(cfg.schedule.total_tokens)} total; milestone = 1 epoch")
 
         self.log = MetricsLogger(self.run_dir)
         self.counters = {
@@ -71,6 +84,7 @@ class Trainer:
         self.stop_requested = False
         self.session_start = time.time()
         self.tok_s_ema = 0.0
+        self.last_extra_val = None
 
         if self.latest_path.exists() and not fresh:
             self._resume()
@@ -144,17 +158,22 @@ class Trainer:
         self.log.log("checkpoint", tokens=self.counters["tokens"], msg=f"latest.pt saved at {fmt_tokens(self.counters['tokens'])} tokens ({time.time() - t0:.1f}s)")
 
     @torch.no_grad()
-    def evaluate(self) -> tuple[float, float]:
-        self.model.eval()
+    def _eval_loader(self, loader) -> float:
         loss_sum = torch.zeros((), device="cuda")
         n_sum = torch.zeros((), device="cuda")
         with sdpa_context(self.cfg.runtime.sdpa_backend), torch.autocast("cuda", dtype=torch.bfloat16):
-            for x, y in self.val_loader:
+            for x, y in loader:
                 ls, n = self.fwd(x, y)
                 loss_sum += ls
                 n_sum += n
+        return (loss_sum / n_sum).item()
+
+    @torch.no_grad()
+    def evaluate(self) -> tuple[float, float]:
+        self.model.eval()
+        loss = self._eval_loader(self.val_loader)
+        self.last_extra_val = self._eval_loader(self.extra_val) if self.extra_val is not None else None
         self.model.train()
-        loss = (loss_sum / n_sum).item()
         return loss, math.exp(min(loss, 20))
 
     def generate_samples(self) -> None:
@@ -260,8 +279,9 @@ class Trainer:
                     if improved:
                         c["best_val"] = vl
                         ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
-                    self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=improved, eval_s=time.time() - t0)
-                    console(f"eval @ {fmt_tokens(c['tokens'])}: val loss {vl:.4f} ppl {ppl:.2f}{' (best)' if improved else ''} [{time.time() - t0:.0f}s]")
+                    self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=improved, eval_s=time.time() - t0, val_pt_loss=self.last_extra_val)
+                    console(f"eval @ {fmt_tokens(c['tokens'])}: val loss {vl:.4f} ppl {ppl:.2f}{' (best)' if improved else ''}"
+                            + (f" | pretrain-val {self.last_extra_val:.4f}" if self.last_extra_val is not None else "") + f" [{time.time() - t0:.0f}s]")
                     c["next_eval_at"] += cfg.eval.every_tokens
                 if c["tokens"] >= c["next_gen_at"]:
                     t0 = time.time()
@@ -301,7 +321,7 @@ class Trainer:
             if vl < c["best_val"]:
                 c["best_val"] = vl
                 ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
-            self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=vl <= c["best_val"], eval_s=0)
+            self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=vl <= c["best_val"], eval_s=0, val_pt_loss=self.last_extra_val)
             self.generate_samples()
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
         self._save_latest()

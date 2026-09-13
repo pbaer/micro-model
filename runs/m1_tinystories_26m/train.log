@@ -154,3 +154,17 @@ remark: chftrxcdnjaqm4pzaynloy4fl74i5sup6fvlq2tocxy24xicetkp.py:18:0: 336 instru
 00:39:09 upd 230 | 30M (5.0%) | loss 2.4892 | lr 9.97e-04 | gn 0.66 | 76,993 tok/s | 1702 ms/upd (data 1) | 6.3 GiB | ETA 2h 17m
 00:39:26 upd 240 | 31M (5.2%) | loss 2.3774 | lr 9.97e-04 | gn 0.42 | 64,240 tok/s | 2040 ms/upd (data 1) | 6.3 GiB | ETA 2h 18m
 00:39:43 upd 250 | 33M (5.5%) | loss 2.2793 | lr 9.97e-04 | gn 0.54 | 76,556 tok/s | 1712 ms/upd (data 2) | 6.3 GiB | ETA 2h 15m
+00:40:00 upd 260 | 34M (5.7%) | loss 2.3253 | lr 9.96e-04 | gn 0.64 | 75,561 tok/s | 1735 ms/upd (data 2) | 6.3 GiB | ETA 2h 12m
+00:40:17 upd 270 | 35M (5.9%) | loss 2.3187 | lr 9.96e-04 | gn 0.42 | 77,615 tok/s | 1689 ms/upd (data 2) | 6.3 GiB | ETA 2h 10m
+00:40:34 upd 280 | 37M (6.1%) | loss 2.1885 | lr 9.96e-04 | gn 0.47 | 76,851 tok/s | 1706 ms/upd (data 3) | 6.3 GiB | ETA 2h 08m
+00:40:52 upd 290 | 38M (6.3%) | loss 2.1933 | lr 9.95e-04 | gn 0.43 | 75,744 tok/s | 1730 ms/upd (data 2) | 6.3 GiB | ETA 2h 07m
+00:41:12 upd 300 | 39M (6.6%) | loss 2.1613 | lr 9.95e-04 | gn 0.55 | 64,959 tok/s | 2018 ms/upd (data 1) | 6.3 GiB | ETA 2h 09m
+00:41:29 upd 310 | 41M (6.8%) | loss 2.1888 | lr 9.94e-04 | gn 0.45 | 76,440 tok/s | 1715 ms/upd (data 2) | 6.3 GiB | ETA 2h 07m
+00:41:46 upd 320 | 42M (7.0%) | loss 2.1223 | lr 9.94e-04 | gn 0.55 | 76,574 tok/s | 1712 ms/upd (data 2) | 6.3 GiB | ETA 2h 06m
+00:42:04 upd 330 | 43M (7.2%) | loss 2.0288 | lr 9.93e-04 | gn 0.44 | 74,324 tok/s | 1764 ms/upd (data 337) | 6.3 GiB | ETA 2h 05m
+00:42:21 upd 340 | 45M (7.4%) | loss 2.1035 | lr 9.92e-04 | gn 0.39 | 76,419 tok/s | 1715 ms/upd (data 1) | 6.3 GiB | ETA 2h 04m
+00:42:38 upd 350 | 46M (7.6%) | loss 2.0521 | lr 9.92e-04 | gn 0.50 | 76,131 tok/s | 1722 ms/upd (data 2) | 6.3 GiB | ETA 2h 03m
+00:42:55 upd 360 | 47M (7.9%) | loss 2.0363 | lr 9.91e-04 | gn 0.58 | 76,536 tok/s | 1713 ms/upd (data 2) | 6.3 GiB | ETA 2h 02m
+00:43:16 upd 370 | 48M (8.1%) | loss 2.0873 | lr 9.91e-04 | gn 0.45 | 62,945 tok/s | 2082 ms/upd (data 2) | 6.3 GiB | ETA 2h 06m
+00:43:34 upd 380 | 50M (8.3%) | loss 2.0268 | lr 9.90e-04 | gn 0.43 | 74,967 tok/s | 1748 ms/upd (data 2) | 6.3 GiB | ETA 2h 05m
+00:43:43 eval @ 50M: val loss 2.0580 ppl 7.83 (best) [9s]

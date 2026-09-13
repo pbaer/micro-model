@@ -1,0 +1,46 @@
+# M4: instruction SFT on the base checkpoint. Full-parameter, assistant-token loss only.
+run_name: m4_sft_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+init_from: runs/m2_base_149m_1b/checkpoints/final.pt
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  mixture:
+    smoltalk-smol-magpie-ultra: 0.45
+    smoltalk-openhermes-100k: 0.25
+    smoltalk-systemchats-30k: 0.10
+    smoltalk-smol-constraints: 0.10
+    smoltalk-everyday-conversations: 0.10
+  seq_len: 2048
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+optim:
+  lr: 2.0e-5
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  epochs: 2.0
+  warmup_tokens: 5000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 16
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 0
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 20000000
+  gen_every_tokens: 50000000
+  gen_max_new_tokens: 96
+  report_every_minutes: 10
+  prompts:
+    - "The capital of France is"
+    - "def is_prime(n):\n    "
+notes: "M4 instruct SFT; extra_val tracks pretraining-mixture perplexity to measure base degradation."
