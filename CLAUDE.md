@@ -41,3 +41,7 @@ placeholder and may change, so don't bake it into code.
   and never caches them; stop viewers before re-tokenizing; checkpoint writes retry on PermissionError.
 - Long background jobs: run `python -u ... > log 2>&1`; never pipe through grep/tail (buffered output
   is lost if the pipeline dies, which is how the first 149M benchmark's results were lost).
+- Verify a GPU job is really gone (nvidia-smi compute apps + process list) before assuming the GPU is
+  free: a benchmark left running silently shared the GPU with M1 for 45 minutes.
+- KV-cache decoding must not run under the cuDNN-only SDPA restriction (`sdpa_context("decode")`
+  = efficient+math); cuDNN re-plans per KV length and generation crawls.
