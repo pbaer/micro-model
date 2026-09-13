@@ -35,11 +35,12 @@ FILLER = [
 ]
 
 
-def build_haystack(tok: SlmTokenizer, total_tokens: int, depth: float, needle: str, question: str, rng: random.Random) -> tuple[list[int], int]:
-    """Return prompt ids of ~total_tokens with the needle inserted at the given depth (0..1)."""
+def build_haystack(tok: SlmTokenizer, total_tokens: int, depth: float, needle: str, question: str, rng: random.Random, reserve: int = 16) -> tuple[list[int], int]:
+    """Return prompt ids of ~total_tokens - reserve with the needle at the given depth (0..1).
+    `reserve` leaves room for the generated answer inside the model's RoPE table."""
     q_ids = tok.encode("\n\nQuestion: " + question + "\nAnswer:")
     n_ids = tok.encode(" " + needle + " ")
-    budget = total_tokens - len(q_ids) - len(n_ids) - 1
+    budget = total_tokens - reserve - len(q_ids) - len(n_ids) - 1
     filler_ids: list[int] = []
     while len(filler_ids) < budget:
         filler_ids.extend(tok.encode(rng.choice(FILLER) + " "))
@@ -76,7 +77,8 @@ def run_needle(model: Transformer, tok: SlmTokenizer, lengths: list[int], depths
                     ids, _ = build_haystack(tok, L, d, needle, "What is the sum of the first and second secret numbers?", rng)
                     extra = tok.encode(f" The second secret number is {secret2}. ")
                     k = rng.randint(1, max(1, len(ids) - 30))
-                    ids = ids[:k] + extra + ids[k:]
+                    ids = ids[:k] + extra + ids[k - len(extra) if k >= len(extra) else k :]  # insert without growing past the budget
+                    ids = ids[: L - 16]
                     gold = secret + secret2
                 else:
                     ids, _ = build_haystack(tok, L, d, needle, question, rng)
