@@ -25,7 +25,7 @@ function Sources() {
   return html`<div>
     <table><tr><th>source</th><th>kind</th><th>license</th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})</th><th>val tokens (${t})</th><th>docs (${t})</th><th>dropped (${t})</th>`)}<th class="l">notes</th></tr>
     ${ov.sources.map((s) => html`<tr><td>${s.name}</td><td>${s.kind}</td><td>${s.license}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
-      ${ov.tags.map((t) => { const m = s.tokenized[t]; return m ? html`<td>${fmtTok(m.train_tokens)}</td><td>${fmtTok(m.val_tokens)}</td><td>${fmtInt(m.train_docs)}</td><td>${(m.docs_dropped / Math.max(1, m.docs_seen) * 100).toFixed(2)}%</td>` : html`<td colspan="4" class="muted">not tokenized</td>`; })}
+      ${ov.tags.map((t) => { const m = s.tokenized[t]; return m ? html`<td>${fmtTok(m.train_tokens)}</td><td>${fmtTok(m.val_tokens)}</td><td>${fmtInt(m.train_docs)}</td><td>${(m.docs_dropped / Math.max(1, m.docs_seen) * 100).toFixed(2)}%</td>` : html`<td colspan="4" class="muted">${(ov.sft && ov.sft[t] && Object.keys(ov.sft[t]).some((n) => n.startsWith(s.name) || (s.name === "gsm8k" && n.startsWith("gsm8k")))) ? "chat-formatted → see SFT table below" : "not tokenized"}</td>`; })}
       <td class="l">${s.notes}</td></tr>`)}
     </table>
     ${Object.keys(ov.sft || {}).length > 0 && html`<h2>SFT / reasoning sets (chat-formatted, with loss masks)</h2>

@@ -23,6 +23,15 @@ from slm.portal.settings import PortalSettings
 STATIC = Path(__file__).parent / "static"
 
 
+class NoCacheStatic(StaticFiles):
+    """Static assets are edited constantly during development; never let the browser cache them."""
+
+    def file_response(self, *args, **kwargs):  # type: ignore[override]
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     async def idle_loop():
@@ -54,7 +63,7 @@ def create_app(settings: PortalSettings | None = None) -> FastAPI:
     app.state.worker = WorkerClient(Path(settings.data_root) / "tokenizer", settings.worker_idle_timeout_s)
     app.state.streams = {}
 
-    app.mount("/static", StaticFiles(directory=STATIC), name="static")
+    app.mount("/static", NoCacheStatic(directory=STATIC), name="static")
 
     @app.get("/", include_in_schema=False)
     def index():

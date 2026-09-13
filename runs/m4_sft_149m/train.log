@@ -393,3 +393,5 @@ remark: covklxej4o7hgiit23bxb3m5a35gacotswww7gbjtti7hyrnr6vt.py:18:0: 414 instru
 10:27:56 upd 3290 | 431M (95.9%) | loss 1.6671 | lr 2.08e-06 | gn 0.31 | 61,596 tok/s | 2128 ms/upd (data 10) | 12.1 GiB | ETA 5m 01s
 10:28:17 upd 3300 | 433M (96.2%) | loss 1.7161 | lr 2.07e-06 | gn 0.32 | 61,411 tok/s | 2134 ms/upd (data 12) | 12.1 GiB | ETA 4m 40s
 10:28:38 upd 3310 | 434M (96.5%) | loss 1.6890 | lr 2.06e-06 | gn 0.29 | 61,345 tok/s | 2137 ms/upd (data 10) | 12.1 GiB | ETA 4m 18s
+10:29:00 upd 3320 | 435M (96.8%) | loss 1.6546 | lr 2.05e-06 | gn 0.35 | 61,538 tok/s | 2130 ms/upd (data 11) | 12.1 GiB | ETA 3m 57s
+10:29:21 upd 3330 | 436M (97.1%) | loss 1.6608 | lr 2.04e-06 | gn 0.32 | 61,537 tok/s | 2130 ms/upd (data 11) | 12.1 GiB | ETA 3m 35s
