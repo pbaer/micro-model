@@ -253,7 +253,7 @@ class RlTrainer:
                 os_ = self.optimize(rollouts)
                 self.step += 1
                 save_rollouts(rollouts, self.run_dir / "rollouts" / f"step_{self.step:05d}.jsonl")
-                rec = dict(tokens=self.tokens, update=self.step, step=self.step, loss=os_["policy_loss"], lr=c.lr, grad_norm=os_["grad_norm"], tok_s=0.0, tok_s_ema=0.0,
+                rec = dict(tokens=self.tokens, update=self.step, step=self.step, loss=os_["policy_loss"], lr=c.lr, tok_s=0.0, tok_s_ema=0.0,
                            step_ms=(time.time() - t0) * 1000, fwd_ms=(t1 - t0) * 1000, bwd_ms=(time.time() - t1) * 1000, opt_ms=0.0, data_ms=0.0,
                            vram_gib=torch.cuda.max_memory_allocated() / 2**30, elapsed_s=self.elapsed, eta_s=(c.total_steps - self.step) * (time.time() - t0),
                            **rs, **{k: v for k, v in os_.items() if k != "skipped"})
