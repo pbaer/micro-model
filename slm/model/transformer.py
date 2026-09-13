@@ -13,6 +13,7 @@ from slm.model.attention import Attention, KVCache
 from slm.model.loss import chunked_cross_entropy
 from slm.model.mlp import SwiGLU
 from slm.model.rope import rope_cos_sin
+from slm.eval.sampling import sample_next
 
 
 class Block(nn.Module):
@@ -142,21 +143,7 @@ class Transformer(nn.Module):
         done = torch.zeros(B, dtype=torch.bool, device=idx.device)
         for _ in range(max_new_tokens):
             logits = self(cur, cache=cache, last_only=True)[:, -1, :].float()
-            if temperature <= 0:
-                nxt = logits.argmax(-1)
-            else:
-                logits = logits / temperature
-                if top_k > 0:
-                    kth = torch.topk(logits, top_k, dim=-1).values[:, -1:]
-                    logits = logits.masked_fill(logits < kth, float("-inf"))
-                if top_p < 1.0:
-                    sorted_logits, sorted_idx = torch.sort(logits, descending=True, dim=-1)
-                    cum = torch.softmax(sorted_logits, dim=-1).cumsum(-1)
-                    remove = cum - torch.softmax(sorted_logits, dim=-1) > top_p
-                    sorted_logits = sorted_logits.masked_fill(remove, float("-inf"))
-                    logits = torch.full_like(logits, float("-inf")).scatter(-1, sorted_idx, sorted_logits)
-                probs = torch.softmax(logits, dim=-1)
-                nxt = torch.multinomial(probs, 1, generator=generator).squeeze(-1)
+            nxt = sample_next(logits, temperature, top_p, top_k, generator)
             if stop_ids:
                 for s in stop_ids:
                     done |= nxt == s
