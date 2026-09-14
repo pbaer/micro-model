@@ -9,12 +9,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "elapsed_s", "eta_s"]
+TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "gpu_temp_c", "gpu_power_w", "gpu_util", "elapsed_s", "eta_s"]
 # RL (GRPO) runs log these extra per-step fields; absent (null) for pretraining/SFT.
 RL_FIELDS = ["reward_mean", "success_rate", "group_std_mean", "groups_no_signal", "adv_abs_mean", "len_mean", "len_correct", "len_wrong", "malformed_rate", "length_term_rate", "kl", "entropy", "clip_frac", "ratio_mean"]
 EVAL_RL_FIELDS = ["heldout_acc", "train_acc", "heldout_malformed", "heldout_len"]
 EVAL_FIELDS = ["val_loss", "val_ppl", "val_pt_loss"]
-EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint")
+EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint", "warn")
 
 
 class JsonlTail:
@@ -141,6 +141,8 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
         "best_val": min((e["val_loss"] for e in evals), default=None),
         "vram_gib": last.get("vram_gib"), "step_ms": last.get("step_ms"), "fwd_ms": last.get("fwd_ms"), "bwd_ms": last.get("bwd_ms"),
         "opt_ms": last.get("opt_ms"), "data_ms": last.get("data_ms"),
+        "gpu_temp_c": last.get("gpu_temp_c"), "gpu_power_w": last.get("gpu_power_w"), "gpu_util": last.get("gpu_util"),
+        "gpu_temp_max_c": max((r["gpu_temp_c"] for r in train if r.get("gpu_temp_c") is not None), default=None),
         "is_rl": last.get("reward_mean") is not None,
         "rl": {k: last.get(k) for k in ("reward_mean", "success_rate", "kl", "entropy", "len_mean", "malformed_rate", "clip_frac", "groups_no_signal")} if last.get("reward_mean") is not None else None,
         "mixture": list((cfg.get("data") or {}).get("mixture", {}).keys()) if isinstance(cfg.get("data"), dict) else [],

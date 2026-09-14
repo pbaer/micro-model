@@ -101,6 +101,7 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
     initial_est = meta.get("initial_estimate_s")
     best_val = min((e["val_loss"] for e in evals), default=float("nan"))
 
+    gpu_max = max((r["gpu_temp_c"] for r in train if r.get("gpu_temp_c") is not None), default=None)
     tiles = [
         _tile("progress", f"{tokens / total_tokens * 100:.1f}%" if total_tokens else "-", f"{fmt_tokens(tokens)} / {fmt_tokens(total_tokens)} tokens"),
         _tile("ETA", fmt_duration(eta), f"finish ~{time.strftime('%a %H:%M', time.localtime(now + eta))}" if eta == eta else ""),
@@ -111,6 +112,8 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
         _tile("lr", f"{last.get('lr', 0):.2e}", ""),
         _tile("grad norm", f"{last.get('grad_norm', 0):.3f}", ""),
         _tile("VRAM peak", f"{last.get('vram_gib', 0):.1f} GiB", ""),
+        _tile("GPU", f"{last['gpu_temp_c']:.0f} \u00b0C" if last.get("gpu_temp_c") is not None else "-",
+              (f"{last['gpu_power_w']:.0f} W" if last.get("gpu_power_w") is not None else "") + (f" \u00b7 max {gpu_max:.0f} \u00b0C" if gpu_max is not None else "")),
         _tile("step time", f"{last.get('step_ms', 0):.0f} ms", f"fwd {last.get('fwd_ms', 0):.0f} bwd {last.get('bwd_ms', 0):.0f} opt {last.get('opt_ms', 0):.0f} data {last.get('data_ms', 0):.0f}"),
     ]
     prog = tokens / total_tokens * 100 if total_tokens else 0
@@ -122,9 +125,11 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
         "tps": [[r["tokens"], r["tok_s"]] for r in train],
         "gn": [[r["tokens"], r["grad_norm"]] for r in train],
         "vram": [[r["tokens"], r["vram_gib"]] for r in train],
+        "temp": [[r["tokens"], r["gpu_temp_c"]] for r in train if r.get("gpu_temp_c") is not None],
+        "power": [[r["tokens"], r["gpu_power_w"]] for r in train if r.get("gpu_power_w") is not None],
     }
     # thin the train series for the page
-    for k in ("loss", "lr", "tps", "gn", "vram"):
+    for k in ("loss", "lr", "tps", "gn", "vram", "temp", "power"):
         pts = data[k]
         if len(pts) > 1500:
             step = len(pts) // 1500 + 1
@@ -155,6 +160,8 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
 <div class="chart"><h3>learning rate</h3><svg id="c_lr"></svg></div>
 <div class="chart"><h3>gradient norm</h3><svg id="c_gn"></svg></div>
 <div class="chart"><h3>VRAM peak (GiB)</h3><svg id="c_vram"></svg></div>
+<div class="chart"><h3>GPU temperature (\u00b0C)</h3><svg id="c_temp"></svg></div>
+<div class="chart"><h3>GPU power (W)</h3><svg id="c_power"></svg></div>
 </div>
 <h2>Milestones (every {fmt_tokens(cfg.get('milestone_tokens', 0))} tokens)</h2>
 <table><tr><th>tokens</th><th>segment time</th><th>elapsed</th><th>tok/s (segment)</th><th>train loss</th><th>val loss</th><th>at</th></tr>{mile_rows or '<tr><td colspan=7>none yet</td></tr>'}</table>
@@ -169,6 +176,8 @@ chart('c_tps',[{{name:'tok/s',pts:D.tps}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}
 chart('c_lr',[{{name:'lr',pts:D.lr}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_gn',[{{name:'grad norm',pts:D.gn}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_vram',[{{name:'GiB',pts:D.vram}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
+chart('c_temp',[{{name:'C',pts:D.temp}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
+chart('c_power',[{{name:'W',pts:D.power}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 </script></body></html>"""
 
 

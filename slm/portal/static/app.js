@@ -1,4 +1,4 @@
-import { h, render } from "preact";
+import { h, render, Component } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum } from "./components/util.js";
@@ -38,6 +38,18 @@ function GpuTile() {
     ${g.training_live.length ? html`<span style="color:#60a5fa">training: ${g.training_live.join(", ")}</span>` : html`<span>no live training</span>`}</div>`;
 }
 
+/** Catches render/effect exceptions of the page below it and shows them instead of a blank main area. */
+class ErrorBoundary extends Component {
+  constructor(props) { super(props); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  componentDidCatch(err) { console.error(err); }
+  componentDidUpdate(prev) { if (prev.route !== this.props.route && this.state.err) this.setState({ err: null }); }  // navigating away clears it
+  render(props, state) {
+    if (state.err) return html`<div class="boot error"><b>This page crashed.</b><pre>${String((state.err && state.err.stack) || state.err)}</pre><button onClick=${() => this.setState({ err: null })}>Retry</button></div>`;
+    return props.children;
+  }
+}
+
 function Placeholder({ name }) {
   return html`<div><h1>${name}</h1><p class="muted">Not built yet. See docs/command_center_plan.md.</p></div>`;
 }
@@ -64,8 +76,14 @@ function App() {
       ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id || (p.id === "home" && page === "runs") || (p.id === "inference" && page === "model") ? "active" : ""}>${p.label}</a>`)}
       <${GpuTile} />
     </nav>
-    <main>${body}</main>
+    <main><${ErrorBoundary} route=${hash}>${body}</${ErrorBoundary}></main>
   </div>`;
 }
 
-render(html`<${App} />`, document.getElementById("app"));
+try {
+  render(html`<${App} />`, document.getElementById("app"));
+  window.__appMounted = true;
+} catch (e) {
+  (window.__bootError || alert)(e && e.stack || e);
+  throw e;
+}

@@ -95,6 +95,7 @@ export function RunDetail({ run }) {
       <${Tile} k="lr" v=${fmtSci(s.lr)} />
       <${Tile} k="grad norm" v=${fmtNum(s.grad_norm, 3)} />
       <${Tile} k="VRAM peak" v=${fmtNum(s.vram_gib, 1) + " GiB"} />
+      ${s.gpu_temp_c != null && html`<${Tile} k="GPU" v=${fmtNum(s.gpu_temp_c, 0) + " \u00b0C"} s=${`${fmtNum(s.gpu_power_w, 0)} W \u00b7 max ${fmtNum(s.gpu_temp_max_c, 0)} \u00b0C${s.gpu_temp_max_c >= 80 ? " \u26a0" : ""}`} />`}
       <${Tile} k="step time" v=${fmtNum(s.step_ms, 0) + " ms"} s=${`fwd ${fmtNum(s.fwd_ms, 0)} · bwd ${fmtNum(s.bwd_ms, 0)} · opt ${fmtNum(s.opt_ms, 0)} · data ${fmtNum(s.data_ms, 0)}`} />
     </div>
     <div class="row" style="margin:8px 0">
@@ -111,6 +112,7 @@ export function RunDetail({ run }) {
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
       <${Chart} title="step time (ms)" xmode=${xmode} ymin=${0} series=${[{ label: "step", x: tokensX, y: t.step_ms }, { label: "fwd", x: tokensX, y: t.fwd_ms }, { label: "bwd", x: tokensX, y: t.bwd_ms }, { label: "opt", x: tokensX, y: t.opt_ms }, { label: "data", x: tokensX, y: t.data_ms }]} />
       <${Chart} title="VRAM peak (GiB)" xmode=${xmode} ymin=${0} series=${[{ label: "GiB", x: tokensX, y: t.vram_gib }]} />
+      ${t.gpu_temp_c && t.gpu_temp_c.some((v) => v != null) && html`<${Chart} title="GPU temperature (\u00b0C, left) / power (W, right)" xmode=${xmode} ymin=${0} ymin2=${0} series=${[{ label: "\u00b0C", x: tokensX, y: t.gpu_temp_c, color: "#dc2626" }, { label: "W", x: tokensX, y: t.gpu_power_w, scale: "y2", color: "#2563eb" }]} />`}
       ${series.is_rl && html`
         <${Chart} title="reward / success rate (train rollouts)" xmode=${xmode} ymin=${0} series=${[{ label: "reward", x: tokensX, y: t.reward_mean }, { label: "success", x: tokensX, y: t.success_rate }]} />
         <${Chart} title="held-out vs train accuracy (greedy)" xmode=${xmode} ymin=${0} series=${[{ label: "heldout", x: evalX, y: e.heldout_acc, points: true, width: 2 }, { label: "train", x: evalX, y: e.train_acc, points: true }]} />

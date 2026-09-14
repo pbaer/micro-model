@@ -32,6 +32,7 @@ from slm.rl.rollout import Rollout, greedy_accuracy, rollout_group, save_rollout
 from slm.rl.tasks import make_tasks
 from slm.utils import checkpoint as ckpt
 from slm.utils.logging import MetricsLogger, console, fmt_duration
+from slm.utils.gpu import GpuSampler
 from slm.utils.report import write_report
 from slm.utils.sdpa import sdpa_context
 
@@ -44,6 +45,8 @@ class RlConfig:
     model_file: str = "configs/model/base_149m.yaml"
     model: dict = field(default_factory=dict)
     init_from: str = ""  # reasoning-SFT checkpoint (policy and reference start here)
+    gpu_sample_s: float = 2.0  # nvidia-smi telemetry period (s); temperature/power go into every train record
+    gpu_warn_temp_c: float = 80.0
     # tasks / curriculum
     tasks: list[str] = field(default_factory=lambda: ["arith1", "arith2"])
     n_train_prompts: int = 4000
@@ -241,6 +244,7 @@ class RlTrainer:
     def train(self) -> None:
         c = self.cfg
         t_ckpt = t_rep = time.time()
+        gpu = GpuSampler(c.gpu_sample_s, c.gpu_warn_temp_c).start()
         with sdpa_context(c.sdpa_backend):
             if self.step == 0:
                 ev = self.evaluate()
@@ -256,8 +260,11 @@ class RlTrainer:
                 rec = dict(tokens=self.tokens, update=self.step, step=self.step, loss=os_["policy_loss"], lr=c.lr, tok_s=0.0, tok_s_ema=0.0,
                            step_ms=(time.time() - t0) * 1000, fwd_ms=(t1 - t0) * 1000, bwd_ms=(time.time() - t1) * 1000, opt_ms=0.0, data_ms=0.0,
                            vram_gib=torch.cuda.max_memory_allocated() / 2**30, elapsed_s=self.elapsed, eta_s=(c.total_steps - self.step) * (time.time() - t0),
-                           **rs, **{k: v for k, v in os_.items() if k != "skipped"})
+                           **rs, **{k: v for k, v in os_.items() if k != "skipped"}, **gpu.record())
                 self.log.log("train", **rec)
+                if (hot := gpu.hot_warning()) is not None:
+                    console(f"*** WARNING: {hot} ***")
+                    self.log.log("warn", tokens=self.tokens, update=self.step, msg=hot, gpu_temp_c=rec["gpu_temp_c"], gpu_power_w=rec["gpu_power_w"])
                 console(f"step {self.step} | reward {rs['reward_mean']:.3f} succ {rs['success_rate']:.2f} | len {rs['len_mean']:.0f} | malformed {rs['malformed_rate']:.2f} | "
                         f"kl {os_['kl']:.4f} ent {os_['entropy']:.2f} clip {os_['clip_frac']:.2f} | gn {os_['grad_norm']:.2f} | no-signal groups {rs['groups_no_signal']:.2f} | "
                         f"rollout {t1 - t0:.0f}s opt {time.time() - t1:.0f}s")
@@ -276,6 +283,7 @@ class RlTrainer:
                 if (self.run_dir / "STOP").exists():
                     (self.run_dir / "STOP").unlink()
                     self.stop_requested = True
+        gpu.stop()
         finished = self.step >= c.total_steps
         if finished:
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "tokenizer_sha256": self.tok.sha256})

@@ -27,6 +27,7 @@ from slm.model import IGNORE_INDEX, Transformer
 from slm.train.config import TrainConfig, load_train_config
 from slm.train.schedule import lr_at
 from slm.utils import checkpoint as ckpt
+from slm.utils.gpu import GpuSampler
 from slm.utils.logging import MetricsLogger, console, fmt_duration, fmt_tokens
 from slm.utils.report import write_report
 from slm.utils.sdpa import sdpa_context
@@ -205,6 +206,7 @@ class Trainer:
         stop_file = self.run_dir / "STOP"
         initial_estimate_done = (self.run_dir / "run.json").exists() and "initial_estimate_s" in json.loads((self.run_dir / "run.json").read_text(encoding="utf-8"))
         updates_this_session = 0
+        gpu = GpuSampler(cfg.runtime.gpu_sample_s, cfg.runtime.gpu_warn_temp_c).start()
         write_report(self.run_dir, "running")
 
         with sdpa_context(cfg.runtime.sdpa_backend):
@@ -252,10 +254,13 @@ class Trainer:
                     rec = dict(tokens=c["tokens"], update=c["update"], loss=loss, lr=lr, grad_norm=gn, tok_s=tok_s, tok_s_ema=self.tok_s_ema,
                                step_ms=(now - t_window) / cfg.runtime.log_every_updates * 1000, fwd_ms=fwd_ms, bwd_ms=bwd_ms, opt_ms=opt_ms,
                                data_ms=data_ms / cfg.runtime.log_every_updates, vram_gib=torch.cuda.max_memory_allocated() / 2**30,
-                               elapsed_s=self.elapsed, eta_s=eta)
+                               elapsed_s=self.elapsed, eta_s=eta, **gpu.record())
                     self.log.log("train", **rec)
                     console(f"upd {c['update']} | {fmt_tokens(c['tokens'])} ({c['tokens'] / total * 100:.1f}%) | loss {loss:.4f} | lr {lr:.2e} | gn {gn:.2f} | "
-                            f"{tok_s:,.0f} tok/s | {rec['step_ms']:.0f} ms/upd (data {rec['data_ms']:.0f}) | {rec['vram_gib']:.1f} GiB | ETA {fmt_duration(eta)}")
+                            f"{tok_s:,.0f} tok/s | {rec['step_ms']:.0f} ms/upd (data {rec['data_ms']:.0f}) | {rec['vram_gib']:.1f} GiB{gpu.console_suffix()} | ETA {fmt_duration(eta)}")
+                    if (hot := gpu.hot_warning()) is not None:
+                        console(f"*** WARNING: {hot} ***")
+                        self.log.log("warn", tokens=c["tokens"], update=c["update"], msg=hot, gpu_temp_c=rec["gpu_temp_c"], gpu_power_w=rec["gpu_power_w"])
                     if not math.isfinite(loss):
                         self.log.log("stop", tokens=c["tokens"], msg="non-finite loss; stopping without checkpoint")
                         write_report(self.run_dir, "stopped")
@@ -331,6 +336,7 @@ class Trainer:
             ckpt.update_index(self.ckpt_dir, "final.pt", kind="final", tokens=c["tokens"], update=c["update"], val_loss=vl)
             if vl <= c["best_val"]:
                 ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
+        gpu.stop()
         self._save_latest()
         self.log.log("finish" if finished else "stop", tokens=c["tokens"], elapsed_s=self.elapsed, msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")

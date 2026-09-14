@@ -12,7 +12,21 @@
 <script src="/static/vendor/uplot.iife.min.js"></script>
 </head>
 <body>
-<div id="app"></div>
+<div id="app"><div class="boot" id="boot">loading…</div></div>
+<script>
+// Boot diagnostics: a module that fails to load (404, syntax error, server down mid-load) or an
+// uncaught render error would otherwise leave this page blank. Show what went wrong and how to retry.
+window.__bootError = function (msg) {
+  var el = document.getElementById("app");
+  if (!el) return;
+  el.innerHTML = '<div class="boot error"><b>The command center failed to load.</b><pre></pre>' +
+    '<button onclick="location.reload()">Reload</button> <span class="muted">If this persists after a hard reload (Ctrl+F5), the portal server is probably down or mid-restart: check the terminal that runs it.</span></div>';
+  el.querySelector("pre").textContent = String(msg);
+};
+window.addEventListener("error", function (e) { if (!window.__appMounted) window.__bootError((e.message || e.type) + (e.filename ? "\n" + e.filename + ":" + e.lineno : "")); });
+window.addEventListener("unhandledrejection", function (e) { if (!window.__appMounted) window.__bootError(e.reason && e.reason.stack || e.reason || "unhandled promise rejection"); });
+setTimeout(function () { if (!window.__appMounted && document.getElementById("boot")) window.__bootError("app.js did not start within 10 s (module import failed or the server is unreachable)"); }, 10000);
+</script>
 <script type="module" src="/static/app.js"></script>
 </body>
 </html>

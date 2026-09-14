@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtBytes, fmtNum } from "../components/util.js";
 import { TokenChips } from "../components/tokens.js";
@@ -100,6 +100,15 @@ function Documents() {
     api(`/api/tokenizers/${tag}/encode`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => { setRawTokens(r); setTokErr(null); }).catch((e) => { setRawTokens(null); setTokErr(String(e)); });
   }, [doc, mode, isTok, tag]);
 
+  const fillRef = useRef(null);
+  useEffect(() => {  // size the list/preview pair to the space left below the toolbar, and keep it sized as the window changes
+    const el = fillRef.current;
+    if (!el) return;
+    const fit = () => { const top = el.getBoundingClientRect().top + window.scrollY; el.style.height = Math.max(360, window.innerHeight - top - 26) + "px"; };
+    fit();
+    addEventListener("resize", fit);
+    return () => removeEventListener("resize", fit);
+  });
   const openTok = (d) => api(`${base}/doc?shard=${shard}&doc=${d}`).then((x) => { setDoc(x); setView("doc"); });
   const openRaw = (f, r, row) => api(`/api/data/raw/${source}/doc?file=${f}&rg=${r}&row=${row}`).then((x) => { setDoc(x); setView("doc"); });
   const random = () => {
@@ -125,8 +134,8 @@ function Documents() {
       <span class="muted" style="margin-left:10px">show as</span>
       ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
     </div>
-    <div class="two">
-      <div style="max-height:620px;overflow:auto">
+    <div class="two fill" ref=${fillRef}>
+      <div class="col">
         ${isTok && docs && html`<div class="row" style="margin-bottom:4px"><span class="muted">${fmtInt(docs.n_docs)} docs in shard; showing ${offset}–${Math.min(offset + 200, docs.n_docs)}</span>
           <button onClick=${() => setOffset(Math.max(0, offset - 200))}>‹</button><button onClick=${() => setOffset(Math.min(docs.n_docs - 1, offset + 200))}>›</button></div>
           <table><tr><th>doc</th><th>start</th><th>tokens</th></tr>
@@ -135,16 +144,16 @@ function Documents() {
           ${page.docs.map((d) => html`<tr class="click" onClick=${() => openRaw(file, rg, d.row)}><td>${d.row}</td><td>${fmtInt(d.chars)}${d.turns ? html`<div class="legend">${d.turns} turns</div>` : ""}</td><td class="l">${d.preview.slice(0, 140)}</td></tr>`)}</table>`}
         ${!isTok && !page && html`<div class="empty-note">no files</div>`}
       </div>
-      <div>
-        ${view === "doc" && (!doc ? html`<div class="empty-note">pick a document (or "random doc")</div>` : html`<div>
+      <div class="col">
+        ${view === "doc" && (!doc ? html`<div class="empty-note">pick a document (or "random doc")</div>` : html`<div class="grow">
           <div class="sub">${isTok ? `doc ${doc.doc} · starts at token ${fmtInt(doc.start)} · ${fmtInt(doc.length)} tokens incl. bos/eos · ${fmtInt(doc.text.length)} chars` : `file ${doc.file} · row group ${doc.rg} · row ${doc.row} · ${fmtInt(doc.text.length)} chars${rawTokens ? ` · ${fmtInt(rawTokens.n_tokens)} tokens` : ""}`}</div>
           ${!isTok && doc.meta && html`<table style="margin-bottom:8px">${Object.entries(doc.meta).map(([k, v]) => html`<tr><td>${k}</td><td class="l">${String(v).slice(0, 200)}</td></tr>`)}</table>`}
-          ${mode === "text" ? html`<pre style="max-height:600px">${doc.text}</pre>` : pieces ? html`<div>
+          ${mode === "text" ? html`<pre class="grow">${doc.text}</pre>` : pieces ? html`<div class="grow">
               <${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${!isTok && !!doc.messages} />
               ${!isTok && doc.messages && html`<div class="legend" style="margin-top:6px">exactly what SFT trains on: chat format with reserved tokens; <b style="color:#15803d">green</b> = loss target (assistant turns + ${"<|end|>"}), grey = masked · ${rawTokens.n_tokens} tokens, ${rawTokens.n_target} targets</div>`}
             </div>` : tokErr ? html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">tokenization failed: ${tokErr}</div>` : html`<div class="empty-note">tokenizing…</div>`}
         </div>`)}
-        ${view === "window" && html`<div>
+        ${view === "window" && html`<div class="grow">
           <div class="row" style="margin-bottom:6px"><span class="muted">window start</span><input type="number" value=${winStart} step=${winLen} min="0" onChange=${(e) => setWinStart(Math.max(0, Number(e.target.value)))} style="width:140px" />
             <span class="muted">length</span><select value=${winLen} onChange=${(e) => setWinLen(Number(e.target.value))}>${[256, 1024, 2048, 4096, 8192].map((n) => html`<option value=${n}>${n}</option>`)}</select>
             <button onClick=${() => setWinStart(Math.max(0, winStart - winLen))}>‹ prev</button><button onClick=${() => setWinStart(winStart + winLen)}>next ›</button>

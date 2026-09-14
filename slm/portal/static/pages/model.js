@@ -23,7 +23,7 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
         <button onClick=${() => onUnload(slot)} disabled=${busy}>unload</button>` : html`<span class="muted">empty</span>`}
     </div>
     <div class="row" style="margin-top:6px">
-      <select value=${sel} onChange=${(e) => setSel(e.target.value)} style="max-width:420px">
+      <select value=${sel} onChange=${(e) => setSel(e.target.value)} style="max-width:min(420px,100%);min-width:0">
         <option value="">choose checkpoint…</option>
         ${ckpts.map((c) => html`<option value=${c.path}>${c.run} / ${c.name} · ${fmtTok(c.tokens)} tok${c.val_loss != null ? ` · val ${c.val_loss.toFixed(3)}` : ""}</option>`)}
       </select>

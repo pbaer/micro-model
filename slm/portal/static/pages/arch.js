@@ -36,12 +36,11 @@ function Node({ node, byId, B, T, depth, open, toggle, total }) {
 
 function GqaSvg({ H, Hk, D }) {
   const g = H / Hk, w = 26, gap = 6, W = H * (w + gap) + 20, y1 = 20, y2 = 90;
-  return html`<svg viewBox=${`0 0 ${W} 130`} style=${`max-width:${W}px;display:block`}>
+  return html`<div><svg viewBox=${`0 0 ${W} 118`} style=${`max-width:${W}px;display:block`}>
     ${Array.from({ length: H }, (_, i) => html`<rect x=${10 + i * (w + gap)} y=${y1} width=${w} height="22" rx="4" fill="#0891b2" /><text x=${10 + i * (w + gap) + w / 2} y=${y1 + 15} font-size="10" fill="#fff" text-anchor="middle">q${i}</text>
       <line x1=${10 + i * (w + gap) + w / 2} y1=${y1 + 22} x2=${10 + (Math.floor(i / g) * g + (g - 1) / 2) * (w + gap) + w / 2} y2=${y2} stroke="#94a3b8" />`)}
     ${Array.from({ length: Hk }, (_, j) => { const cx = 10 + (j * g + (g - 1) / 2) * (w + gap) + w / 2; return html`<rect x=${cx - w} y=${y2} width=${2 * w} height="22" rx="4" fill="#7c3aed" /><text x=${cx} y=${y2 + 15} font-size="10" fill="#fff" text-anchor="middle">kv${j}</text>`; })}
-    <text x="10" y="125" font-size="10" fill="#666">${H} query heads share ${Hk} key/value heads (${g} per group), head_dim ${D}. KV cache and k/v projections shrink by ${g}x vs. full multi-head attention.</text>
-  </svg>`;
+  </svg><div class="legend">${H} query heads share ${Hk} key/value heads (${g} per group), head_dim ${D}. KV cache and k/v projections shrink by ${g}x vs. full multi-head attention.</div></div>`;
 }
 
 export function ArchPage() {

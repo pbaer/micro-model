@@ -60,6 +60,9 @@ class RuntimeConfig:
     log_every_updates: int = 10
     # Assume no other GPU use; abort if less than this much VRAM is free at start (GiB).
     min_free_vram_gib: float = 12.0
+    # GPU health telemetry (nvidia-smi on a background thread): sample period and the console-warning threshold.
+    gpu_sample_s: float = 2.0
+    gpu_warn_temp_c: float = 80.0
 
 
 @dataclass
