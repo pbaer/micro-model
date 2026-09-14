@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-14 08:05.
+the command center shows the live version of the same data. Last updated 2026-09-14 10:35.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -55,6 +55,9 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m2_base_149m | pretrain, 149M, 2K, WSD | random | 1.00B | 4.6 h (60.7K tok/s) | 3.060 / 3.051 | Pre-decay snapshot `snap_800M.pt` (val 3.20) seeds M3a |
 | m3_base_stable_149m | pretrain, constant LR (stable phase) | m2 snap_800M | 3.40B | 15.2 h (62.2K tok/s) | 2.768 / 2.878 | Finished 09-14 02:23; val 3.168 → 2.878 with the LR still flat (decay happens in M3b); weights have seen 4.2B tokens |
 | m3_base_8k_149m | pretrain, 8K context, long-doc mixture, WSD decay (last 60%) | m3a final | 800M | 5.4 h (41.3K tok/s) | 2.683 / 2.693 | **The base checkpoint** (weights have seen 5.0B tokens). Val is on the 8K mixture, so not comparable to the 2K numbers; decay took it 2.82 → 2.69. GPU peak 72 °C, no throttle warnings |
+| m4_sft_149m | instruct SFT | m3b final (base) | 450M (2 epochs) | 2.1 h (62.8K tok/s) | 1.434 / 1.660 | Pretraining-mixture val 2.81 → 2.89 (drift +0.08 nats) |
+| m5_reasoning_149m | reasoning SFT | m4 final | 45M (3 epochs) | 12 min | 0.500 / 0.525 | Pretraining val 2.96 → 2.99 |
+| m6_rl_arith_149m | GRPO stage A | m5 final | 200 steps | running (resumed at step 125 after a guard misfire) | held-out acc 0.53 → 0.57 at step 125 | |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -76,6 +79,8 @@ lm-evaluation-harness, accuracy (acc_norm in parentheses):
 | Checkpoint | HellaSwag | ARC-Easy | PIQA | Limit |
 |---|---|---|---|---|
 | m2_base_149m final (1B tokens) | 27.6 (29.0) | 47.1 (41.5) | 60.3 (58.7) | full |
+| m3_base_8k_149m final (5.0B tokens, the base) | 29.3 (32.7) | 51.6 (45.5) | 64.0 (62.5) | full |
+| m4_sft_149m final | 33.1 (39.6) | 50.0 (46.7) | 63.5 (61.5) | 2000 |
 | m4_sft_rehearsal_149m final | 31.7 (36.5) | 43.7 (41.0) | 61.8 (59.4) | 2000 |
 
 Reference points: random is 25% / 25% / 50%; GPT-2 small (124M, ~10B tokens) scores about 29–31 on
@@ -86,14 +91,25 @@ GSM8K test n = 200):
 
 | Checkpoint | arith1 | arith2 | arith2mul | arith_multi | algebra | word | GSM8K | malformed (GSM8K) |
 |---|---|---|---|---|---|---|---|---|
+| m5_reasoning_149m (real base) | 40% | 50% | 42% | 3% | 34% | 68% | 2.0% | 15% |
 | m5_reasoning_rehearsal_149m | 60% | 25% | 22% | 0% | 31% | 58% | 2.5% | 9.5% |
 | m6_rl_arith_rehearsal_149m (200 GRPO steps on arith1/arith2) | 80% | 44% | 36% | 0% | 29% | 55% | 2.5% | 8.5% |
 
 RL moved the trained tasks (arith2 +19 points, and arith2mul +14 without being trained on it) and left
 the others within noise; GSM8K is beyond this model at this stage.
 
-Long-context needle eval: the M2 attempt failed on a RoPE-table assertion at 8192 (the eval now reserves
-answer room); no needle numbers yet. Runs for the 8K base and the 16K extension are planned.
+Long-context needle eval on the 8K base (single needle, n = 4 per cell, retrieval accuracy):
+
+| Length | depth 0.1 | depth 0.5 | depth 0.9 |
+|---|---|---|---|
+| 1024 | 100% | 100% | 100% |
+| 2048 | 100% | 100% | 100% |
+| 4096 | 75% | 100% | 100% |
+| 8000 | 0% | 100% | 100% |
+
+Retrieval is solid up to the trained context except for needles placed at the very start of a full-length
+8K context (the "lost at the beginning" cell), the usual weak spot right after a short 8K phase. The M2
+attempt (2K model) failed on a RoPE-table assertion; fixed since.
 
 ## 5. Diagnostics
 
@@ -101,6 +117,8 @@ answer room); no needle numbers yet. Runs for the 8K base and the 16K extension 
 
 - m1_tinystories_26m: base loss 1.441; 0% dead SwiGLU units in every layer; skipping any single
   block raises loss (layer 0 by +3.70, others +0.21 to +0.54).
+- m3_base_8k_149m (the base, on fineweb-edu-b val at 2K): base loss 3.076; 0% dead units; layer-skip deltas
+  +5.29 (layer 0), +0.69 (layer 1), then +0.03 to +0.28 with the last layer at +0.84.
 - m2_base_149m: base loss 3.354; 0% dead units; layer-skip deltas +5.29 (layer 0), then +0.01 to +0.22
   through the stack with the last layer at +0.67, so every layer contributes and depth is not wasted.
 

@@ -95,3 +95,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   M4 → M5 → M6 stage A → new M6 stage B (`m6_rl_multi_149m`: arith2/arith2mul/arith_multi/algebra/word,
   300 steps) → M7 16K → needle/lm-eval on M7. Each training run has a spill guard (STOP if VRAM ≥ 14 GiB
   or tok/s < 3K after warmup). Expected ~9 h total.
+- Base evals (07:53–07:58): HellaSwag 29.3/32.7, ARC-Easy 51.6, PIQA 64.0 (vs 27.6 / 47.1 / 60.3 for the
+  1B-token M2); needle retrieval 100% up to 4K, and at 8K only the depth-0.1 cell fails; diagnostics clean.
+- M4 (real base) finished 10:05: val 1.660, pretraining val drift 2.81 → 2.89; lm-eval HellaSwag 33.1/39.6.
+  M5 finished 10:18: val 0.525; reasoning benchmark arith2 50%, word 68%, GSM8K 2%.
+- Incident: the pipeline's spill guard read tok/s = 0 for the RL run (RL logs steps, not tokens/sec)
+  and stopped M6 stage A at step 125 (held-out acc already 0.57). Guard fixed (throughput test only when
+  reported), the script got a resume-from-stage argument, chain relaunched from M6 at 10:29; the RL
+  trainer resumed from `latest.pt` at step 125.
