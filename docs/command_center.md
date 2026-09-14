@@ -1,0 +1,67 @@
+# Command center (web UI)
+
+`python -m slm.portal` → http://127.0.0.1:8765. A local supplement for looking at runs, data, the
+tokenizer, checkpoints and the architecture. The chat/CLI workflow remains the primary interface; the
+portal never launches training.
+
+## Architecture
+
+- **Server** (`slm/portal/app.py`, FastAPI + uvicorn) is torch-free: it reads `runs/`, the data root and
+  the tokenizer directly. Routers under `slm/portal/api/`, logic under `slm/portal/services/`. Static
+  assets are served with `Cache-Control: no-cache`, so a browser reload picks up JS edits; Python edits
+  need a restart. `--runs-root`, `--port`, `--no-browser`, `--reload` flags; settings in `settings.py`.
+- **Frontend** (`slm/portal/static/`): no build step; vendored ESM Preact + htm and uPlot; hash router
+  in `app.js`; pages in `pages/`, shared pieces in `components/` (`chart.js` with an optional second
+  y-axis, `tokens.js` token chips with loss-mask colouring, `util.js` formatters and `api()`).
+  `index.html` carries boot diagnostics: a failed module import, a boot exception or a 10-second stall
+  shows an error panel; an `ErrorBoundary` in `app.js` contains page crashes.
+- **Worker** (`services/worker.py`): all torch work runs in a lazily spawned subprocess. GPU guard:
+  loads default to CPU while a training run is live (unless forced); idle auto-stop; explicit
+  `POST /api/model/worker/stop`. A crash cannot take the server down. `services/harness.py` runs inside
+  the worker: checkpoint slots, streaming generation with per-token log-probs and top-k alternatives,
+  teacher-forced scoring, diagnostics.
+- **Data access** (`services/datasets.py`): row-group addressed parquet reads and per-request memmaps of
+  token shards (never cached, because Windows cannot replace a mapped file). Chat/math rows are
+  rendered as transcripts and normalized through the same `rows_to_messages` the SFT pipeline uses.
+- **Metrics** come from `slm/utils/metrics.py` (shared with the HTML report): incremental JSONL tailing,
+  status detection, series thinning, checkpoint listing from `index.json`, cumulative tokens along the
+  `init_from` chain.
+
+## Pages
+
+| Page | What it shows |
+|---|---|
+| Overview | Header with GPU memory/utilization/temperature/power/throttle state; live-run cards (progress, loss, ETA); the pipeline table (stage → runs with status, tokens this run and cumulative, progress, loss, result, tok/s, elapsed + ETA, started + git, init chain); data readiness. Click a run to open it. |
+| Run detail (`#/runs/<run>`) | Tiles (progress, ETA, elapsed vs initial estimate, tok/s, losses or RL reward/held-out/KL/length, LR, grad norm, VRAM, GPU °C/W with run max, step timing); charts with x in tokens/updates/time and log-y (loss, validation incl. pretraining-mixture drift, tok/s, LR, grad norm, step time, VRAM, GPU temperature/power, RL charts); milestones table; samples timeline (per 100M tokens, greedy vs sampled); checkpoints with exact tokens; events (start/resume/stop/finish/checkpoint/warn); config. Live tail via SSE. |
+| Data | Sources (raw + tokenized + SFT manifests), Mixture (weights, epochs per source for a config), Documents: pick tokenizer tag / source / split / shard (or parquet file / row group), list documents, open one as text, tokens or ids; `window` shows an exact training row with document boundaries; `stats` gives length percentiles and long-doc counts. Chat rows tokenize through the chat formatter with the loss mask shown in green. The list and preview fill the viewport. |
+| Tokenizer | Playground: encode text in document or chat mode, coloured chips with offsets and ids, vocabulary lookup. |
+| Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), completion and chat modes with a think toggle, streaming tokens with log-probs and top-k alternatives, raw-text vs tokens view (reserved tokens stay visible), prompt scoring, cancel, release GPU. |
+| Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs measured benchmark, LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
+
+## API (all under `/api`)
+
+`GET /meta`, `GET /system/gpu` · runs: `GET /runs`, `/runs/{run}`, `/runs/{run}/series`, `/events`,
+`/checkpoints`, `/samples`, `/samples/{tokens}`, `/report`, `/live` (SSE) · data: `/data/sources`,
+`/data/configs`, `/data/mixture`, `/data/raw/{source}/files|docs|doc|sample`,
+`/data/tokenized/{tag}/{source}/{split}/shards|docs|doc|window|stats` · tokenizer: `GET /tokenizers`,
+`POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/token/{i}` · model:
+`GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints`, `POST /model/slots/{slot}/load|unload`,
+`POST /model/score`, `POST /model/generate` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
+arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
+
+## Tests and checks
+
+- `tests/test_portal_runs.py`: API on synthetic runs; every JS module must parse (`node --check`).
+- `tests/test_portal_live.py`: SSE tail against a real uvicorn server.
+- `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU.
+- `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
+  button clicked, every select cycled; no JS errors, no hangs, no raw template text.
+- `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
+- Layout rules verified at a 1000 px viewport: no page scrolls horizontally; the Overview table is the
+  one element that may still need its own scroll below ~1100 px.
+
+## Backlog (from the original plan)
+
+P1: batch replay inspector (exact rows of a given update), run comparison overlays, sampled document
+search, A/B side-by-side with divergence marker, prompt-scoring view. P2: diagnostics viewer in the
+portal, animations on the architecture page, stage "lenses", STOP control for runs, a run scheduler.

@@ -8,7 +8,7 @@ model:
   rope_scaling: {type: yarn, factor: 2.0, original_max_seq_len: 8192}
   grad_checkpointing: true
   loss_chunk_size: 4096
-init_from: runs/m3_base_149m/checkpoints/final.pt
+init_from: runs/m3_base_8k_149m/checkpoints/final.pt
 data:
   tokenized_root: C:\slm-data\tokenized\v1
   mixture: {fineweb-edu-long: 0.7, fineweb-edu: 0.2, python-edu: 0.05, finemath: 0.05}

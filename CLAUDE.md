@@ -4,6 +4,12 @@ From-scratch small language model research stack (decoder-only Transformer, ~149
 single RTX 4080 SUPER, native Windows). Package name is `slm`; the project's public name is a
 placeholder and may change, so don't bake it into code.
 
+## Documentation (keep current)
+- `README.md` = stable high-level description (approach, structure, pointers); no run statistics in it.
+- `docs/design.md` internals · `docs/runbook.md` operations · `docs/results.md` numbers (update when a run
+  or eval finishes) · `docs/log.md` dated incidents/decisions · `docs/roadmap.md` remaining work ·
+  `docs/command_center.md` the web UI.
+
 ## Environment
 - `.venv` (uv, Python 3.13) with torch 2.14.0+cu130 and triton-windows 3.8.0. Run everything with
   `.venv/Scripts/python.exe`. Reinstall torch only from the cu130 index.
@@ -34,6 +40,9 @@ placeholder and may change, so don't bake it into code.
   checkpoint on Ctrl-C, and refresh a self-contained `runs/<run>/report.html` (inline charts, ETA,
   per-100M-token milestone timings) at least every 30 minutes and at every milestone.
 - Tests live in `tests/`; run `.venv/Scripts/python.exe -m pytest`.
+- GPU telemetry: both trainers run `slm.utils.gpu.GpuSampler` (nvidia-smi on a daemon thread) and put
+  `gpu_temp_c`/`gpu_power_w`/`gpu_util` in every train record; above `runtime.gpu_warn_temp_c` (80 C) they print a
+  console warning and log a `warn` event (rate-limited to one per 5 min). Runs started before 2026-09-13 (M3a) lack these fields.
 
 ## Windows gotchas learned
 - A process holding a memmap or open handle on a file blocks overwriting/renaming it (prepare.py
