@@ -79,3 +79,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   morning status report and the command-center plan were folded into these files.
 - Config fix: `m7_ctx16k_149m.yaml` pointed at a stale base path; now `runs/m3_base_8k_149m/checkpoints/final.pt`.
 - M3a at 2.46B of 3.4B tokens (val 2.914), ETA ~02:15 on 09-14.
+
+## 2026-09-14 — M3a finished, M3b
+
+- M3a finished at 02:23: 3.40B tokens in 15h 13m at 62.2K tok/s, val 2.878 (train 2.768) with the LR
+  still flat. The background job renamed the run dir to `runs/m3_base_stable_149m`.
+- 8K benchmark: mb 1 = 40.5K tok/s / 6.6 GiB, mb 2 = 41.9K tok/s / 10.9 GiB (no spill).
+- M3b (`m3_base_8k_149m`: 8K context, long-doc mixture, WSD decay over the last 60% of 800M tokens)
+  launched at 02:55 from `m3_base_stable_149m/checkpoints/final.pt`; expected ~5.5 h.

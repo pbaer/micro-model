@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-13 22:30.
+the command center shows the live version of the same data. Last updated 2026-09-14 02:55.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -19,9 +19,11 @@ Rows marked SPILL ran at 1% MFU because the WDDM allocator spilled into host mem
 | 8192 | 4 | yes | 0 | 0.60K | 54,532 | 20.2 GiB SPILL | 1% |
 | 8192 | 8 | yes | 4096 | 0.34K | 189,969 | 38.0 GiB SPILL | 1% |
 | 2048 | 8 | no (eager) | 0 | 9.5K | 1,723 | 18.5 GiB | 11% |
+| 8192 | 1 | yes | 4096 | 40.5K | 202 | 6.6 GiB | 87% |
+| 8192 | 2 | yes | 4096 | 41.9K | 391 | 10.9 GiB | 90% |
 
 Conclusions baked into the configs: 2K × mb 8 (M2/M3a/M4), 8K × mb 2 with `loss_chunk_size 4096`
-(M3b; mb 2 still to be measured before launch), 16K × mb 1 with gradient checkpointing (M7). In
+(M3b: 41.9K tok/s, 10.9 GiB; the PaLM-style MFU overstates efficiency at 8K because it counts full attention), 16K × mb 1 with gradient checkpointing (M7). In
 production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 
 ## 2. Data volumes (tokenizer v1)
@@ -51,7 +53,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 |---|---|---|---|---|---|---|
 | m1_tinystories_26m | pretrain, 26M | random | 600M | 52 min (192K tok/s) | 1.336 / 1.391 (ppl 4.0) | Coherent stories; diagnostics clean (0% dead units, all layers useful) |
 | m2_base_149m | pretrain, 149M, 2K, WSD | random | 1.00B | 4.6 h (60.7K tok/s) | 3.060 / 3.051 | Pre-decay snapshot `snap_800M.pt` (val 3.20) seeds M3a |
-| m3_base_149m_stable (→ `m3_base_stable_149m`) | pretrain, constant LR | m2 snap_800M | 2.46B of 3.40B (running) | 11.0 h so far (62.1K tok/s) | 2.908 / 2.914 at 2.4B | ETA ~02:15 on 09-14; val 3.168 → 2.914 over the run |
+| m3_base_stable_149m | pretrain, constant LR (stable phase) | m2 snap_800M | 3.40B | 15.2 h (62.2K tok/s) | 2.768 / 2.878 | Finished 09-14 02:23; val 3.168 → 2.878 with the LR still flat (decay happens in M3b); weights have seen 4.2B tokens |
 | m4_sft_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_149m | reasoning SFT (rehearsal) | m4 final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_149m | GRPO stage A (rehearsal) | m5 final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -61,7 +63,7 @@ Validation loss trajectory of the 149M base (2K context, nats per token):
 | Tokens | 0.1B | 0.2B | 0.5B | 0.8B | 1.0B (M2 end, after decay) | 1.8B | 2.4B | 2.8B | 3.2B |
 |---|---|---|---|---|---|---|---|---|---|
 | M2 (WSD) | 4.593 | 3.812 | 3.350 | 3.201 | 3.051 | | | | |
-| M3a (constant LR from 0.8B) | | | | 3.168 (at +0.1B) | 3.010 (+1.0B) | 2.946 (+1.8B) | 2.914 (+2.4B) | | |
+| M3a (constant LR from 0.8B) | | | | 3.168 (at +0.1B) | 3.010 (+1.0B) | 2.946 (+1.8B) | 2.914 (+2.4B) | 2.898 (+2.8B) | 2.882 (+3.2B); 2.878 at +3.4B (end) |
 
 (M3a counts tokens from its own start; add 0.8B for tokens seen by the weights. The final decay
 happens in M3b, so M3a's loss is a stable-phase loss and will drop further at decay.)
