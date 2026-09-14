@@ -87,3 +87,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - 8K benchmark: mb 1 = 40.5K tok/s / 6.6 GiB, mb 2 = 41.9K tok/s / 10.9 GiB (no spill).
 - M3b (`m3_base_8k_149m`: 8K context, long-doc mixture, WSD decay over the last 60% of 800M tokens)
   launched at 02:27 from `m3_base_stable_149m/checkpoints/final.pt`; expected ~5.5 h.
+- M3b finished at 07:51: 800M tokens in 5h 24m at 41.3K tok/s, val 2.693 on the 8K mixture (2.82 before
+  the decay). `runs/m3_base_8k_149m/checkpoints/final.pt` is the base checkpoint (5.0B tokens seen).
+- The rehearsal runs on the 1B base were renamed to free the real names: `m4_sft_rehearsal_149m`,
+  `m5_reasoning_rehearsal_149m`, `m6_rl_arith_rehearsal_149m` (their `run.json` lineage updated).
+- `scripts/pipeline_after_m3.sh` launched at 08:05: base evals (lm-eval, diagnostics, needle 1K–8K) →
+  M4 → M5 → M6 stage A → new M6 stage B (`m6_rl_multi_149m`: arith2/arith2mul/arith_multi/algebra/word,
+  300 steps) → M7 16K → needle/lm-eval on M7. Each training run has a spill guard (STOP if VRAM ≥ 14 GiB
+  or tok/s < 3K after warmup). Expected ~9 h total.

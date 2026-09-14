@@ -1,6 +1,6 @@
 # Roadmap
 
-Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-13 evening.
+Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-14 morning. Items 1–4 are done; 5–9 run unattended via `scripts/pipeline_after_m3.sh`.
 
 ## GPU critical path (~35 GPU-hours)
 
