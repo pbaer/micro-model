@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-14 10:35.
+the command center shows the live version of the same data. Last updated 2026-09-14 11:05.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -57,7 +57,8 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m3_base_8k_149m | pretrain, 8K context, long-doc mixture, WSD decay (last 60%) | m3a final | 800M | 5.4 h (41.3K tok/s) | 2.683 / 2.693 | **The base checkpoint** (weights have seen 5.0B tokens). Val is on the 8K mixture, so not comparable to the 2K numbers; decay took it 2.82 → 2.69. GPU peak 72 °C, no throttle warnings |
 | m4_sft_149m | instruct SFT | m3b final (base) | 450M (2 epochs) | 2.1 h (62.8K tok/s) | 1.434 / 1.660 | Pretraining-mixture val 2.81 → 2.89 (drift +0.08 nats) |
 | m5_reasoning_149m | reasoning SFT | m4 final | 45M (3 epochs) | 12 min | 0.500 / 0.525 | Pretraining val 2.96 → 2.99 |
-| m6_rl_arith_149m | GRPO stage A | m5 final | 200 steps | running (resumed at step 125 after a guard misfire) | held-out acc 0.53 → 0.57 at step 125 | |
+| m6_rl_arith_149m | GRPO stage A (arith1/arith2) | m5 final | 200 steps | 11 min | held-out acc 0.53 → 0.58 | KL 0.005, length 32, no malformed; resumed once at step 125 |
+| m6_rl_multi_149m | GRPO stage B (arith2/arith2mul/arith_multi/algebra/word) | m6 A final | 300 steps | 21 min | held-out acc 0.37 → 0.39 | KL 0.012, 38% of groups without signal (arith_multi is all-zero) |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -92,11 +93,15 @@ GSM8K test n = 200):
 | Checkpoint | arith1 | arith2 | arith2mul | arith_multi | algebra | word | GSM8K | malformed (GSM8K) |
 |---|---|---|---|---|---|---|---|---|
 | m5_reasoning_149m (real base) | 40% | 50% | 42% | 3% | 34% | 68% | 2.0% | 15% |
+| m6_rl_arith_149m (stage A, 200 steps) | 70% | 61% | 49% | 2% | 37% | 67% | 1.5% | 8% |
+| m6_rl_multi_149m (stage B, +300 steps) | 50% | 61% | 48% | 3% | 32% | 67% | 2.0% | 16% |
 | m5_reasoning_rehearsal_149m | 60% | 25% | 22% | 0% | 31% | 58% | 2.5% | 9.5% |
 | m6_rl_arith_rehearsal_149m (200 GRPO steps on arith1/arith2) | 80% | 44% | 36% | 0% | 29% | 55% | 2.5% | 8.5% |
 
-RL moved the trained tasks (arith2 +19 points, and arith2mul +14 without being trained on it) and left
-the others within noise; GSM8K is beyond this model at this stage.
+On the real base, stage A took arith2 from 50% to 61% and arith2mul from 42% to 49%; stage B (multi-step,
+algebra, word) moved little because arith_multi yields almost no correct samples to learn from (38% of
+groups carry no signal) — a curriculum gap to fix with easier intermediate tasks or partial credit.
+GSM8K stays at ~2%: beyond this model at this stage. Rehearsal (1B base): arith2 25% → 44% after stage A.
 
 Long-context needle eval on the 8K base (single needle, n = 4 per cell, retrieval accuracy):
 

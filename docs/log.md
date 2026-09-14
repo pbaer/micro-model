@@ -103,3 +103,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   and stopped M6 stage A at step 125 (held-out acc already 0.57). Guard fixed (throughput test only when
   reported), the script got a resume-from-stage argument, chain relaunched from M6 at 10:29; the RL
   trainer resumed from `latest.pt` at step 125.
+- M6 stage A finished 10:33 (held-out 0.58; arith2 61%, arith2mul 49%). Stage B (`m6_rl_multi_149m`,
+  300 steps) finished 10:59 with little movement: arith_multi produces no correct samples, so 38% of
+  groups have zero advantage. Benchmark after B: arith2 61%, algebra 32%, word 67%.
+  Lesson for stage C: the curriculum needs tasks the policy sometimes solves, or partial credit.
+- M7 (16K YaRN extension, 200M tokens, mb 1 with gradient checkpointing) started 11:01.
