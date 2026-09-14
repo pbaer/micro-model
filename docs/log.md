@@ -108,3 +108,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   groups have zero advantage. Benchmark after B: arith2 61%, algebra 32%, word 67%.
   Lesson for stage C: the curriculum needs tasks the policy sometimes solves, or partial credit.
 - M7 (16K YaRN extension, 200M tokens, mb 1 with gradient checkpointing) started 11:01.
+- M7 finished 13:21: 200M tokens at 16K in 2h 19m (24.5K tok/s, 4.3 GiB with gradient checkpointing;
+  microbatch 2 without checkpointing would likely be faster next time). Val 2.712 on the 16K mixture.
+  Needle: depth-0.9 retrieval 100% at every length to 16K; early-depth cells at 12–16K fail. Short context
+  unchanged: 2K loss 3.069 vs base 3.076, lm-eval within ±1 point at the same 2000-sample limit.
+- Gap noticed: the M7 config had no `extra_val_mixture`, so the short-context loss was not tracked during
+  the run (checked afterwards with the diagnostics loss instead). Added to the config for future runs.
+- Pipeline finished 13:22. The full M0–M7 stack has now run end to end on the real base.

@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-14 11:05.
+the command center shows the live version of the same data. Last updated 2026-09-14 13:45.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -59,6 +59,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m5_reasoning_149m | reasoning SFT | m4 final | 45M (3 epochs) | 12 min | 0.500 / 0.525 | Pretraining val 2.96 → 2.99 |
 | m6_rl_arith_149m | GRPO stage A (arith1/arith2) | m5 final | 200 steps | 11 min | held-out acc 0.53 → 0.58 | KL 0.005, length 32, no malformed; resumed once at step 125 |
 | m6_rl_multi_149m | GRPO stage B (arith2/arith2mul/arith_multi/algebra/word) | m6 A final | 300 steps | 21 min | held-out acc 0.37 → 0.39 | KL 0.012, 38% of groups without signal (arith_multi is all-zero) |
+| m7_ctx16k_149m | context extension 8K → 16K (YaRN ×2), long-doc mixture | m3b final (base) | 200M | 2.3 h (24.5K tok/s, mb 1 + grad checkpointing, 4.3 GiB) | 2.70 / 2.712 | Val on the 16K mixture. Short-context check: 2K loss on fineweb-edu-b 3.069 vs base 3.076; lm-eval unchanged (see below) |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -81,8 +82,13 @@ lm-evaluation-harness, accuracy (acc_norm in parentheses):
 |---|---|---|---|---|
 | m2_base_149m final (1B tokens) | 27.6 (29.0) | 47.1 (41.5) | 60.3 (58.7) | full |
 | m3_base_8k_149m final (5.0B tokens, the base) | 29.3 (32.7) | 51.6 (45.5) | 64.0 (62.5) | full |
+| m3_base_8k_149m final, same 2000-sample limit | 32.6 (39.1) | 51.9 (45.6) | 64.0 (62.5) | 2000 |
 | m4_sft_149m final | 33.1 (39.6) | 50.0 (46.7) | 63.5 (61.5) | 2000 |
+| m7_ctx16k_149m final (16K extension of the base) | 32.6 (39.6) | 52.0 (46.8) | 63.8 (62.6) | 2000 |
 | m4_sft_rehearsal_149m final | 31.7 (36.5) | 43.7 (41.0) | 61.8 (59.4) | 2000 |
+
+The first 2000 HellaSwag samples are easier than the full set, so compare rows with the same limit only.
+The 16K extension costs nothing on short-context tasks (all three within ±1 point of the base at the same limit).
 
 Reference points: random is 25% / 25% / 50%; GPT-2 small (124M, ~10B tokens) scores about 29–31 on
 HellaSwag; SmolLM-135M (600B tokens) about 42.
@@ -116,6 +122,20 @@ Retrieval is solid up to the trained context except for needles placed at the ve
 8K context (the "lost at the beginning" cell), the usual weak spot right after a short 8K phase. The M2
 attempt (2K model) failed on a RoPE-table assertion; fixed since.
 
+After the 16K extension (m7_ctx16k_149m, YaRN ×2 + 200M tokens at 16K):
+
+| Length | depth 0.1 | depth 0.5 | depth 0.9 |
+|---|---|---|---|
+| 2048 | 100% | 75% | 100% |
+| 8000 | 50% | 100% | 100% |
+| 12000 | 0% | 75% | 100% |
+| 16000 | 0% | 25% | 100% |
+
+Effective context after the short extension: recent material (depth 0.9) is retrieved at every length up
+to 16K; needles in the first half of a 12–16K context are mostly lost, and the 8K depth-0.1 cell improved
+from 0% to 50%. More extension tokens or a longer YaRN ramp would be the next lever; the 32K branch should
+wait until the 16K early-depth cells are fixed.
+
 ## 5. Diagnostics
 
 `scripts/diagnose.py` on the final checkpoints (validation batches from fineweb-edu / tinystories):
@@ -124,6 +144,7 @@ attempt (2K model) failed on a RoPE-table assertion; fixed since.
   block raises loss (layer 0 by +3.70, others +0.21 to +0.54).
 - m3_base_8k_149m (the base, on fineweb-edu-b val at 2K): base loss 3.076; 0% dead units; layer-skip deltas
   +5.29 (layer 0), +0.69 (layer 1), then +0.03 to +0.28 with the last layer at +0.84.
+- m7_ctx16k_149m at 2K context: base loss 3.069 (no ablation run), 0% dead units — no short-context regression.
 - m2_base_149m: base loss 3.354; 0% dead units; layer-skip deltas +5.29 (layer 0), then +0.01 to +0.22
   through the stack with the last layer at +0.67, so every layer contributes and depth is not wasted.
 

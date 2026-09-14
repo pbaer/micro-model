@@ -14,6 +14,7 @@ data:
   mixture: {fineweb-edu-long: 0.7, fineweb-edu: 0.2, python-edu: 0.05, finemath: 0.05}
   seq_len: 16384
   val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-b: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}  # short-context drift check (2K rows would need seq_len; this uses 16K rows of the 2K mixture)
 optim:
   lr: 1.0e-4
   weight_decay: 0.1

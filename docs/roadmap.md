@@ -1,6 +1,6 @@
 # Roadmap
 
-Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-14 morning. Items 1–4 are done; 5–9 run unattended via `scripts/pipeline_after_m3.sh`.
+Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-14 afternoon: the full M0–M7 chain has run on the real base (see `results.md`); items 1–9 below are done except RL stage C, which is not built.
 
 ## GPU critical path (~35 GPU-hours)
 
@@ -40,9 +40,16 @@ Remaining work, with GPU-time estimates from measured throughput. Updated 2026-0
 4. **A larger model** (e.g. 300–400M) as a second base once the 149M pipeline is fully validated, at the
    cost of iteration speed.
 
+## Next candidates (after the decisions below)
+
+- RL curriculum fix: stage B learned nothing from arith_multi (no correct samples). Add intermediate tasks
+  (two-step expressions, small numbers), partial credit, or a reward for a correct intermediate line; then
+  stage C (code with unit tests, logic puzzles).
+- 16K early-depth retrieval: extend longer (400M+ tokens) or ramp YaRN; track short-context loss via
+  `extra_val_mixture` (now in the config).
+- M7 speed: try microbatch 2 without gradient checkpointing (4.3 GiB peak leaves room).
+
 ## Known gaps
 
-- No needle numbers yet (the M2 attempt hit the RoPE-table assertion; fixed since).
 - MMLU subsets not run yet on any checkpoint.
-- The M4–M6 numbers in `results.md` are rehearsal results on the 1B-token base and will be replaced.
 - `runs/` is untracked; there is no off-machine backup of checkpoints.
