@@ -86,4 +86,4 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   still flat. The background job renamed the run dir to `runs/m3_base_stable_149m`.
 - 8K benchmark: mb 1 = 40.5K tok/s / 6.6 GiB, mb 2 = 41.9K tok/s / 10.9 GiB (no spill).
 - M3b (`m3_base_8k_149m`: 8K context, long-doc mixture, WSD decay over the last 60% of 800M tokens)
-  launched at 02:55 from `m3_base_stable_149m/checkpoints/final.pt`; expected ~5.5 h.
+  launched at 02:27 from `m3_base_stable_149m/checkpoints/final.pt`; expected ~5.5 h.
