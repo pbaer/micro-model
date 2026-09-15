@@ -11,7 +11,7 @@ turns, so a later call can reuse `total` from an earlier one. Future tools are P
 the session namespace (provided in-context or trained in), not new token types.
 
 Text form (datasets, synthetic traces, display):
-    <<expr=result>>        one expression, GSM8K's own annotation syntax -> print(expr)
+    <<expr=result>>        one expression, GSM8K's own annotation syntax -> the bare expression (REPL echo)
     <<<code>>>             a short program (may span lines) -> code; its output is the result
 `split_markup` turns text into (text | tool) spans, running the code in a session so the recorded result
 is exactly what the harness would insert; `render_tools` turns generated ids back into the same markup.
@@ -28,7 +28,6 @@ from slm.tools.pysandbox import PySession
 
 TOOL_MARK_RE = re.compile(r"<<<(.+?)>>>|<<([^<>]+?)=([^<>=]*?)>>", re.S)
 MAX_RESULT_CHARS = 300  # results and error messages are inserted into the model's context; keep them short
-_PRINT_RE = re.compile(r"^print\((.*)\)$", re.S)
 NO_OUTPUT = "(no output; use print(...) to show a value, or end with a bare expression)"
 
 
@@ -67,7 +66,7 @@ def split_markup(text: str, session: PySession | None = None) -> list[ToolSpan]:
             out.append(ToolSpan("tool", code=code, result=res) if ok else ToolSpan("text", code))
         else:  # <<expr=result>>
             expr, annotated = m.group(2).strip(), m.group(3).strip()
-            code = f"print({expr})"
+            code = expr  # a bare expression echoes its value, like a REPL; no print() needed
             res, ok = run_tool(code, session)
             out.append(ToolSpan("tool", code=code, result=res) if ok else ToolSpan("text", f"{expr} = {annotated}" if annotated else expr))
         pos = m.end()
@@ -90,10 +89,10 @@ def encode_tool_span(tok: SlmTokenizer, span: ToolSpan) -> tuple[list[int], list
 
 
 def markup_for(code: str, result: str | None) -> str:
-    """Text markup for a generated call: a single print(expr) -> <<expr=result>>, anything else -> <<<code>>>=result."""
-    m = _PRINT_RE.match(code.strip())
-    if m and "\n" not in code.strip():
-        return f"<<{m.group(1)}={result}>>" if result is not None else f"<<{m.group(1)}=>>"
+    """Text markup for a generated call: one line -> <<code=result>>, a program -> <<<code>>>=result."""
+    c = code.strip()
+    if "\n" not in c and "<" not in c and ">" not in c and "=" not in c:
+        return f"<<{c}={result}>>" if result is not None else f"<<{c}=>>"
     return f"<<<{code}>>>" + (f"={result}" if result is not None else "=")
 
 

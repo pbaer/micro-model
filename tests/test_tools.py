@@ -28,7 +28,7 @@ def test_calculator():
 def test_markup_roundtrip_and_masks(tok):
     spans = split_markup("He has 10 - 2 = <<10-2=8>>8 trees. <<1/0=?>> ok <<<a = 4\nprint(a * 2)>>> and <<a+1=5>>")
     assert [s.kind for s in spans] == ["text", "tool", "text", "text", "text", "tool", "text", "tool"] and spans[1].result == "8" and spans[3].text == "1/0 = ?"
-    assert spans[5].code == "a = 4\nprint(a * 2)" and spans[5].result == "8" and spans[7].result == "5"  # state carried from the program to the next call
+    assert spans[1].code == "10-2" and spans[5].code == "a = 4\nprint(a * 2)" and spans[5].result == "8" and spans[7].result == "5"  # state carried to the next call
     msgs = [{"role": "user", "content": "How many?"}, {"role": "assistant", "think": "10 - 2 = <<10-2=8>>8 trees", "content": "#### 8"}]
     enc = format_chat(tok, msgs, think_required=True, tools=True)
     plain = format_chat(tok, msgs, think_required=True, tools=False)
@@ -46,7 +46,7 @@ def test_markup_roundtrip_and_masks(tok):
     parsed = parse_assistant(tok, enc.ids[a_start:])
     assert parsed["think"] == "10 - 2 = <<10-2=8>>8 trees" and parsed["answer"] == "#### 8" and not parsed["malformed"]
     # unclosed spans render as far as they go
-    assert render_tools(tok, [call_open, *tok.encode("print(1+1)")]) == "<<<print(1+1)"
+    assert render_tools(tok, [call_open, *tok.encode("1+1")]) == "<<<1+1"
     # a multi-turn conversation shares one session: the second turn can use the first turn's variable
     convo = [{"role": "user", "content": "a?"}, {"role": "assistant", "think": "<<<a = 5\nprint(a)>>>", "content": "#### 5"},
              {"role": "user", "content": "double it"}, {"role": "assistant", "think": "<<a*2=10>>", "content": "#### 10"}]
@@ -58,7 +58,7 @@ def test_markup_roundtrip_and_masks(tok):
 def test_tool_loop_with_scripted_sampler(tok, monkeypatch):
     """Drive the loop with a fake sampler so the bookkeeping is tested without a trained model."""
     t = {s: tok.special(s) for s in ("<|python_call|>", "<|/python_call|>", "<|python_result|>", "<|/python_result|>")}
-    call = [t["<|python_call|>"], *tok.encode("print(12*35)"), t["<|/python_call|>"]]
+    call = [t["<|python_call|>"], *tok.encode("12*35"), t["<|/python_call|>"]]
     bad_call = [t["<|python_call|>"], *tok.encode("x"), t["<|/python_call|>"]]
     script = {0: [call, tok.encode(" so 420") + [tok.end_id]], 1: [tok.encode("no tools") + [tok.end_id]], 2: [bad_call, call, tok.encode(" done") + [tok.end_id]]}
     state = {"round": {}}
@@ -83,7 +83,7 @@ def test_tool_loop_with_scripted_sampler(tok, monkeypatch):
     assert [o.n_calls for o in outs] == [1, 0, 2] and [o.n_errors for o in outs] == [0, 0, 1] and all(o.termination == "stop" for o in outs)
     r0 = outs[0]
     assert len(r0.ids) == len(r0.gen_mask) and sum(1 - m for m in r0.gen_mask) == len([t["<|python_result|>"], *tok.encode("420"), t["<|/python_result|>"]])
-    assert render_tools(tok, r0.ids) == "<<12*35=420>> so 420" and r0.calls == [("print(12*35)", "420")]
+    assert render_tools(tok, r0.ids) == "<<12*35=420>> so 420" and r0.calls == [("12*35", "420")]
     assert "error:" in render_tools(tok, outs[2].ids) and render_tools(tok, outs[2].ids).endswith("<<12*35=420>> done")
     # max_calls stops a row that keeps calling
     state["round"].clear()

@@ -66,7 +66,7 @@ def trace_for_tools(t: Task) -> str:
                 i += 1
         expr = " ".join(str(x) for pair in zip(vals, opsl + [""]) for x in pair).strip()
         lines.append(f"total = {expr}")
-        lines.append("print(total)")
+        lines.append("total")  # bare name: the sandbox echoes its value like a REPL
         val = eval(t.meta["expr"])  # noqa: S307 - trusted generator output
         return "Multiply first, then add and subtract from left to right. <<<" + "\n".join(lines) + f">>>{val}"
     if t.task == "algebra":
@@ -74,7 +74,7 @@ def trace_for_tools(t: Task) -> str:
         a, sign, b, c = int(m.group(1)), m.group(2), int(m.group(3)), int(m.group(4))
         b_signed = b if sign == "+" else -b
         rhs = c - b_signed
-        return f"Move the constant to the right and divide by {a}. <<<rhs = {c} - ({b_signed})\nx = rhs // {a}\nprint(x)>>>{rhs // a}"
+        return f"Move the constant to the right and divide by {a}. <<<rhs = {c} - ({b_signed})\nx = rhs // {a}\nx>>>{rhs // a}"
     if t.task == "word":
         nums = [int(x) for x in re.findall(r"\d+", t.prompt)]
         if "buys" in t.prompt:
