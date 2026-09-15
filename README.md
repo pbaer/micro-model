@@ -72,7 +72,7 @@ pretraining mix. Special tokens are not part of the HF tokenizer: raw text can n
 the chat formatter inserts them. The tokenizer is frozen and every checkpoint records its sha256.
 
 Named specials: `<|bos|> <|eos|> <|pad|> <|system|> <|user|> <|assistant|> <|end|> <|think|> <|/think|>
-<|tool_call|> <|/tool_call|> <|tool_result|> <|/tool_result|>` plus 51 `<|reserved_N|>`.
+<|python_call|> <|/python_call|> <|python_result|> <|/python_result|>` plus 51 `<|reserved_N|>`.
 
 Chat format (one example, reasoning stage):
 

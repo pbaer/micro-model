@@ -1,5 +1,5 @@
 # M6 (tools): GRPO with the sandboxed Python tool available, on GSM8K train problems plus our templated tasks.
-# Rollouts pause at <|/tool_call|>, the harness inserts the result, and those tokens are excluded from the
+# Rollouts pause at <|/python_call|>, the harness inserts the result, and those tokens are excluded from the
 # policy gradient and the KL term (gen_mask). Reward is the verifier on the final '#### <number>' only.
 # GSM8K train prompts are split by prompt-text hash: 90% train, 10% held-out (the test split stays untouched).
 run_name: m6_rl_gsm_tools_149m
@@ -17,7 +17,7 @@ max_new_tokens: 320
 temperature: 0.9
 top_p: 0.95
 think_required: true
-reward_scheme: binary
+reward_scheme: tool  # 1.0 only when the final number came out of a Python call; 0.5 if correct without one
 lr: 2.0e-6
 weight_decay: 0.0
 grad_clip: 1.0

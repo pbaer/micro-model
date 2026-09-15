@@ -47,19 +47,24 @@ def format_chat(
         ids.extend(seq)
         mask.extend([m] * len(seq))
 
+    session = None  # one sandbox session per conversation: state carries across calls and turns
+
     def push_text(text: str, m: int, label: str) -> None:
+        nonlocal session
         if not (tools and m == 1 and TOOL_MARK in text):
             push(tok.encode(text), m, label)
             return
         from slm.tools.protocol import encode_tool_span, split_markup
+        from slm.tools.pysandbox import PySession
 
-        for span in split_markup(text):
+        session = session or PySession()
+        for span in split_markup(text, session):
             if span.kind == "text":
                 push(tok.encode(span.text), m, label)
             else:
                 call, result, _ = encode_tool_span(tok, span)
-                push(call, 1, "tool_call")
-                push(result, 0, "tool_result")
+                push(call, 1, "python_call")
+                push(result, 0, "python_result")
 
     if bos:
         push([tok.bos_id], 0, "bos")

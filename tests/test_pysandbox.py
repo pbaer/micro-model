@@ -143,7 +143,7 @@ def test_output_is_truncated_not_unbounded():
 def test_run_tool_wraps_errors_for_the_model():
     from slm.tools.protocol import run_tool
 
-    assert run_tool("python: print(6*7)") == ("42", True)
-    assert run_tool("python: import os") == ("error: ImportError: import is not allowed", False) or run_tool("python: import os")[0].startswith("error:")
-    assert run_tool("python: x = 1")[0].startswith("(no output")
-    assert run_tool("calc: 6*7") == ("42", True)
+    assert run_tool("print(6*7)") == ("42", True)
+    assert run_tool("import os")[0].startswith("error: line 1: imports are not available")
+    assert run_tool("x = 1")[0].startswith("(no output")
+    assert run_tool("6*7") == ("42", True)

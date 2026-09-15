@@ -67,7 +67,7 @@ def main() -> None:
     t0 = time.time()
 
     def line(name, r):
-        tools_s = f"  calls {r['tool_calls_mean']:.1f} err {r['tool_error_rate']:.2f}" if a.tools else ""
+        tools_s = f"  calls {r['tool_calls_mean']:.1f} err {r['tool_error_rate']:.2f} use {r['tool_use_rate']:.2f} from-tool {r['answer_from_tool_rate']:.2f}" if a.tools else ""
         print(f"{name:12s} acc {r['accuracy']:.3f}  malformed {r['malformed_rate']:.2f}  len {r['mean_len']:.0f}{tools_s}  (n={r['n']})", flush=True)
 
     with sdpa_context("decode"):
@@ -85,7 +85,8 @@ def main() -> None:
         with open(a.dump, "w", encoding="utf-8") as f:
             for r in keep:
                 f.write(json.dumps({"task": r.task, "id": r.prompt_id, "prompt": r.prompt, "gold": r.gold, "text": r.text, "answer": r.parsed, "correct": r.correct,
-                                    "malformed": r.malformed, "tool_calls": r.tool_calls, "tool_errors": r.tool_errors, "n_tokens": r.n_tokens}, ensure_ascii=False) + "\n")
+                                    "malformed": r.malformed, "tool_calls": r.tool_calls, "tool_errors": r.tool_errors, "answer_from_tool": r.answer_from_tool,
+                                    "tool_results": r.tool_results, "n_tokens": r.n_tokens}, ensure_ascii=False) + "\n")
     res["seconds"] = time.time() - t0
     res["mean_accuracy"] = sum(v["accuracy"] for v in res["per_task"].values()) / max(1, len(res["per_task"]))
     print(f"mean accuracy {res['mean_accuracy']:.3f} in {res['seconds']:.0f}s")

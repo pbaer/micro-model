@@ -31,6 +31,9 @@ placeholder and may change, so don't bake it into code.
   `<|end|>` is a loss target (stop token); `<|eos|>` is masked in SFT. Final answers for
   verifiable tasks use the `#### <answer>` text convention. Think span is mandatory after
   reasoning SFT.
+- Python tool: `<|python_call|>code<|/python_call|><|python_result|>out<|/python_result|>` inside the think span;
+  the result span is never a loss/policy target; one `PySession` per conversation (state persists across calls and
+  turns); code runs only in the sandboxed subset interpreter `slm/tools/pysandbox.py` (never exec/eval).
 
 ## Engineering rules
 - Loss functions return `(loss_sum, n_valid_tokens)`; the trainer divides by the global token count

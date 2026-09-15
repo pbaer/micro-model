@@ -18,7 +18,7 @@ from slm.data.tokenizer import SlmTokenizer
 from slm.eval.sampling import sample_next
 from slm.model import KVCache, Transformer
 from slm.rl.objectives import sequence_logprobs
-from slm.rl.rewards import reward_from_verdict, verify_numeric
+from slm.rl.rewards import answer_from_tool, reward_from_verdict, verify_numeric
 from slm.rl.tasks import Task, prompt_messages
 from slm.tools.loop import sample_with_tools
 from slm.tools.protocol import render_tools
@@ -48,6 +48,8 @@ class Rollout:
     gen_mask: list[int] = field(default_factory=list)  # 1 = model-sampled, 0 = inserted tool result (empty = all ones)
     tool_calls: int = 0
     tool_errors: int = 0
+    tool_results: list[list[str]] = field(default_factory=list)  # [code, result] per call
+    answer_from_tool: bool = False  # the final number was produced by a (non-trivial) call
     temperature: float = 1.0
     top_p: float = 1.0
     checkpoint: str = ""
@@ -118,13 +120,16 @@ def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, 
     parsed = parse_assistant(tok, c)
     v = verify_numeric(parsed["answer"], task.answer)
     malformed = bool(parsed["malformed"]) or not parsed["terminated"]
+    calls = list(tc.calls) if tc is not None else []
+    aft = answer_from_tool(v.parsed, calls)
     return Rollout(
         prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
         text=render_tools(tok, c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
-        reward=reward_from_verdict(v, malformed, reward_scheme), verifier=v.reason, malformed=malformed,
+        reward=reward_from_verdict(v, malformed, reward_scheme, aft), verifier=v.reason, malformed=malformed,
         termination="stop" if parsed["terminated"] else (tc.termination if tc is not None else "length"), n_tokens=len(c), old_logprobs=old_lp,
         ref_logprobs=ref_lp, gen_mask=(tc.gen_mask if tc is not None else []), tool_calls=(tc.n_calls if tc is not None else 0),
-        tool_errors=(tc.n_errors if tc is not None else 0), temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
+        tool_errors=(tc.n_errors if tc is not None else 0), tool_results=[list(x) for x in calls], answer_from_tool=aft,
+        temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
     )
 
 
@@ -184,7 +189,7 @@ def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], ma
     by_len: dict[int, list] = {}
     for t, ids in enc:
         by_len.setdefault(len(ids), []).append((t, ids))
-    correct = malformed = calls = errors = 0
+    correct = malformed = calls = errors = used = from_tool = 0
     lengths = []
     for group in by_len.values():
         for b in range(0, len(group), batch):
@@ -201,6 +206,8 @@ def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], ma
                 malformed += int(r.malformed)
                 calls += r.tool_calls
                 errors += r.tool_errors
+                used += int(r.tool_calls > 0)
+                from_tool += int(r.answer_from_tool)
                 lengths.append(r.n_tokens)
                 if keep is not None:
                     keep.append(r)
@@ -208,4 +215,4 @@ def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], ma
         model.train()
     n = max(1, len(tasks))
     return {"accuracy": correct / n, "malformed_rate": malformed / n, "mean_len": sum(lengths) / n, "n": len(tasks),
-            "tool_calls_mean": calls / n, "tool_error_rate": errors / max(1, calls)}
+            "tool_calls_mean": calls / n, "tool_error_rate": errors / max(1, calls), "tool_use_rate": used / n, "answer_from_tool_rate": from_tool / n}

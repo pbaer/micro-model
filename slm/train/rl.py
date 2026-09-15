@@ -46,7 +46,7 @@ class RlConfig:
     model: dict = field(default_factory=dict)
     init_from: str = ""  # reasoning-SFT checkpoint (policy and reference start here)
     gpu_sample_s: float = 2.0  # nvidia-smi telemetry period (s); temperature/power go into every train record
-    tools: bool = False  # calculator tool: rollouts pause at <|/tool_call|>, results are inserted and excluded from the objective
+    tools: bool = False  # Python tool: rollouts pause at <|/python_call|>, results are inserted and excluded from the objective
     max_tool_calls: int = 8
     gpu_warn_temp_c: float = 80.0
     # tasks / curriculum
@@ -186,6 +186,8 @@ class RlTrainer:
             "len_wrong": (sum(x.n_tokens for x in rollouts if not x.correct) / max(1, sum(not x.correct for x in rollouts))),
             "tool_calls_mean": sum(x.tool_calls for x in rollouts) / len(rollouts),
             "tool_error_rate": sum(x.tool_errors for x in rollouts) / max(1, sum(x.tool_calls for x in rollouts)),
+            "tool_use_rate": sum(x.tool_calls > 0 for x in rollouts) / len(rollouts),
+            "answer_from_tool_rate": sum(x.answer_from_tool for x in rollouts) / len(rollouts),
         }
         return rollouts, stats
 

@@ -235,33 +235,38 @@ exposes the latest temperature, power, utilization, clocks and throttle reasons;
 - Portal: API routes on synthetic runs, SSE live tail against a real server, worker harness on CPU,
   JS module parse check, and a Playwright suite that clicks every control on every page.
 
-## Tool use (calculator and sandboxed Python)
+## Tool use (sandboxed Python with REPL sessions)
 
-Protocol on the reserved tokens (`slm/tools/protocol.py`):
+Protocol on the reserved tokens (`slm/tools/protocol.py`); the call body is plain Python:
 
-    ... 120 - 36 = <|tool_call|>python: print(120-36)<|/tool_call|><|tool_result|>84<|/tool_result|>84 pages left ...
+    ... 120 - 36 = <|python_call|>print(120-36)<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
 
-The model generates through `<|/tool_call|>`; the harness runs the tool and appends the result span; generation
-resumes. Result tokens are environment-written: loss mask 0 in SFT (`format_chat(tools=True)`), `gen_mask` 0 in
-RL so they are excluded from the policy gradient and the KL term. Call syntax `<name>: <args>`; tools are `python`
-(default) and `calc` (expression only). Text form for datasets and display: GSM8K's own `<<expr=result>>` for one
-expression and `<<<code>>>` for a short program; `split_markup` runs the tool while converting so the recorded
-result is exactly what inference would insert, and `render_tools` turns generated ids back into the same markup.
+The model generates through `<|/python_call|>`; the harness runs the code and appends the result span; generation
+resumes. Result tokens are environment-written: loss mask 0 in SFT (`format_chat(tools=True)`), `gen_mask` 0 in RL
+so they are excluded from the policy gradient and the KL term. One `PySession` per conversation keeps variables and
+functions across calls and across turns (REPL semantics); future tools are Python functions exposed in that
+namespace, not new token types. Text form for datasets and display: GSM8K's own `<<expr=result>>` for one expression
+and `<<<code>>>` for a short program; `split_markup` runs the code while converting so the recorded result is exactly
+what inference would insert, and `render_tools` turns generated ids back into the same markup.
 
-Generation with tools (`slm/tools/loop.py`): batched rows diverge in length after a result is inserted, so
-decoding runs in rounds, grouping active rows by current length; each returned token carries a gen_mask bit.
-Rollouts record tool_calls / tool_errors; the reasoning eval and the RL trainer take `--tools` / `tools: true`.
+Generation with tools (`slm/tools/loop.py`): batched rows diverge in length after a result is inserted, so decoding
+runs in rounds, grouping active rows by current length; each returned token carries a gen_mask bit and each row keeps
+its session. Rollouts record every (code, result) pair, tool_calls / tool_errors, and `answer_from_tool`: whether the
+final `#### N` equals a number produced by a non-trivial call (`print(42)` does not count). The RL reward scheme
+`tool` pays 1.0 for a correct answer that came out of a call and 0.5 for a correct answer computed in the head, which
+is the incentive to use Python whenever possible; the eval reports tool_use_rate and answer_from_tool_rate.
 
 Sandbox (`slm/tools/pysandbox.py`), chosen over a subprocess or container because it is small enough to audit and
 leaves no side-effect surface at all: model code is parsed with `ast.parse` (inert) and executed by a tree-walking
-interpreter for a Python subset. CPython's exec/eval/compile never see model output. No imports, no attribute
-access except `math.<whitelisted>`, no dunders, classes, lambdas, with/try/global/yield/async, no I/O builtins.
-Limits enforced by the interpreter: operation budget, loop-iteration cap, call depth, integer bit length, string
-and sequence length, output length, exponent size, wall-clock backstop. Every refusal is a `ToolError` with a
-short message that is returned to the model as `error: ...`; a bug in the interpreter can only raise, never
-escape. Capability is deliberately limited to arithmetic-and-control-flow programs, which is what GSM8K needs.
-Residual risks: CPU time inside a single bounded call (~2 s worst case), and interpreter bugs; both are contained
-to a wrong tool result, not to the host. `tests/test_pysandbox.py` holds the refusal and limit cases.
+interpreter for a Python subset. CPython's exec/eval/compile never see model output. No imports, no attribute access
+except `math.<whitelisted>` and an explicit table of list/str/dict methods on the sandbox's own values, no dunders,
+classes, lambdas, with/try/global/yield/async, no I/O builtins. Limits enforced by the interpreter: operation budget,
+loop-iteration cap, call depth, integer bit length, string and sequence length, output length, exponent size,
+session namespace size, wall-clock backstop. Every refusal is a `ToolError` with a line number, the offending source
+line and a hint about what to use instead, returned to the model as `error: ...` so it can correct itself; a bug in
+the interpreter can only raise, never escape. Residual risks: CPU time inside a single bounded call (~2 s worst
+case), and interpreter bugs; both are contained to a wrong tool result, not to the host.
+`tests/test_pysandbox.py` holds the refusal, limit and message cases.
 
 Data: `slm.data.sft --tools` converts GSM8K's calculator annotations into calls and drops rows without any;
 `slm.rl.synth --tools` writes templated traces whose every step is a call (programs for multi-step tasks).

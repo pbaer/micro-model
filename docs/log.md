@@ -137,3 +137,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   on the reserved tool tokens, batched tool loop, SFT/RL masks, evals, GSM8K-train RL tasks, tool SFT data,
   configs `m5_reasoning_tools_149m` / `m6_rl_gsm_tools_149m`, `scripts/pipeline_tools.sh` (starts after the
   context pipeline). 56 new tests (sandbox refusals and limits, protocol round trip, loop bookkeeping).
+- Tool protocol revised at Peter's request: the four specials are now `<|python_call|>` / `<|/python_call|>` /
+  `<|python_result|>` / `<|/python_result|>` (same ids, renamed in the tokenizer meta; the sha covers only the
+  BPE so old checkpoints are unaffected) and the call body is plain code (no "python:" prefix). Future tools will
+  be Python functions in the session namespace. `PySession` gives REPL semantics: variables persist across calls
+  and across turns of one conversation (one session per conversation in SFT conversion, per row in rollouts).
+  Incentive to use the tool: RL reward scheme `tool` pays 1.0 only when the final number came out of a
+  non-trivial call (print(42) does not count), 0.5 for a correct answer computed in the head; evals report
+  tool_use_rate and answer_from_tool_rate. Sandbox errors now carry line number, source line and a hint.

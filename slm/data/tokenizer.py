@@ -34,10 +34,10 @@ NAMED_SPECIALS = [
     "<|end|>",  # end of turn; loss target and generation stop token
     "<|think|>",
     "<|/think|>",
-    "<|tool_call|>",
-    "<|/tool_call|>",
-    "<|tool_result|>",
-    "<|/tool_result|>",
+    "<|python_call|>",  # sandboxed Python call (body = code); see slm/tools
+    "<|/python_call|>",
+    "<|python_result|>",  # environment-written result; never a loss target
+    "<|/python_result|>",
 ]
 SPECIAL_TOKENS = NAMED_SPECIALS + [f"<|reserved_{i}|>" for i in range(N_SPECIAL - len(NAMED_SPECIALS))]
 assert len(SPECIAL_TOKENS) == N_SPECIAL

@@ -49,10 +49,34 @@ def verify_numeric(answer_text: str, gold: str) -> Verdict:
     return Verdict(a == g, p, "numeric compare")
 
 
-def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary") -> float:
-    """binary: 1/0. signed: +1/-1. shaped: 1 correct, 0 wrong-but-parsable, -0.5 malformed/unparsable."""
+_LITERAL_CALL_RE = re.compile(r"^\s*(?:print\(\s*)?-?[\d.,]+\s*\)?\s*$")
+
+
+def answer_from_tool(parsed: str | None, calls: list[tuple[str, str]]) -> bool:
+    """True when the final answer equals a number some tool call produced, and that call did real work
+    (not a bare literal like print(42), which would let the model launder a mental answer)."""
+    if parsed is None:
+        return False
+    a = _to_number(parsed)
+    if a is None:
+        return False
+    for code, result in calls:
+        if not code or _LITERAL_CALL_RE.match(code) or result.startswith("error:"):
+            continue
+        for m in _NUM_RE.finditer(result.replace(",", "")):
+            if _to_number(m.group(0)) == a:
+                return True
+    return False
+
+
+def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", from_tool: bool = False) -> float:
+    """binary: 1/0. signed: +1/-1. shaped: 1 correct, 0 wrong-but-parsable, -0.5 malformed/unparsable.
+    tool: 1 if correct AND the answer came out of a Python call, 0.5 if correct without one, 0 otherwise —
+    the incentive to compute with the tool rather than in the head."""
     if scheme == "binary":
         return 1.0 if v.correct else 0.0
+    if scheme == "tool":
+        return (1.0 if from_tool else 0.5) if v.correct else 0.0
     if scheme == "signed":
         return 1.0 if v.correct else -1.0
     if scheme == "shaped":

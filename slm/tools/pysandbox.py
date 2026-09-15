@@ -40,6 +40,7 @@ MAX_LOOP_ITERS = 100_000
 MAX_CODE_CHARS = 2000
 MAX_POW = 512
 TIME_LIMIT_S = 2.0
+MAX_NAMES = 200  # variables/functions a session may hold
 
 def _factorial(n):
     if not isinstance(n, int) or isinstance(n, bool) or n < 0 or n > 2000:
@@ -156,11 +157,6 @@ class Sandbox:
 
     # ----------------------------------------------------------------- builtins
     def builtins(self) -> dict:
-        sb = self
-
-        def _print(*args, sep=" ", end="\n"):
-            sb.emit(sep.join(_fmt(a) for a in args) + end)
-
         def _range(*a):
             r = range(*a)
             if len(r) > MAX_LOOP_ITERS:
@@ -176,12 +172,13 @@ class Sandbox:
         return {
             "abs": abs, "min": min, "max": max, "round": _round, "sum": sum, "len": len, "range": _range, "int": int, "float": float, "str": str,
             "bool": bool, "divmod": divmod, "sorted": sorted, "reversed": lambda x: list(reversed(x)), "enumerate": lambda x, s=0: list(enumerate(x, s)),
-            "zip": lambda *a: list(zip(*a)), "list": list, "tuple": tuple, "dict": dict, "print": _print, "pow": _pow, "math": _SAFE_MATH,
+            "zip": lambda *a: list(zip(*a)), "list": list, "tuple": tuple, "dict": dict, "print": _PRINT, "pow": _pow, "math": _SAFE_MATH,
             "True": True, "False": False, "None": None,
         }
 
     # ----------------------------------------------------------------- statements
-    def run(self, code: str) -> str:
+    def run(self, code: str, env: dict | None = None) -> str:
+        """Run code in `env` (a persistent session namespace, or a fresh one). Budgets are per call."""
         if len(code) > MAX_CODE_CHARS:
             raise ToolError("code too long")
         try:
@@ -190,7 +187,7 @@ class Sandbox:
             lines = code.splitlines()
             src = ("  |  " + lines[e.lineno - 1].strip()[:80]) if e.lineno and 0 < e.lineno <= len(lines) else ""
             raise ToolError(f"line {e.lineno}: SyntaxError: {e.msg}{src}") from e
-        env = self.builtins()
+        env = self.builtins() if env is None else env
         last = None
         for i, st in enumerate(tree.body):
             try:
@@ -469,6 +466,9 @@ class Sandbox:
                 return r.value
             finally:
                 self.depth -= 1
+        if fn is _PRINT:
+            self.emit(kwargs.get("sep", " ").join(_fmt(a) for a in args) + kwargs.get("end", "\n"))
+            return None
         if not callable(fn) or isinstance(fn, dict):
             raise ToolError(f"a {type(fn).__name__} is not callable; did you mean to index it with [...]?")
         try:
@@ -483,6 +483,40 @@ class Sandbox:
 
 
 _BLOCKED = {"exec", "eval", "compile", "open", "__import__", "globals", "locals", "getattr", "setattr", "delattr", "vars", "dir", "type", "object", "input", "breakpoint", "exit", "quit"}
+
+
+class _Print:
+    """Sentinel for print(): handled inside Sandbox.call so output goes to the sandbox running the call."""
+
+    def __call__(self, *a, **k):  # only reached if someone bypasses call(); route nowhere
+        raise ToolError("print is only callable as a statement")
+
+
+_PRINT = _Print()
+
+
+class PySession:
+    """A REPL-like session: variables and functions persist across calls (and across turns of one
+    conversation). Each call gets fresh budgets; the namespace is capped at MAX_NAMES entries."""
+
+    def __init__(self) -> None:
+        self.env: dict | None = None
+        self.n_calls = 0
+
+    def run(self, code: str) -> str:
+        sb = Sandbox()
+        if self.env is None:
+            self.env = sb.builtins()
+        self.n_calls += 1
+        try:
+            return sb.run(code, self.env)
+        finally:
+            if len(self.env) > MAX_NAMES + len(sb.builtins()):
+                self.env = None  # a runaway namespace is dropped rather than kept growing
+                raise ToolError("too many variables in the session; it has been reset")
+
+    def reset(self) -> None:
+        self.env = None
 
 
 def _check_name(name: str) -> None:
@@ -558,11 +592,11 @@ def _fmt(v, nested: bool = False) -> str:
     return str(v)
 
 
-def run_python(code: str) -> str:
-    """Run sandboxed code; returns captured print output plus the value of a final bare expression.
-    Raises ToolError on any violation or runtime error (the message is short and model-readable)."""
+def run_python(code: str, session: "PySession | None" = None) -> str:
+    """Run sandboxed code (in `session` if given, else a fresh namespace); returns captured print output
+    plus the value of a final bare expression. Raises ToolError on any violation or runtime error."""
     try:
-        return Sandbox().run(code)
+        return (session or PySession()).run(code)
     except ToolError:
         raise
     except RecursionError as e:
