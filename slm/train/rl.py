@@ -46,6 +46,8 @@ class RlConfig:
     model: dict = field(default_factory=dict)
     init_from: str = ""  # reasoning-SFT checkpoint (policy and reference start here)
     gpu_sample_s: float = 2.0  # nvidia-smi telemetry period (s); temperature/power go into every train record
+    tools: bool = False  # calculator tool: rollouts pause at <|/tool_call|>, results are inserted and excluded from the objective
+    max_tool_calls: int = 8
     gpu_warn_temp_c: float = 80.0
     # tasks / curriculum
     tasks: list[str] = field(default_factory=lambda: ["arith1", "arith2"])
@@ -164,7 +166,8 @@ class RlTrainer:
         for t in tasks:
             with sdpa_context("decode"):
                 g = rollout_group(self.model, self.tok, t, c.group_size, c.max_new_tokens, c.temperature, c.top_p, c.top_k, seed=self.rng.randrange(2**31),
-                                  think_required=c.think_required, reward_scheme=c.reward_scheme, ref_model=self.ref, checkpoint=c.init_from, step=self.step)
+                                  think_required=c.think_required, reward_scheme=c.reward_scheme, ref_model=self.ref, checkpoint=c.init_from, step=self.step,
+                                  tools=c.tools, max_tool_calls=c.max_tool_calls)
             r = torch.tensor([x.reward for x in g])
             adv = group_advantages(r, c.normalize_std)
             for x, a in zip(g, adv.tolist()):
@@ -181,6 +184,8 @@ class RlTrainer:
             "malformed_rate": sum(x.malformed for x in rollouts) / len(rollouts), "length_term_rate": sum(x.termination == "length" for x in rollouts) / len(rollouts),
             "len_correct": (sum(x.n_tokens for x in rollouts if x.correct) / max(1, sum(x.correct for x in rollouts))),
             "len_wrong": (sum(x.n_tokens for x in rollouts if not x.correct) / max(1, sum(not x.correct for x in rollouts))),
+            "tool_calls_mean": sum(x.tool_calls for x in rollouts) / len(rollouts),
+            "tool_error_rate": sum(x.tool_errors for x in rollouts) / max(1, sum(x.tool_calls for x in rollouts)),
         }
         return rollouts, stats
 
@@ -188,7 +193,7 @@ class RlTrainer:
         c = self.cfg
         self.model.train()
         live = [r for r in rollouts if r.advantage != 0.0]
-        n_tok_total = sum(r.n_tokens for r in live)
+        n_tok_total = sum((sum(r.gen_mask) if r.gen_mask else r.n_tokens) for r in live)  # only model-sampled tokens are optimized
         agg = {"policy_loss": 0.0, "kl": 0.0, "entropy": 0.0, "clip_frac": 0.0, "ratio_mean": 0.0, "n_minibatches": 0}
         if not live:
             return {**agg, "grad_norm": 0.0, "skipped": True}
@@ -208,7 +213,7 @@ class RlTrainer:
                 for j, r in enumerate(mb):
                     P = len(r.prompt_ids)
                     ids[j, : P + r.n_tokens] = torch.tensor(r.prompt_ids + r.completion_ids, device="cuda")
-                    mask[j, P - 1 : P - 1 + r.n_tokens] = 1.0
+                    mask[j, P - 1 : P - 1 + r.n_tokens] = torch.tensor(r.gen_mask, dtype=torch.float32, device="cuda") if r.gen_mask else 1.0
                     old[j, P - 1 : P - 1 + r.n_tokens] = torch.tensor(r.old_logprobs, device="cuda")
                     ref[j, P - 1 : P - 1 + r.n_tokens] = torch.tensor(r.ref_logprobs, device="cuda")
                 with torch.autocast("cuda", dtype=torch.bfloat16):
@@ -235,9 +240,9 @@ class RlTrainer:
         c = self.cfg
         self.model.eval()
         with sdpa_context("decode"):
-            held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required)
+            held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls)
             train_sub = self.rng.sample(self.train_tasks, min(len(self.heldout_tasks), len(self.train_tasks)))
-            tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required)
+            tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls)
         self.model.train()
         return {"heldout_acc": held["accuracy"], "heldout_malformed": held["malformed_rate"], "heldout_len": held["mean_len"], "train_acc": tr["accuracy"], "train_len": tr["mean_len"]}
 

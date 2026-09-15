@@ -34,7 +34,7 @@ templated and correct by construction). No paid APIs.
 | M3 | `m3_base_stable_149m` → `m3_base_8k_149m` | Continue the stable phase for several billion tokens, then an 8K-context phase that carries the LR decay | Warmup-stable-decay in practice, long-document upsampling, memory at 8K |
 | M4 | `m4_sft_149m` | Instruction SFT (SmolTalk subsets, assistant-token loss) | Chat formatting, loss masks, measuring base-model drift during SFT |
 | M5 | `m5_reasoning_149m` | Reasoning SFT with a mandatory think span (`<\|think\|>`) and `#### answer` | Traces as supervision, format learning, what a 150M model can and cannot reason about |
-| M6 | `m6_rl_arith_149m` (+ stages B/C) | GRPO with programmatic verifiers, no critic, no reward model | Group-relative advantages, clipped ratios, KL to a reference, reward hacking, held-out generalization |
+| M6 | `m6_rl_arith_149m` (+ stages B/C, `m6_rl_gsm_tools_149m`) | GRPO with programmatic verifiers, no critic, no reward model; later with a sandboxed Python tool (`slm/tools`) | Group-relative advantages, clipped ratios, KL to a reference, reward hacking, held-out generalization |
 | M7 | `m7_ctx16k_149m` (+ 32K) | YaRN RoPE scaling + short continued training on long documents | Configured vs effective context, needle-in-a-haystack, short-context regression checks |
 
 Everything is measured. Each run writes a self-contained `runs/<run>/report.html`, a JSONL metrics log,

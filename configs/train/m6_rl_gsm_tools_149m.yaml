@@ -1,0 +1,37 @@
+# M6 (tools): GRPO with the sandboxed Python tool available, on GSM8K train problems plus our templated tasks.
+# Rollouts pause at <|/tool_call|>, the harness inserts the result, and those tokens are excluded from the
+# policy gradient and the KL term (gen_mask). Reward is the verifier on the final '#### <number>' only.
+# GSM8K train prompts are split by prompt-text hash: 90% train, 10% held-out (the test split stays untouched).
+run_name: m6_rl_gsm_tools_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+init_from: runs/m5_reasoning_tools_149m/checkpoints/final.pt
+tools: true
+max_tool_calls: 8
+tasks: [gsm8k, gsm8k, gsm8k, word, arith_multi, algebra]
+n_train_prompts: 8000
+n_heldout_prompts: 200
+group_size: 8
+prompts_per_step: 8
+max_new_tokens: 320
+temperature: 0.9
+top_p: 0.95
+think_required: true
+reward_scheme: binary
+lr: 2.0e-6
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.01
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 8
+total_steps: 400
+eval_every_steps: 25
+eval_max_new_tokens: 320
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 2
+notes: "Tool-use RL on GSM8K-train prompts (listed 3x to weight them). Watch tool_error_rate and groups_no_signal."

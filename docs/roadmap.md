@@ -56,6 +56,17 @@ checkpoint; the base is never modified. The old `m7_ctx16k_149m` stays as the "b
 If a stage stalls below the gate after its token budget, the honest result is "effective context = previous
 stage" and the report says so.
 
+## Tool use track (queued behind the context curriculum, 2026-09-14 evening)
+
+Goal: push GSM8K by letting the model offload arithmetic. Built and tested: sandboxed Python subset interpreter
+(`slm/tools/pysandbox.py`), calculator, tool protocol on the reserved tokens, batched tool-aware generation, SFT
+masks, RL masks, evals with `--tools`, GSM8K-train prompts as RL tasks, tool SFT data (7.3K GSM8K, 682 MetaMathQA,
+40K synthetic). `scripts/pipeline_tools.sh` waits for `CTX_PIPELINE_DONE`, then runs `m5_reasoning_tools_149m`
+(SFT from the real M4) → reasoning eval with/without tools on the full GSM8K test → `m6_rl_gsm_tools_149m`
+(GRPO on GSM8K-train prompts) → full GSM8K test with tools. Targets: 5–8% without tools is the size-class
+stretch; with tools 15–25% is plausible. Later: redo the post-training chain (M4→M5 tools→M6 tools) from the
+context-extended base once the curriculum settles.
+
 ## Next candidates (after the decisions below)
 
 - RL curriculum fix: stage B learned nothing from arith_multi (no correct samples). Add intermediate tasks

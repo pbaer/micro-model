@@ -16,6 +16,7 @@ import re
 from slm.data.tokenizer import SlmTokenizer
 
 ROLES = ("system", "user", "assistant")
+TOOL_MARK = "<<"  # assistant text may carry <<expr=result>> tool markup (slm.tools.protocol)
 
 
 @dataclass
@@ -33,7 +34,10 @@ def format_chat(
     bos: bool = True,
     eos: bool = True,
     think_required: bool = False,
+    tools: bool = False,
 ) -> ChatEncoding:
+    """tools=True: <<expr=result>> markup inside assistant text becomes a tool call (loss target) followed by
+    the tool's result (masked). Without it the markup is encoded literally (how GSM8K annotations trained before)."""
     ids: list[int] = []
     mask: list[int] = []
     segs: list[tuple[int, int, str]] = []
@@ -42,6 +46,20 @@ def format_chat(
         segs.append((len(ids), len(ids) + len(seq), label))
         ids.extend(seq)
         mask.extend([m] * len(seq))
+
+    def push_text(text: str, m: int, label: str) -> None:
+        if not (tools and m == 1 and TOOL_MARK in text):
+            push(tok.encode(text), m, label)
+            return
+        from slm.tools.protocol import encode_tool_span, split_markup
+
+        for span in split_markup(text):
+            if span.kind == "text":
+                push(tok.encode(span.text), m, label)
+            else:
+                call, result, _ = encode_tool_span(tok, span)
+                push(call, 1, "tool_call")
+                push(result, 0, "tool_result")
 
     if bos:
         push([tok.bos_id], 0, "bos")
@@ -54,9 +72,9 @@ def format_chat(
             think = msg.get("think")
             if think is not None or think_required:
                 push([tok.special("<|think|>")], target, "think_open")
-                push(tok.encode(think or ""), target, "think")
+                push_text(think or "", target, "think")
                 push([tok.special("<|/think|>")], target, "think_close")
-        push(tok.encode(msg.get("content", "")), target, f"content:{role}")
+        push_text(msg.get("content", ""), target, f"content:{role}")
         push([tok.end_id], target, "end")
     if add_generation_prompt:
         push([tok.special("<|assistant|>")], 0, "role:assistant")
@@ -98,9 +116,11 @@ def parse_assistant(tok: SlmTokenizer, ids: list[int], think_expected: bool = Tr
     else:
         think, answer = None, body
         malformed = had_open  # opened a think span without closing it
+    from slm.tools.protocol import render_tools  # tool spans render as <<expr=result>> markup
+
     return {
-        "think": tok.decode(think, skip_special=True) if think is not None else None,
-        "answer": tok.decode(answer, skip_special=True),
+        "think": render_tools(tok, think) if think is not None else None,
+        "answer": render_tools(tok, answer),
         "terminated": terminated,
         "malformed": bool(malformed) or not terminated,
     }

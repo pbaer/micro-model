@@ -78,6 +78,28 @@ def gen_word_problem(rng: random.Random) -> Task:
     return Task(id="", prompt=p, answer=str(ans), task="word", meta={})
 
 
+_GSM8K_POOL: list[Task] | None = None
+
+
+def gsm8k_pool() -> list[Task]:
+    """GSM8K *train* problems as verifiable prompts (gold = the number after ####). The test split is
+    reserved for the benchmark and never used here."""
+    global _GSM8K_POOL
+    if _GSM8K_POOL is None:
+        import pyarrow.parquet as pq
+
+        from slm.data.sources import SOURCES
+
+        files = [p for p in SOURCES["gsm8k"].local_dir.rglob("*.parquet") if "train" in p.name]
+        pool = []
+        for p in files:
+            for i, r in enumerate(pq.read_table(p).to_pylist()):
+                gold = r["answer"].rpartition("####")[2].strip().replace(",", "")
+                pool.append(Task(id=f"gsm8k-train-{i}", prompt=r["question"].strip(), answer=gold, task="gsm8k"))
+        _GSM8K_POOL = pool
+    return _GSM8K_POOL
+
+
 GENERATORS = {
     "arith1": lambda r: gen_arith(r, 1, "+-"),
     "arith2": lambda r: gen_arith(r, 2, "+-"),
@@ -94,10 +116,17 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
     out: list[Task] = []
     seen: set[str] = set()
     attempts = 0
+    pool = [t for t in gsm8k_pool() if _split_of(t.prompt, holdout_permille) == split] if "gsm8k" in names else []
+    rng.shuffle(pool)
     while len(out) < n and attempts < n * 50:
         attempts += 1
         name = rng.choice(names)
-        t = GENERATORS[name](rng)
+        if name == "gsm8k":
+            if not pool:
+                continue
+            t = pool.pop()
+        else:
+            t = GENERATORS[name](rng)
         canon = t.prompt  # split by prompt text alone: generators overlap (arith1 vs arith2), and the
         # same question must never be in train for one and held-out for another
         if canon in seen or _split_of(canon, holdout_permille) != split:

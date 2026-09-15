@@ -20,6 +20,8 @@ from slm.model import KVCache, Transformer
 from slm.rl.objectives import sequence_logprobs
 from slm.rl.rewards import reward_from_verdict, verify_numeric
 from slm.rl.tasks import Task, prompt_messages
+from slm.tools.loop import sample_with_tools
+from slm.tools.protocol import render_tools
 
 
 @dataclass
@@ -43,6 +45,9 @@ class Rollout:
     old_logprobs: list[float]
     ref_logprobs: list[float] | None
     advantage: float = 0.0
+    gen_mask: list[int] = field(default_factory=list)  # 1 = model-sampled, 0 = inserted tool result (empty = all ones)
+    tool_calls: int = 0
+    tool_errors: int = 0
     temperature: float = 1.0
     top_p: float = 1.0
     checkpoint: str = ""
@@ -109,16 +114,17 @@ def sample_completions(
     return comps
 
 
-def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, reward_scheme, checkpoint, step) -> Rollout:
+def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, reward_scheme, checkpoint, step, tc=None) -> Rollout:
     parsed = parse_assistant(tok, c)
     v = verify_numeric(parsed["answer"], task.answer)
     malformed = bool(parsed["malformed"]) or not parsed["terminated"]
     return Rollout(
         prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
-        text=tok.decode(c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
+        text=render_tools(tok, c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
         reward=reward_from_verdict(v, malformed, reward_scheme), verifier=v.reason, malformed=malformed,
-        termination="stop" if parsed["terminated"] else "length", n_tokens=len(c), old_logprobs=old_lp,
-        ref_logprobs=ref_lp, temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
+        termination="stop" if parsed["terminated"] else (tc.termination if tc is not None else "length"), n_tokens=len(c), old_logprobs=old_lp,
+        ref_logprobs=ref_lp, gen_mask=(tc.gen_mask if tc is not None else []), tool_calls=(tc.n_calls if tc is not None else 0),
+        tool_errors=(tc.n_errors if tc is not None else 0), temperature=temperature, top_p=top_p, checkpoint=checkpoint, step=step,
     )
 
 
@@ -138,6 +144,8 @@ def rollout_group(
     ref_model: Transformer | None = None,
     checkpoint: str = "",
     step: int = 0,
+    tools: bool = False,
+    max_tool_calls: int = 8,
 ) -> list[Rollout]:
     device = next(model.parameters()).device
     was_training = model.training
@@ -146,12 +154,17 @@ def rollout_group(
     gen = torch.Generator(device=device)
     if seed is not None:
         gen.manual_seed(seed)
-    comps = sample_completions(model, tok, [prompt_ids] * group_size, max_new_tokens, temperature, top_p, top_k, gen)
+    if tools:
+        tcs = sample_with_tools(model, tok, [prompt_ids] * group_size, max_new_tokens, temperature, top_p, top_k, gen, max_calls=max_tool_calls)
+        comps = [t.ids for t in tcs]
+    else:
+        tcs = [None] * group_size
+        comps = sample_completions(model, tok, [prompt_ids] * group_size, max_new_tokens, temperature, top_p, top_k, gen)
     old_lp = teacher_forced_logprobs(model, prompt_ids, comps, tok.pad_id)
     ref_lp = teacher_forced_logprobs(ref_model, prompt_ids, comps, tok.pad_id) if ref_model is not None else None
     if was_training:
         model.train()
-    return [_make_rollout(tok, task, prompt_ids, c, old_lp[i], ref_lp[i] if ref_lp is not None else None, temperature, top_p, reward_scheme, checkpoint, step) for i, c in enumerate(comps)]
+    return [_make_rollout(tok, task, prompt_ids, c, old_lp[i], ref_lp[i] if ref_lp is not None else None, temperature, top_p, reward_scheme, checkpoint, step, tcs[i]) for i, c in enumerate(comps)]
 
 
 def save_rollouts(rollouts: list[Rollout], path: Path) -> None:
@@ -162,26 +175,37 @@ def save_rollouts(rollouts: list[Rollout], path: Path) -> None:
 
 
 @torch.no_grad()
-def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], max_new_tokens: int = 256, think_required: bool = True, batch: int = 32) -> dict:
-    """Greedy decode every task once, batched over prompts of equal token length."""
+def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], max_new_tokens: int = 256, think_required: bool = True, batch: int = 32,
+                    tools: bool = False, max_tool_calls: int = 8, keep: list | None = None) -> dict:
+    """Greedy decode every task once, batched over prompts of equal token length. `keep` collects the Rollouts."""
     was_training = model.training
     model.eval()
     enc = [(t, format_chat(tok, prompt_messages(t), add_generation_prompt=True, think_required=think_required).ids) for t in tasks]
     by_len: dict[int, list] = {}
     for t, ids in enc:
         by_len.setdefault(len(ids), []).append((t, ids))
-    correct = malformed = 0
+    correct = malformed = calls = errors = 0
     lengths = []
     for group in by_len.values():
         for b in range(0, len(group), batch):
             chunk = group[b : b + batch]
-            comps = sample_completions(model, tok, [ids for _, ids in chunk], max_new_tokens, 0.0)
-            for (t, ids), c in zip(chunk, comps):
-                r = _make_rollout(tok, t, ids, c, [], None, 0.0, 1.0, "binary", "", 0)
+            if tools:
+                tcs = sample_with_tools(model, tok, [ids for _, ids in chunk], max_new_tokens, 0.0, max_calls=max_tool_calls)
+                comps = [t.ids for t in tcs]
+            else:
+                tcs = [None] * len(chunk)
+                comps = sample_completions(model, tok, [ids for _, ids in chunk], max_new_tokens, 0.0)
+            for (t, ids), c, tc in zip(chunk, comps, tcs):
+                r = _make_rollout(tok, t, ids, c, [], None, 0.0, 1.0, "binary", "", 0, tc)
                 correct += int(r.correct)
                 malformed += int(r.malformed)
+                calls += r.tool_calls
+                errors += r.tool_errors
                 lengths.append(r.n_tokens)
+                if keep is not None:
+                    keep.append(r)
     if was_training:
         model.train()
     n = max(1, len(tasks))
-    return {"accuracy": correct / n, "malformed_rate": malformed / n, "mean_len": sum(lengths) / n, "n": len(tasks)}
+    return {"accuracy": correct / n, "malformed_rate": malformed / n, "mean_len": sum(lengths) / n, "n": len(tasks),
+            "tool_calls_mean": calls / n, "tool_error_rate": errors / max(1, calls)}

@@ -131,3 +131,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   ambiguous; templates are now distinct per document (tested).
 - Stage 1 `m7_ctx8k_retrieval_149m` launched 21:07 from the base: 600M tokens at 8K, 15% retrieval docs,
   needle tracked at 1K/2K/4K/8K every 50M tokens; gate to 16K is min-depth ≥ 80% at all four lengths.
+- Tool-use project queued (Peter): GSM8K at 2% is arithmetic compounding per step; a tool removes it. Peter asked
+  for Python rather than a bare calculator, sandboxed simply but safely, erring on the side of safety. Built
+  `slm/tools`: sandboxed Python-subset interpreter (no exec/eval, no imports, no attributes, budgets), protocol
+  on the reserved tool tokens, batched tool loop, SFT/RL masks, evals, GSM8K-train RL tasks, tool SFT data,
+  configs `m5_reasoning_tools_149m` / `m6_rl_gsm_tools_149m`, `scripts/pipeline_tools.sh` (starts after the
+  context pipeline). 56 new tests (sandbox refusals and limits, protocol round trip, loop bookkeeping).
