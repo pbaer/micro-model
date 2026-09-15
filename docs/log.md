@@ -155,3 +155,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   conversation with their exact token ids (no re-execution of calls) and an empty user turn; one sandbox
   session per conversation on the worker; inserted result tokens shown distinctly; python-calls panel;
   `new conversation` resets the session. Harness tested in-process with a scripted sampler.
+- Stage 1 finished 01:14 (600M tokens, 4h 06m). Gate measurement: effective context 6000 — perfect through 4K,
+  88% worst-depth at 6K, but 0–6% for needles at depth 0–0.1 of 8K, as near-miss copies (last digits wrong).
+  Diagnosis: the retrieval data was log-uniform over 512–16K tokens, so full-length recall from the start of an
+  8K document was rare. Stage 2 correctly did not launch. Built `synth-retrieval-8k` (80M tokens, 3K–8K docs,
+  `--early-frac 0.5`) and `m7_ctx8k_retrieval2_149m` (300M tokens from the stage-1 checkpoint); the gated
+  pipeline now has a `stage1b` entry that waits for the tool track, then runs 1b → gate → stage 2.
+- The tool track was released by hand at 01:27 (its wait condition only fires when the gate passes) and is
+  running: M5 tools SFT → evals → M6 tools RL → full GSM8K with tools.

@@ -9,7 +9,7 @@ model:
   rope_scaling: {type: yarn, factor: 2.0, original_max_seq_len: 8192}
   grad_checkpointing: true
   loss_chunk_size: 4096
-init_from: runs/m7_ctx8k_retrieval_149m/checkpoints/final.pt
+init_from: runs/m7_ctx8k_retrieval2_149m/checkpoints/final.pt  # stage 1b (stage 1 alone reached effective 6000)
 data:
   tokenized_root: C:\slm-data\tokenized\v1
   mixture: {synth-retrieval: 0.15, fineweb-edu-long: 0.50, fineweb-edu-b: 0.20, cosmopedia: 0.05, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}

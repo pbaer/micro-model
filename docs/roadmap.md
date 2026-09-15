@@ -49,8 +49,9 @@ checkpoint; the base is never modified. The old `m7_ctx16k_149m` stays as the "b
 
 | Stage | Run | Length | Data | Gate to next |
 |---|---|---|---|---|
-| 1 (running) | `m7_ctx8k_retrieval_149m` | 8K rows (docs 512–8K inside) | 15% synth-retrieval + 35% long docs + pretraining mix, 600M tokens | needle min ≥ 80% at 1K, 2K, 4K, 8K |
-| 2 | `m7_ctx16k_retrieval_149m` | 16K, YaRN ×2 | same recipe with 16K retrieval docs, 400–800M tokens | needle min ≥ 80% at 8K and 16K |
+| 1 (done, gate failed) | `m7_ctx8k_retrieval_149m` | 8K rows | 15% synth-retrieval + 35% long docs + pretraining mix, 600M tokens | effective 6000: 100% to 4K, 88% min at 6K, 0–6% at 8K depth 0–0.1 |
+| 1b (queued after the tool track) | `m7_ctx8k_retrieval2_149m` | 8K rows | 20% `synth-retrieval-8k` (3K–8K docs, half the facts in the first 15%), 300M tokens from stage 1 | needle min ≥ 80% at 1K, 2K, 4K, 6K, 8K |
+| 2 | `m7_ctx16k_retrieval_149m` | 16K, YaRN ×2 | same recipe with 16K retrieval docs, 600M tokens, from stage 1b | needle min ≥ 80% at 8K and 16K |
 | 3 (optional) | `m7_ctx32k_retrieval_149m` | 32K | only if stage 2 passes | needle min ≥ 80% at 16K and 32K |
 
 If a stage stalls below the gate after its token budget, the honest result is "effective context = previous

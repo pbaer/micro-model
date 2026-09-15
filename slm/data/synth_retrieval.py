@@ -79,7 +79,9 @@ class Backdrop:
         return self.tok.decode(chunk.astype(np.int64).tolist())
 
 
-def needle_doc(tok: SlmTokenizer, backdrop: Backdrop, length: int, rng: random.Random) -> list[int]:
+def needle_doc(tok: SlmTokenizer, backdrop: Backdrop, length: int, rng: random.Random, early_frac: float = 0.0) -> list[int]:
+    """early_frac: probability that a fact is placed in the first 15% of the document (the hardest cells
+    at full context are needles near the start, so stage 1b oversamples them)."""
     n_facts = rng.choice([1, 1, 2, 2, 3, 4])
     facts = [make_fact(rng, k) for k in rng.sample(range(N_TEMPLATES), n_facts)]  # distinct templates: every question has one answer
     qa_text = "".join(f"\n\nQuestion: {q}\nAnswer: {a}" for _, q, a in facts)
@@ -88,7 +90,8 @@ def needle_doc(tok: SlmTokenizer, backdrop: Backdrop, length: int, rng: random.R
     # insert each fact at a sentence boundary near a random depth (0 = start, 1 = end)
     sents = body.split(". ")
     for f, _, _ in facts:
-        pos = int(rng.random() * len(sents))
+        depth = rng.random() * 0.15 if rng.random() < early_frac else rng.random()
+        pos = int(depth * len(sents))
         sents.insert(pos, f.rstrip("."))
     text = ". ".join(sents) + qa_text
     return [tok.bos_id, *tok.encode(text), tok.eos_id]
@@ -107,7 +110,7 @@ def ledger_doc(tok: SlmTokenizer, length: int, rng: random.Random) -> list[int]:
 
 
 def build(tok: SlmTokenizer, backdrop_dir: Path, out_root: Path, total_tokens: int, min_len: int, max_len: int, ledger_frac: float, val_tokens: int,
-          name: str = "synth-retrieval", seed: int = 0, shard_tokens: int = 50_000_000) -> dict:
+          name: str = "synth-retrieval", seed: int = 0, shard_tokens: int = 50_000_000, early_frac: float = 0.0) -> dict:
     rng = random.Random(seed)
     backdrop = Backdrop(tok, backdrop_dir)
     out = out_root / name
@@ -122,13 +125,13 @@ def build(tok: SlmTokenizer, backdrop_dir: Path, out_root: Path, total_tokens: i
                 ids = ledger_doc(tok, length, rng)
                 counts["ledger"] += 1
             else:
-                ids = needle_doc(tok, backdrop, length, rng)
+                ids = needle_doc(tok, backdrop, length, rng, early_frac)
                 counts["needle"] += 1
             w.add(ids[: max_len + 64])
         w.flush()
     m = {"name": name, "tokenizer_sha256": tok.sha256, "train_tokens": writers["train"].total_tokens, "train_docs": writers["train"].total_docs,
          "val_tokens": writers["val"].total_tokens, "val_docs": writers["val"].total_docs, "min_len": min_len, "max_len": max_len, "ledger_frac": ledger_frac,
-         "backdrop": str(backdrop_dir), "seed": seed, "seconds": time.time() - t0, **counts}
+         "backdrop": str(backdrop_dir), "seed": seed, "early_frac": early_frac, "seconds": time.time() - t0, **counts}
     (out / "manifest.json").write_text(json.dumps(m, indent=1), encoding="utf-8")
     return m
 
@@ -145,12 +148,13 @@ def main() -> None:
     ap.add_argument("--ledger-frac", type=float, default=0.3)
     ap.add_argument("--name", default="synth-retrieval")
     ap.add_argument("--out-root", default=None, help="where to write <name>/{train,val} (default: the tokenized root)")
+    ap.add_argument("--early-frac", type=float, default=0.0, help="fraction of facts placed in the first 15%% of the document")
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     tok = SlmTokenizer.load(a.tokenizer)
     root = Path(a.tokenized_root) / Path(a.tokenizer).name
     out_root = Path(a.out_root) if a.out_root else root
-    m = build(tok, root / a.backdrop / "train", out_root, a.tokens, a.min_len, a.max_len, a.ledger_frac, a.val_tokens, a.name, a.seed)
+    m = build(tok, root / a.backdrop / "train", out_root, a.tokens, a.min_len, a.max_len, a.ledger_frac, a.val_tokens, a.name, a.seed, early_frac=a.early_frac)
     print(json.dumps(m, indent=1))
 
 

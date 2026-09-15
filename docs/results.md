@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-14 21:15.
+the command center shows the live version of the same data. Last updated 2026-09-15 01:45.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -56,6 +56,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m2_base_149m | pretrain, 149M, 2K, WSD | random | 1.00B | 4.6 h (60.7K tok/s) | 3.060 / 3.051 | Pre-decay snapshot `snap_800M.pt` (val 3.20) seeds M3a |
 | m3_base_stable_149m | pretrain, constant LR (stable phase) | m2 snap_800M | 3.40B | 15.2 h (62.2K tok/s) | 2.768 / 2.878 | Finished 09-14 02:23; val 3.168 → 2.878 with the LR still flat (decay happens in M3b); weights have seen 4.2B tokens |
 | m3_base_8k_149m | pretrain, 8K context, long-doc mixture, WSD decay (last 60%) | m3a final | 800M | 5.4 h (41.3K tok/s) | 2.683 / 2.693 | **The base checkpoint** (weights have seen 5.0B tokens). Val is on the 8K mixture, so not comparable to the 2K numbers; decay took it 2.82 → 2.69. GPU peak 72 °C, no throttle warnings |
+| m7_ctx8k_retrieval_149m | context curriculum stage 1: 8K, 15% retrieval docs | m3b final (base) | 600M | 4.1 h (41K tok/s) | 2.53 / 2.586 (mixture) | needle effective 1K → 6K; 8K depth 0–0.1 still fails (see needle tables); pretraining val 2.729 → 2.709 |
 | m4_sft_149m | instruct SFT | m3b final (base) | 450M (2 epochs) | 2.1 h (62.8K tok/s) | 1.434 / 1.660 | Pretraining-mixture val 2.81 → 2.89 (drift +0.08 nats) |
 | m5_reasoning_149m | reasoning SFT | m4 final | 45M (3 epochs) | 12 min | 0.500 / 0.525 | Pretraining val 2.96 → 2.99 |
 | m6_rl_arith_149m | GRPO stage A (arith1/arith2) | m5 final | 200 steps | 11 min | held-out acc 0.53 → 0.58 | KL 0.005, length 32, no malformed; resumed once at step 125 |
@@ -152,6 +153,21 @@ Effective context (min over depths ≥ 80%): **1024**.
 | 16000 | 0% | 0% | 0% | 0% | 38% | 81% | 100% | 31% | 0% |
 
 Effective context (min over depths ≥ 80%): **2048**.
+
+**Context curriculum stage 1 (m7_ctx8k_retrieval_149m: base + 600M tokens at 8K with 15% templated retrieval docs):**
+
+| Length | d=0.0 | d=0.1 | d=0.25 | d=0.5 | d=0.75 | d=0.9 | d=1.0 | mean | min |
+|---|---|---|---|---|---|---|---|---|---|
+| 1024 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% |
+| 2048 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% |
+| 4096 | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% |
+| 6000 | 88% | 100% | 100% | 100% | 100% | 100% | 100% | 98% | 88% |
+| 8000 | 0% | 6% | 94% | 100% | 100% | 100% | 100% | 71% | 0% |
+
+Effective context **6000** (from 1K). The remaining failures are needles in the first ~10% of a full 8K context, and
+they are near-misses (556423 for 556413): the model finds the needle but copies the last digits wrong at maximum
+distance. Short context unchanged (pretraining-mixture val 2.7286 → 2.7085 over the run). Stage 1b targets those
+cells with 3K–8K retrieval documents whose facts sit in the first 15% half of the time.
 
 Reading: none of the checkpoints retrieves reliably beyond ~1K tokens of real text, including at their own
 training length; failures are the model ignoring the needle (it answers with a number from the text or

@@ -2,7 +2,9 @@
 # Context curriculum, gated: waits for stage 1 (8K retrieval training) to finish, measures it properly
 # (needle v2, n=16; lm-eval at the 2000-sample limit; 2K loss), and launches stage 2 (16K) only if the 8K
 # gate passes. Stage 2 is then measured the same way. Stage 3 (32K) is a manual decision.
-#   bash scripts/pipeline_ctx.sh [stage2]     # "stage2" skips straight to waiting for stage 2
+#   bash scripts/pipeline_ctx.sh              # stage 1 -> gate -> stage 2 -> gate
+#   bash scripts/pipeline_ctx.sh stage1b      # wait for the tool track, then stage 1b -> gate -> stage 2 -> gate
+#   bash scripts/pipeline_ctx.sh stage2       # skip straight to waiting for stage 2
 set -u
 cd "$(dirname "$0")/.."
 P=.venv/Scripts/python.exe
@@ -25,17 +27,29 @@ gate() {  # gate <run> <required effective context>
   [ "$eff" -ge "$2" ]
 }
 
-if [ "${1:-}" != "stage2" ]; then
-  log "waiting for stage 1 (m7_ctx8k_retrieval_149m)"
-  wait_for runs/m7_ctx8k_retrieval_149m/checkpoints/final.pt
+STAGE1=m7_ctx8k_retrieval_149m
+if [ "${1:-}" = "stage1b" ]; then
+  STAGE1=m7_ctx8k_retrieval2_149m
+  log "waiting for the tool track (runs/pipeline_tools.log: TOOLS_PIPELINE_DONE) before stage 1b"
+  while ! grep -q "TOOLS_PIPELINE_DONE" runs/pipeline_tools.log 2>/dev/null; do sleep 120; done
   sleep 30
-  if gate m7_ctx8k_retrieval_149m 8000 1024 2048 4096 6000 8000; then
-    log "stage 1 passed the 8K gate; starting stage 2 (16K)"
+  log "stage 1b (m7_ctx8k_retrieval2_149m)"
+  mkdir -p runs/m7_ctx8k_retrieval2_149m
+  $P -u -m slm.train.pretrain --config configs/train/m7_ctx8k_retrieval2_149m.yaml > runs/m7_ctx8k_retrieval2_149m/train.log 2>&1
+  log "stage 1b exited $?"
+fi
+if [ "${1:-}" != "stage2" ]; then
+  log "waiting for $STAGE1"
+  wait_for "runs/$STAGE1/checkpoints/final.pt"
+  sleep 30
+  if gate "$STAGE1" 8000 1024 2048 4096 6000 8000; then
+    log "$STAGE1 passed the 8K gate; starting stage 2 (16K)"
     mkdir -p runs/m7_ctx16k_retrieval_149m
     $P -u -m slm.train.pretrain --config configs/train/m7_ctx16k_retrieval_149m.yaml > runs/m7_ctx16k_retrieval_149m/train.log 2>&1
     log "stage 2 exited $?"
   else
-    log "stage 1 did NOT pass the 8K gate; stopping here (effective context stays below 8K)"
+    log "$STAGE1 did NOT pass the 8K gate; stopping here (effective context stays below 8K)"
+    log "CTX_PIPELINE_DONE"
     exit 2
   fi
 else
