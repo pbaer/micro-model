@@ -92,6 +92,7 @@ export function RunDetail({ run }) {
       : html`
         <${Tile} k="train loss" v=${fmtNum(s.loss, 4)} s=${"update " + fmtInt(s.update)} />
         <${Tile} k="val loss" v=${fmtNum(s.val_loss, 4)} s=${s.val_loss != null ? `best ${fmtNum(s.best_val, 4)} · ppl ${fmtNum(s.val_ppl, 1)}` : ""} />`}
+      ${s.needle && html`<${Tile} k="needle (effective ctx)" v=${fmtInt(s.needle.effective)} s=${Object.entries(s.needle).filter(([k]) => /^\d+$/.test(k)).map(([k, v]) => `${k}: ${(v * 100).toFixed(0)}%`).join(" · ")} />`}
       <${Tile} k="lr" v=${fmtSci(s.lr)} />
       <${Tile} k="grad norm" v=${fmtNum(s.grad_norm, 3)} />
       <${Tile} k="VRAM peak" v=${fmtNum(s.vram_gib, 1) + " GiB"} />
@@ -107,6 +108,7 @@ export function RunDetail({ run }) {
     ${tab === "charts" && html`<div class="charts">
       <${Chart} title=${series.is_rl ? "policy objective (≈0 by construction; advantages are zero-mean per group)" : "train / val loss"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
       ${!series.is_rl && html`<${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />`}
+      ${series.needle_keys && series.needle_keys.length > 0 && html`<${Chart} title="needle retrieval accuracy by context length (mean over depths; dashed = worst depth)" xmode=${xmode} ymin=${0} series=${series.needle_keys.filter((k) => !k.startsWith("needle_min_")).map((k, i) => ({ label: k.replace("needle_", "") + " mean", x: evalX, y: e[k], points: true, width: 2 })).concat(series.needle_keys.filter((k) => k.startsWith("needle_min_")).map((k) => ({ label: k.replace("needle_min_", "") + " min", x: evalX, y: e[k], points: true, width: 1 })))} />`}
       ${!series.is_rl && html`<${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />`}
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />

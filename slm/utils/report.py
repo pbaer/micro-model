@@ -125,6 +125,7 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
         "tps": [[r["tokens"], r["tok_s"]] for r in train],
         "gn": [[r["tokens"], r["grad_norm"]] for r in train],
         "vram": [[r["tokens"], r["vram_gib"]] for r in train],
+        "needle": {k[7:]: [[r["tokens"], r[k]] for r in evals if r.get(k) is not None] for k in sorted({k for r in evals for k in r if k.startswith("needle_") and not k.startswith("needle_min_") and k != "needle_effective"})},
         "temp": [[r["tokens"], r["gpu_temp_c"]] for r in train if r.get("gpu_temp_c") is not None],
         "power": [[r["tokens"], r["gpu_power_w"]] for r in train if r.get("gpu_power_w") is not None],
     }
@@ -160,6 +161,7 @@ def build_report(run_dir: Path, status: str | None = None) -> str:
 <div class="chart"><h3>learning rate</h3><svg id="c_lr"></svg></div>
 <div class="chart"><h3>gradient norm</h3><svg id="c_gn"></svg></div>
 <div class="chart"><h3>VRAM peak (GiB)</h3><svg id="c_vram"></svg></div>
+{"<div class=\"chart\"><h3>needle retrieval by context length (mean over depths)</h3><svg id=\"c_needle\"></svg></div>" if data["needle"] else ""}
 <div class="chart"><h3>GPU temperature (\u00b0C)</h3><svg id="c_temp"></svg></div>
 <div class="chart"><h3>GPU power (W)</h3><svg id="c_power"></svg></div>
 </div>
@@ -177,6 +179,7 @@ chart('c_lr',[{{name:'lr',pts:D.lr}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_gn',[{{name:'grad norm',pts:D.gn}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_vram',[{{name:'GiB',pts:D.vram}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_temp',[{{name:'C',pts:D.temp}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
+if (Object.keys(D.needle).length) chart('c_needle', Object.entries(D.needle).map(([k, pts]) => ({{name: k, pts, dots: true, w: 2}})), {{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 chart('c_power',[{{name:'W',pts:D.power}}],{{xfmt:fmtTok,xlabel:'tokens',ymin:0}});
 </script></body></html>"""
 

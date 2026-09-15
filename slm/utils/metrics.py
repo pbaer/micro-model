@@ -101,6 +101,11 @@ def series(records: list[dict], max_points: int = 1500) -> dict[str, Any]:
     out["eval"]["time"] = [r["time"] for r in evals]
     for f in EVAL_FIELDS + EVAL_RL_FIELDS:
         out["eval"][f] = [r.get(f) for r in evals]
+    # needle retrieval (context-extension runs): needle_<L>, needle_min_<L>, needle_effective
+    needle_keys = sorted({k for r in evals for k in r if k.startswith("needle_")}, key=lambda k: (k.startswith("needle_min_"), int(k.rsplit("_", 1)[1]) if k.rsplit("_", 1)[1].isdigit() else 0))
+    for k in needle_keys:
+        out["eval"][k] = [r.get(k) for r in evals]
+    out["needle_keys"] = [k for k in needle_keys if k != "needle_effective"]
     out["is_rl"] = any(r.get("reward_mean") is not None for r in train)
     return out
 
@@ -148,6 +153,7 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
         "mixture": list((cfg.get("data") or {}).get("mixture", {}).keys()) if isinstance(cfg.get("data"), dict) else [],
         "init_from": cfg.get("init_from") or "", "tasks": cfg.get("tasks") or [],
         "heldout_acc": next((r.get("heldout_acc") for r in reversed(evals) if r.get("heldout_acc") is not None), None),
+        "needle": {k[7:]: v for k, v in evals[-1].items() if k.startswith("needle_")} if evals and any(k.startswith("needle_") for k in evals[-1]) else None,
         "n_params": meta.get("n_params"), "started": meta.get("started"), "git_commit": (meta.get("env") or {}).get("git_commit"),
         "gpu": (meta.get("env") or {}).get("gpu"), "last_record_time": records[-1]["time"] if records else None,
     }

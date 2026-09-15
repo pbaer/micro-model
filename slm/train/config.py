@@ -81,6 +81,12 @@ class EvalConfig:
     gen_top_p: float = 0.95
     prompts: list[str] = field(default_factory=list)
     report_every_minutes: float = 10.0
+    # Needle-in-a-haystack retrieval tracked at every eval (context-extension runs). Lengths above the
+    # model's RoPE table are skipped. Logged as needle_<L> (mean over depths) and needle_min_<L>.
+    needle_lengths: list[int] = field(default_factory=list)
+    needle_depths: list[float] = field(default_factory=lambda: [0.0, 0.25, 0.5, 0.75, 1.0])
+    needle_n: int = 4
+    needle_source: str = "fineweb-edu-b"  # tokenized source whose val split is the haystack ("filler" = repetitive control)
 
 
 @dataclass
