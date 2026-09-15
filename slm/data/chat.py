@@ -35,9 +35,12 @@ def format_chat(
     eos: bool = True,
     think_required: bool = False,
     tools: bool = False,
+    session=None,
 ) -> ChatEncoding:
-    """tools=True: <<expr=result>> markup inside assistant text becomes a tool call (loss target) followed by
-    the tool's result (masked). Without it the markup is encoded literally (how GSM8K annotations trained before)."""
+    """tools=True: <<expr=result>> markup inside assistant think text becomes a tool call (loss target) followed
+    by the tool's result (masked), run in `session` (a PySession; one is created if None). Without it the markup
+    is encoded literally. An assistant message may carry "ids": the exact tokens of a generated turn (think,
+    tool spans, answer, <|end|>), which are used verbatim so a live conversation never re-runs its tool calls."""
     ids: list[int] = []
     mask: list[int] = []
     segs: list[tuple[int, int, str]] = []
@@ -47,7 +50,7 @@ def format_chat(
         ids.extend(seq)
         mask.extend([m] * len(seq))
 
-    session = None  # one sandbox session per conversation: state carries across calls and turns
+    # one sandbox session per conversation: state carries across calls and turns
 
     def push_text(text: str, m: int, label: str) -> None:
         """Tool markup is honoured only in the think span: tool calls are part of thinking, never of the answer."""
@@ -74,6 +77,12 @@ def format_chat(
         assert role in ROLES, f"unknown role {role}"
         push([tok.special(f"<|{role}|>")], 0, f"role:{role}")
         target = 1 if role == "assistant" else 0
+        if role == "assistant" and msg.get("ids"):
+            gen_ids = [int(i) for i in msg["ids"]]
+            push(gen_ids, 1, "assistant_ids")
+            if not gen_ids or gen_ids[-1] not in (tok.end_id, tok.eos_id):
+                push([tok.end_id], 1, "end")
+            continue
         if role == "assistant":
             think = msg.get("think")
             if think is not None or think_required:

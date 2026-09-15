@@ -145,3 +145,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Incentive to use the tool: RL reward scheme `tool` pays 1.0 only when the final number came out of a
   non-trivial call (print(42) does not count), 0.5 for a correct answer computed in the head; evals report
   tool_use_rate and answer_from_tool_rate. Sandbox errors now carry line number, source line and a hint.
+
+## 2026-09-15 — tool protocol details, command-center chat
+
+- Tool calls are bare expressions (REPL echo; no print()); the echoed number after a result is dropped from
+  training data; calls are only allowed inside the think span (SFT conversion, generation loop, parser and
+  reward all enforce it). Tool SFT data regenerated (GSM8K example: 122 -> 107 tokens).
+- Inference page: multi-turn chat with the Python tool. Well-formed assistant turns are appended to the
+  conversation with their exact token ids (no re-execution of calls) and an empty user turn; one sandbox
+  session per conversation on the worker; inserted result tokens shown distinctly; python-calls panel;
+  `new conversation` resets the session. Harness tested in-process with a scripted sampler.

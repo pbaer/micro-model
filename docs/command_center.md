@@ -65,3 +65,17 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 P1: batch replay inspector (exact rows of a given update), run comparison overlays, sampled document
 search, A/B side-by-side with divergence marker, prompt-scoring view. P2: diagnostics viewer in the
 portal, animations on the architecture page, stage "lenses", STOP control for runs, a run scheduler.
+
+## Inference page: chat with the Python tool (2026-09-15)
+
+Chat mode is a multi-turn conversation. When a generated assistant turn is well-formed (ends with `<|end|>`,
+think span closed, no tool call outside the think span) it is appended to the message list verbatim — the
+exact generated token ids travel with the message so the next prompt reuses them without re-running any tool
+call — followed by an empty user turn to fill in. Editing a generated turn drops its ids and re-encodes it.
+
+The `python tool` checkbox lets the model call the sandbox: generation pauses at `<|/python_call|>`, the code
+runs in the conversation's `PySession` (variables persist across calls and turns), a *python calls* panel lists
+code and results, and the inserted result tokens are shown in blue with no log-prob (they were not sampled).
+`new conversation` resets the session on the worker and clears the messages. The worker keeps up to 32
+sessions keyed by conversation id; the API is `POST /api/model/generate` with `tools`, `session_id`,
+`max_tool_calls`, and `POST /api/model/sessions/{id}/reset`.

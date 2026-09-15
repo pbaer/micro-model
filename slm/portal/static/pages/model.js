@@ -40,18 +40,23 @@ const isSpecial = (p) => p.startsWith("<|") && p.endsWith("|>");
 
 /** Generated output. mode "tokens": one chip per token colored by its probability; mode "text": the
  *  raw decoded text, with reserved tokens (<|bos|>, <|end|>, ...) still shown as highlighted markers. */
+const tip = (t) => (t.inserted ? "inserted by the Python tool (no log-prob)" : `logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`);
+
 function Stream({ tokens, prompt, mode, setHover }) {
   if (mode === "text") {
     return html`<div class="rawout">
       ${prompt && prompt.map((p, i) => isSpecial(p) ? html`<span class="chip special" key=${"p" + i}>${p}</span>` : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
-      ${tokens.map((t, i) => t.special ? html`<span class="chip special" title=${`logprob ${t.logprob.toFixed(3)}`} onMouseEnter=${() => setHover(t)} key=${i}>${t.piece}</span>` : html`<span title=${`logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)}`} onMouseEnter=${() => setHover(t)} key=${i}>${t.piece}</span>`)}
+      ${tokens.map((t, i) => t.special ? html`<span class=${"chip special" + (t.inserted ? " inserted" : "")} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`
+        : html`<span class=${t.inserted ? "inserted-text" : ""} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`)}
     </div>`;
   }
   return html`<div class="chips" style="min-height:60px">
     ${prompt && prompt.map((p, i) => html`<span class="chip" style="background:#e5e7eb;color:#374151" key=${"p" + i}>${showPiece(p)}</span>`)}
-    ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "")} style=${t.special ? "" : `background:${lpColor(t.logprob)}`} title=${`logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`} onMouseEnter=${() => setHover(t)} key=${i}>${showPiece(t.piece)}</span>`)}
+    ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "") + (t.inserted ? " inserted" : "")} style=${t.special || t.inserted ? "" : `background:${lpColor(t.logprob)}`} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${showPiece(t.piece)}</span>`)}
   </div>`;
 }
+
+const newSessionId = () => Math.random().toString(16).slice(2, 12);
 
 export function ModelPage() {
   const [status, setStatus] = useState(null);
@@ -63,7 +68,10 @@ export function ModelPage() {
   const [messages, setMessages] = useState([{ role: "user", content: "What is 17 + 26?" }]);
   const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 120, seed: 1234, logprobs_topk: 5 });
   const [useBoth, setUseBoth] = useState(false);
-  const [thinkReq, setThinkReq] = useState(false);
+  const [thinkReq, setThinkReq] = useState(true);
+  const [tools, setTools] = useState(true);
+  const [sessionId, setSessionId] = useState(newSessionId);
+  const [calls, setCalls] = useState([]);
   const [view, setView] = useState("text");
   const [out, setOut] = useState({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
   const [hover, setHover] = useState(null);
@@ -85,10 +93,11 @@ export function ModelPage() {
     setErr(null); setScore(null);
     const slots = useBoth ? ["A", "B"] : ["A"];
     setOut({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
+    setCalls([]);
     setBusy(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
-      const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq };
+      const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq, tools: mode === "chat" && tools, session_id: sessionId, max_tool_calls: 8 };
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
@@ -102,7 +111,15 @@ export function ModelPage() {
           if (ev === "start") setStreamId(data.stream_id);
           else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces } }));
           else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
-          else if (ev === "done") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], done: data } }));
+          else if (ev === "tool") setCalls((c) => [...c, data]);
+          else if (ev === "done") {
+            setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], done: data } }));
+            // a well-formed assistant turn (slot A, chat mode) becomes part of the conversation, followed by an empty user turn
+            if (data.slot === "A" && mode === "chat" && data.assistant && data.assistant.well_formed) {
+              setMessages((ms) => [...ms.filter((m, i) => !(i === ms.length - 1 && m.role === "user" && !m.content.trim() && false)),
+                { role: "assistant", think: data.assistant.think, content: data.assistant.answer, ids: data.assistant.ids, n_calls: data.assistant.n_calls }, { role: "user", content: "" }]);
+            }
+          }
           else if (ev === "error") setErr(data.error);
         }
       }
@@ -110,6 +127,12 @@ export function ModelPage() {
     setBusy(false); setStreamId(null);
   };
   const cancel = () => { if (streamId) api(`/api/model/streams/${streamId}/cancel`, { method: "POST" }).catch(() => {}); if (abortRef.current) abortRef.current.abort(); };
+  const newConversation = () => {
+    api(`/api/model/sessions/${sessionId}/reset`, { method: "POST" }).catch(() => {});
+    setSessionId(newSessionId()); setMessages([{ role: "user", content: "" }]); setCalls([]);
+    setOut({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
+  };
+  const editMessage = (i, patch) => setMessages(messages.map((x, j) => (j === i ? { ...x, ...patch, ids: undefined } : x)));  // editing a generated turn re-encodes it
   const doScore = async () => {
     setErr(null); setBusy(true);
     try { setScore(await api("/api/model/score", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ slot: "A", mode, text, messages }) })); } catch (e) { setErr(String(e)); }
@@ -138,15 +161,21 @@ export function ModelPage() {
       <span class="muted">seed</span><input type="number" value=${sampling.seed} onChange=${(e) => setSampling({ ...sampling, seed: Number(e.target.value) })} style="width:80px" />
       <button onClick=${() => setSampling({ ...sampling, temperature: 0 })}>greedy</button>
       <label class="muted"><input type="checkbox" checked=${useBoth} onChange=${(e) => setUseBoth(e.target.checked)} /> A and B side by side</label>
-      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label>`}
+      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label>
+        <label class="muted"><input type="checkbox" checked=${tools} onChange=${(e) => setTools(e.target.checked)} /> python tool (REPL session ${sessionId})</label>
+        <button onClick=${newConversation}>new conversation</button>`}
     </div>
     ${mode === "completion" ? html`<textarea value=${text} onInput=${(e) => setText(e.target.value)}></textarea>` : html`<div class="panel">
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">
-        <select value=${m.role} onChange=${(e) => setMessages(messages.map((x, j) => (j === i ? { ...x, role: e.target.value } : x)))}><option>system</option><option>user</option><option>assistant</option></select>
-        <textarea style="min-height:40px;flex:1" value=${m.content} onInput=${(e) => setMessages(messages.map((x, j) => (j === i ? { ...x, content: e.target.value } : x)))}></textarea>
+        <select value=${m.role} onChange=${(e) => editMessage(i, { role: e.target.value })}><option>system</option><option>user</option><option>assistant</option></select>
+        <div style="flex:1;min-width:0">
+          ${m.role === "assistant" && m.think != null && html`<pre class="think" title="think span (tool calls shown as <<code=result>> markup)">${m.think}</pre>`}
+          <textarea style="min-height:40px;width:100%" placeholder=${m.role === "user" ? "type the next user message and press generate" : ""} value=${m.content} onInput=${(e) => editMessage(i, { content: e.target.value })}></textarea>
+          ${m.ids && html`<div class="legend">generated turn: ${m.ids.length} tokens kept verbatim${m.n_calls ? ` · ${m.n_calls} python call${m.n_calls > 1 ? "s" : ""}` : ""} (editing re-encodes it)</div>`}
+        </div>
         <button onClick=${() => setMessages(messages.filter((_, j) => j !== i))}>✕</button></div>`)}
       <button onClick=${() => setMessages([...messages, { role: "user", content: "" }])}>+ message</button>
-      <div class="legend" style="margin-top:4px">A base checkpoint has never seen the chat tokens; expect noise until SFT.</div></div>`}
+      <div class="legend" style="margin-top:4px">Multi-turn: a well-formed assistant reply is appended here automatically with an empty user turn after it. Python calls inside the think span run in this conversation's session, so variables persist across turns. A base checkpoint has never seen the chat tokens; expect noise until SFT.</div></div>`}
     <div class="row" style="margin:8px 0">
       <button class="active" onClick=${generate} disabled=${busy || !slots.A || !slots.A.checkpoint}>generate</button>
       <button onClick=${cancel} disabled=${!streamId}>cancel</button>
@@ -161,6 +190,9 @@ export function ModelPage() {
         <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} mode=${view} setHover=${setHover} />
       </div>`)}
     </div>
+    ${calls.length > 0 && html`<div class="panel" style="margin-top:6px"><b>python calls</b>
+      ${calls.map((c, i) => html`<div class="toolcall" key=${i}><pre class="code">${c.code}</pre><span class=${c.ok ? "result ok" : "result err"}>${c.result}</span></div>`)}</div>`}
+    ${out.A.done && out.A.done.assistant && html`<div class="legend" style="margin-top:4px">assistant turn: ${out.A.done.assistant.well_formed ? "well-formed, added to the conversation" : `not well-formed (${out.A.done.reason}${out.A.done.assistant.malformed ? ", malformed" : ""}) — not added`}</div>`}
     <div class="legend" style="margin-top:6px">${view === "tokens" ? "chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step." : "raw decoded text; reserved tokens are shown as markers. Hover any word for its log-prob and the top-k alternatives."}</div>
     ${score && html`<h2>Teacher-forced scoring (slot A)</h2>
       <div class="muted">${score.n} tokens · mean logprob ${score.mean_logprob.toFixed(3)} · perplexity ${score.ppl ? score.ppl.toFixed(2) : "-"} (over loss-target tokens)</div>

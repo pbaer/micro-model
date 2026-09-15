@@ -37,6 +37,9 @@ class GenerateRequest(BaseModel):
     seed: int | None = 1234
     logprobs_topk: int = 5
     think_required: bool = False
+    tools: bool = False  # Python tool available (chat mode): calls run in the conversation's session
+    session_id: str | None = None  # conversation id for REPL state; reset via /sessions/{id}/reset
+    max_tool_calls: int = 8
 
 
 class ScoreRequest(BaseModel):
@@ -184,6 +187,15 @@ async def generate(request: Request, body: GenerateRequest):
         yield "event: end\ndata: {}\n\n"
 
     return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.post("/sessions/{sid}/reset")
+async def reset_session(request: Request, sid: str) -> dict:
+    """Forget the Python session (variables) of a conversation."""
+    w = request.app.state.worker
+    if not w.alive():
+        return {"session_id": sid, "reset": True, "worker": False}
+    return await anyio.to_thread.run_sync(lambda: w.call("reset_session", session_id=sid))
 
 
 @router.post("/streams/{sid}/cancel")
