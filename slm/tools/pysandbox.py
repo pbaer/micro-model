@@ -55,6 +55,39 @@ _BIN = {
 }
 _CMP = {ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt, ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge, ast.In: lambda a, b: a in b, ast.NotIn: lambda a, b: a not in b}
 _UN = {ast.USub: operator.neg, ast.UAdd: operator.pos, ast.Not: operator.not_}
+# Methods callable on values the sandbox itself created (bound methods of builtin types; results are checked).
+# str.format is deliberately absent: format strings can reach attributes ("{0.__class__}").
+_METHODS = {
+    list: ("append", "pop", "extend", "insert", "remove", "index", "count", "sort", "reverse", "copy"),
+    tuple: ("index", "count"),
+    str: ("upper", "lower", "strip", "lstrip", "rstrip", "split", "join", "replace", "startswith", "endswith", "isdigit", "isalpha", "count", "find", "zfill", "title", "capitalize"),
+    dict: ("keys", "values", "items", "get", "pop", "update", "copy"),
+}
+_VIEW_TYPES = (type({}.keys()), type({}.values()), type({}.items()))
+BUILTIN_NAMES = "abs, min, max, round, sum, len, range, int, float, str, bool, divmod, sorted, reversed, enumerate, zip, list, tuple, dict, print, pow"
+MATH_NAMES = "math.sqrt, math.floor, math.ceil, math.log, math.exp, math.pi, math.gcd, math.factorial, ..."
+_MODULE_NAMES = {"np", "numpy", "pandas", "pd", "re", "os", "sys", "random", "datetime", "sympy", "fractions", "decimal", "itertools", "collections", "json"}
+_HINTS = {
+    "Import": "imports are not available; math is built in (use math.sqrt(x) etc.), everything else must be written with basic Python",
+    "ImportFrom": "imports are not available; math is built in (use math.sqrt(x) etc.), everything else must be written with basic Python",
+    "Lambda": "lambda is not supported; define a function with 'def name(x):' and 'return' instead",
+    "ClassDef": "classes are not supported; use plain variables, lists and functions",
+    "With": "'with' is not supported; there are no files or resources to open",
+    "Try": "try/except is not supported; check values with if/else instead",
+    "Global": "'global' is not supported; pass values as function arguments",
+    "Yield": "generators are not supported; build a list instead",
+    "Await": "async code is not supported",
+    "AsyncFunctionDef": "async code is not supported",
+    "Delete": "'del' is not supported; assign a new value instead",
+    "Assert": "'assert' is not supported; use if/else and print",
+    "Raise": "'raise' is not supported; print a message instead",
+    "DictComp": "dict comprehensions are not supported; build the dict in a for loop",
+    "SetComp": "sets are not supported; use a list",
+    "Set": "sets are not supported; use a list",
+    "Starred": "* unpacking is not supported; pass arguments one by one",
+    "NamedExpr": "':=' is not supported; use a normal assignment",
+    "Match": "match statements are not supported; use if/elif",
+}
 
 
 class _Return(Exception):
@@ -154,14 +187,19 @@ class Sandbox:
         try:
             tree = ast.parse(code, mode="exec")
         except SyntaxError as e:
-            raise ToolError(f"SyntaxError: {e.msg} (line {e.lineno})") from e
+            lines = code.splitlines()
+            src = ("  |  " + lines[e.lineno - 1].strip()[:80]) if e.lineno and 0 < e.lineno <= len(lines) else ""
+            raise ToolError(f"line {e.lineno}: SyntaxError: {e.msg}{src}") from e
         env = self.builtins()
         last = None
         for i, st in enumerate(tree.body):
-            if i == len(tree.body) - 1 and isinstance(st, ast.Expr):
-                last = self.expr(st.value, env)
-            else:
-                self.stmt(st, env)
+            try:
+                if i == len(tree.body) - 1 and isinstance(st, ast.Expr):
+                    last = self.expr(st.value, env)
+                else:
+                    self.stmt(st, env)
+            except ToolError as e:
+                raise _with_line(e, st, code) from None
         text = "".join(self.out)
         if last is not None:
             text += _fmt(last)
@@ -172,7 +210,10 @@ class Sandbox:
 
     def block(self, body: list[ast.stmt], env: dict) -> None:
         for st in body:
-            self.stmt(st, env)
+            try:
+                self.stmt(st, env)
+            except ToolError as e:
+                raise _with_line(e, st) from None
 
     def stmt(self, st: ast.stmt, env: dict) -> None:
         self.tick()
@@ -207,7 +248,7 @@ class Sandbox:
         elif isinstance(st, ast.For):
             it = self.expr(st.iter, env)
             if not isinstance(it, (range, list, tuple, str, dict)):
-                raise ToolError("for loops may iterate over range, list, tuple, str or dict")
+                raise ToolError(f"cannot loop over a {type(it).__name__}; loop over range(n), a list, a tuple, a string or a dict")
             n = 0
             for item in list(it):
                 n += 1
@@ -231,13 +272,13 @@ class Sandbox:
         elif isinstance(st, ast.FunctionDef):
             a = st.args
             if a.vararg or a.kwarg or a.kwonlyargs or a.posonlyargs or a.defaults or st.decorator_list:
-                raise ToolError("functions may only have plain positional arguments")
+                raise ToolError("function parameters must be plain positional names (no default values, *args, **kwargs or decorators); pass every argument explicitly")
             _check_name(st.name)
             env[st.name] = _Func(st.name, [x.arg for x in a.args], st.body)
         elif isinstance(st, ast.Pass):
             pass
         else:
-            raise ToolError(f"{type(st).__name__} is not allowed")
+            raise ToolError(_HINTS.get(type(st).__name__, f"{type(st).__name__} is not supported"))
 
     def assign(self, tgt: ast.expr, v, env: dict) -> None:
         if isinstance(tgt, ast.Name):
@@ -278,7 +319,7 @@ class Sandbox:
         except ZeroDivisionError as e:
             raise ToolError("division by zero") from e
         except (TypeError, ValueError, OverflowError) as e:
-            raise ToolError(f"{type(e).__name__}: {e}") from e
+            raise ToolError(_friendly(e)) from e
 
     def expr(self, e: ast.expr, env: dict):
         self.tick()
@@ -289,7 +330,11 @@ class Sandbox:
         if isinstance(e, ast.Name):
             _check_name(e.id)
             if e.id not in env:
-                raise ToolError(f"NameError: {e.id} is not defined")
+                if e.id in _SAFE_MATH:
+                    raise ToolError(f"NameError: {e.id} is not defined; use math.{e.id}(...)")
+                if e.id in _MODULE_NAMES:
+                    raise ToolError(f"NameError: {e.id} is not available (no modules can be imported); use basic Python and math.*")
+                raise ToolError(f"NameError: {e.id} is not defined; assign it first (available builtins: {BUILTIN_NAMES}; {MATH_NAMES})")
             return env[e.id]
         if isinstance(e, ast.BinOp):
             return self.binop(e.op, self.expr(e.left, env), self.expr(e.right, env))
@@ -356,18 +401,26 @@ class Sandbox:
                 raise ToolError(f"{type(ex).__name__}: {ex}") from ex
         if isinstance(e, ast.Attribute):
             base = self.expr(e.value, env)
-            if base is _SAFE_MATH and e.attr in _SAFE_MATH:
-                return _SAFE_MATH[e.attr]
-            raise ToolError("attribute access is only allowed on math")
+            if base is _SAFE_MATH:
+                if e.attr in _SAFE_MATH:
+                    return _SAFE_MATH[e.attr]
+                raise ToolError(f"math.{e.attr} is not available; available: {', '.join(sorted(_SAFE_MATH))}")
+            _check_name(e.attr)
+            for typ, names in _METHODS.items():
+                if type(base) is typ:
+                    if e.attr in names:
+                        return getattr(base, e.attr)
+                    raise ToolError(f"{typ.__name__}.{e.attr}() is not supported; supported {typ.__name__} methods: {', '.join(names)}")
+            raise ToolError(f"'.{e.attr}' is not supported on a {type(base).__name__}; only list/str/dict methods and math.<function> can be used")
         if isinstance(e, ast.Call):
             return self.call(e, env)
-        if isinstance(e, ast.ListComp):
+        if isinstance(e, (ast.ListComp, ast.GeneratorExp)):
             if len(e.generators) != 1 or e.generators[0].is_async:
-                raise ToolError("only single-generator list comprehensions")
+                raise ToolError("only one 'for' per comprehension is supported; nest loops instead")
             g = e.generators[0]
             it = self.expr(g.iter, env)
             if not isinstance(it, (range, list, tuple, str, dict)):
-                raise ToolError("comprehension may iterate over range, list, tuple, str or dict")
+                raise ToolError(f"cannot loop over a {type(it).__name__} in a comprehension; use range(n), a list, a tuple, a string or a dict")
             local = dict(env)
             out = []
             for item in list(it):
@@ -393,11 +446,11 @@ class Sandbox:
                     except (ValueError, TypeError) as ex:
                         raise ToolError(f"format error: {ex}") from ex
             return self.check("".join(parts))
-        raise ToolError(f"{type(e).__name__} is not allowed")
+        raise ToolError(_HINTS.get(type(e).__name__, f"{type(e).__name__} is not supported"))
 
     def call(self, e: ast.Call, env: dict):
         if e.keywords and not (isinstance(e.func, ast.Name) and e.func.id == "print" and all(k.arg in ("sep", "end") for k in e.keywords)):
-            raise ToolError("keyword arguments are not allowed (print accepts sep and end)")
+            raise ToolError("keyword arguments are not supported (only print(sep=..., end=...)); pass arguments positionally, e.g. round(x, 2)")
         fn = self.expr(e.func, env)
         args = [self.expr(a, env) for a in e.args]
         kwargs = {k.arg: self.expr(k.value, env) for k in e.keywords if k.arg in ("sep", "end")}
@@ -417,27 +470,66 @@ class Sandbox:
             finally:
                 self.depth -= 1
         if not callable(fn) or isinstance(fn, dict):
-            raise ToolError("not callable")
+            raise ToolError(f"a {type(fn).__name__} is not callable; did you mean to index it with [...]?")
         try:
-            return self.check(fn(*args, **kwargs))
+            res = fn(*args, **kwargs)
+            if isinstance(res, _VIEW_TYPES):
+                res = list(res)
+            return self.check(res)
         except ToolError:
             raise
-        except (TypeError, ValueError, ZeroDivisionError, OverflowError, KeyError, IndexError) as ex:
-            raise ToolError(f"{type(ex).__name__}: {ex}") from ex
+        except (TypeError, ValueError, ZeroDivisionError, OverflowError, KeyError, IndexError, AttributeError) as ex:
+            raise ToolError(_friendly(ex)) from ex
+
+
+_BLOCKED = {"exec", "eval", "compile", "open", "__import__", "globals", "locals", "getattr", "setattr", "delattr", "vars", "dir", "type", "object", "input", "breakpoint", "exit", "quit"}
 
 
 def _check_name(name: str) -> None:
-    if name.startswith("__") or name in ("exec", "eval", "compile", "open", "__import__", "globals", "locals", "getattr", "setattr", "delattr", "vars", "dir", "type", "object", "input", "breakpoint", "exit", "quit"):
-        raise ToolError(f"name {name!r} is not allowed")
+    if name.startswith("__"):
+        raise ToolError(f"names starting with __ are not allowed ({name})")
+    if name in _BLOCKED:
+        if name == "input":
+            raise ToolError("input() is not available; write the problem's numbers directly in the code")
+        if name == "open":
+            raise ToolError("files are not available; the sandbox only computes")
+        raise ToolError(f"{name}() is not available in the sandbox")
+
+
+def _friendly(ex: BaseException) -> str:
+    msg = f"{type(ex).__name__}: {ex}"
+    text = str(ex)
+    if "concatenate" in text or "unsupported operand" in text or "can't multiply sequence" in text:
+        msg += " (convert with int(x), float(x) or str(x) first)"
+    elif "not subscriptable" in text:
+        msg += " (only lists, tuples, strings and dicts can be indexed)"
+    elif "has no len" in text:
+        msg += " (len() works on lists, tuples, strings and dicts)"
+    elif "invalid literal for int()" in text:
+        msg += " (int() needs a whole number; use float() for decimals)"
+    return msg
+
+
+def _with_line(e: ToolError, st: ast.AST, code: str | None = None) -> ToolError:
+    text = str(e)
+    if text.startswith("line "):
+        return e
+    ln = getattr(st, "lineno", None)
+    src = ""
+    if code is not None and ln is not None:
+        lines = code.splitlines()
+        if 0 < ln <= len(lines):
+            src = "  |  " + lines[ln - 1].strip()[:80]
+    return ToolError(f"line {ln}: {text}{src}" if ln is not None else text)
 
 
 def _power(a, b):
     if not isinstance(a, (int, float)) or not isinstance(b, (int, float)) or isinstance(a, bool) or isinstance(b, bool):
         raise ToolError("** needs numbers")
     if isinstance(b, int) and abs(b) > MAX_POW:
-        raise ToolError("exponent too large")
+        raise ToolError(f"exponent too large (max {MAX_POW})")
     if isinstance(b, float) and abs(b) > 64:
-        raise ToolError("exponent too large")
+        raise ToolError("exponent too large (max 512 for integers)")
     if isinstance(a, int) and isinstance(b, int) and b >= 0 and a.bit_length() * b > MAX_INT_BITS:
         raise ToolError("integer too large")
     try:

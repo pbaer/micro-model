@@ -28,6 +28,7 @@ from slm.tools.pysandbox import run_python
 TOOL_MARK_RE = re.compile(r"<<<(.+?)>>>|<<([^<>]+?)=([^<>=]*?)>>", re.S)
 TOOLS = {"python": run_python, "calc": calc}
 DEFAULT_TOOL = "python"
+MAX_RESULT_CHARS = 300  # an error message is inserted into the model's context; keep it short
 _PRINT_RE = re.compile(r"^print\((.*)\)$", re.S)
 
 
@@ -56,9 +57,9 @@ def run_tool(text: str) -> tuple[str, bool]:
         return f"error: unknown tool {name}", False
     try:
         out = fn(args)
-        return (out if out != "" else "(no output)"), True
+        return (out if out != "" else "(no output; use print(...) to show a value, or end with a bare expression)"), True
     except ToolError as e:
-        return f"error: {e}", False
+        return f"error: {str(e)[:MAX_RESULT_CHARS]}", False
 
 
 def split_markup(text: str) -> list[ToolSpan]:

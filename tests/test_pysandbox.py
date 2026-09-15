@@ -55,8 +55,9 @@ def test_basic_calculation_semantics():
     "import math",  # math is available without import; the import statement itself is refused
     "math.__dict__",
     "math.os",
-    "'a'.upper()",
-    "[].append(1)",
+    "'a'.format(1)",
+    "'{0.__class__}'.format(1)",
+    "[].__len__()",
     "print.__name__",
     "x = [1]\nx.__len__()",
     "async def f(): pass",
@@ -103,6 +104,37 @@ def test_limits_are_fast_and_side_effect_free(tmp_path):
     assert not marker.exists() and not os.path.exists("should_not_exist.txt")
 
 
+def test_supported_methods_and_generators():
+    assert run_python("xs = [1, 2]\nxs.append(3)\nprint(xs, xs.index(3), xs.pop())") == "[1, 2] 2 3"
+    assert run_python("s = 'a b'\nprint(s.split(), ', '.join(['x', 'y']), s.upper(), s.replace('a', 'c'))") == "['a', 'b'] x, y A B c b"
+    assert run_python("d = {'a': 1}\nprint(d.get('a'), d.get('z', 0), list(d.keys()), sorted(d.items()))") == "1 0 ['a'] [('a', 1)]"
+    assert run_python("print(sum(x * x for x in range(4)))") == "14"
+
+
+def test_error_messages_help_the_model():
+    def err(code):
+        with pytest.raises(ToolError) as ei:
+            run_python(code)
+        return str(ei.value)
+
+    assert "math is built in" in err("import math\nprint(math.sqrt(16))") and err("import math").startswith("line 1:")
+    assert "use math.sqrt(...)" in err("print(sqrt(16))")
+    assert "no modules can be imported" in err("print(np.sqrt(16))")
+    assert "assign it first" in err("total = 12 * 3\nprint(totl)") and "line 2" in err("total = 12 * 3\nprint(totl)")
+    assert "supported list methods" in err("xs = [1]\nxs.appendd(2)")
+    assert "only list/str/dict methods" in err("x = 5\nprint(x.real)")
+    assert "define a function with 'def" in err("f = lambda x: x * 2")
+    assert "pass every argument explicitly" in err("def f(a=1):\n    return a")
+    assert "pass arguments positionally" in err("print(max(3, 4, key=abs))")
+    assert "convert with int(x)" in err("print('5' + 3)")
+    assert "int() needs a whole number" in err("print(int('3.5'))")
+    assert "write the problem's numbers directly" in err("x = input()")
+    assert "SyntaxError" in err("print(12 * 3") and "|  print(12 * 3" in err("print(12 * 3")
+    assert "loop over range(n)" in err("for i in 5:\n    print(i)")
+    assert "is not callable" in err("x = [1, 2]\nprint(x(0))")
+    assert "max 512" in err("print(3 ** 2 ** 40)")
+
+
 def test_output_is_truncated_not_unbounded():
     out = run_python("for i in range(200):\n    print(i)")
     assert len(out) <= MAX_OUTPUT and out.endswith("...")
@@ -113,5 +145,5 @@ def test_run_tool_wraps_errors_for_the_model():
 
     assert run_tool("python: print(6*7)") == ("42", True)
     assert run_tool("python: import os") == ("error: ImportError: import is not allowed", False) or run_tool("python: import os")[0].startswith("error:")
-    assert run_tool("python: x = 1")[0] == "(no output)"
+    assert run_tool("python: x = 1")[0].startswith("(no output")
     assert run_tool("calc: 6*7") == ("42", True)
