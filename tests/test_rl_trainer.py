@@ -44,9 +44,18 @@ def test_rl_trainer_two_steps(tmp_path):
     assert t2.step == 2
 
 
-def test_rl_collapse_guard_stops_and_keeps_best(tmp_path):
-    """entropy_stop far below any real entropy: the guard fires after the first step, logs a warn event, evaluates,
-    stops with a checkpoint, and best.pt (the pre-RL policy) plus its index entry exist."""
+def test_rl_collapse_guard_stops_and_keeps_best(tmp_path, monkeypatch):
+    """A step whose optimize() reports entropy above entropy_stop makes the guard fire: warn event, an eval,
+    a stop with a checkpoint, and best.pt (the pre-RL policy) plus its index entry exist. (The tiny random model
+    yields no reward signal, so optimize() would be skipped; its entropy is forced here.)"""
+    orig = RlTrainer.optimize
+
+    def hot(self, rollouts):
+        out = orig(self, rollouts)
+        out["entropy"] = 10.0
+        return out
+
+    monkeypatch.setattr(RlTrainer, "optimize", hot)
     tok = SlmTokenizer(train_bpe(["What is 3 + 4? Think step by step #### 7 " * 60], vocab_size=300))
     tok.save(tmp_path / "tok")
     cfg_m = load_config(ModelConfig, "configs/model/tiny.yaml")
@@ -55,7 +64,7 @@ def test_rl_collapse_guard_stops_and_keeps_best(tmp_path):
     cfg = RlConfig(run_name="guard", runs_root=str(tmp_path / "runs"), tokenizer_dir=str(tmp_path / "tok"), model_file="configs/model/tiny.yaml",
                    model={"vocab_size": tok.vocab_size}, init_from=str(tmp_path / "init.pt"), tasks=["arith1"], n_train_prompts=40, n_heldout_prompts=8,
                    group_size=4, prompts_per_step=2, max_new_tokens=12, total_steps=5, eval_every_steps=100, eval_max_new_tokens=12,
-                   ckpt_every_minutes=1e9, report_every_minutes=1e9, microbatch=4, entropy_stop=1e-6)
+                   ckpt_every_minutes=1e9, report_every_minutes=1e9, microbatch=4, entropy_stop=2.5)
     t = RlTrainer(cfg)
     t.train()
     recs = MetricsLogger.read(cfg.run_dir / "metrics.jsonl")
