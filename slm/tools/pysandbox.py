@@ -334,7 +334,7 @@ class Sandbox:
                     raise ToolError(f"NameError: {e.id} is not defined; use math.{e.id}(...)")
                 if e.id in _MODULE_NAMES:
                     raise ToolError(f"NameError: {e.id} is not available (no modules can be imported); use basic Python and math.*")
-                raise ToolError(f"NameError: {e.id} is not defined; assign it first (available builtins: {BUILTIN_NAMES}; {MATH_NAMES})")
+                raise ToolError(f"NameError: {e.id} is not defined; assign it first, or use a builtin ({BUILTIN_NAMES}) or math.<function>")
             return env[e.id]
         if isinstance(e, ast.BinOp):
             return self.binop(e.op, self.expr(e.left, env), self.expr(e.right, env))
@@ -538,9 +538,12 @@ def _power(a, b):
         raise ToolError(f"{type(e).__name__}: {e}") from e
 
 
-def _fmt(v) -> str:
+def _fmt(v, nested: bool = False) -> str:
+    """print()-style formatting: floats without binary noise, strings quoted inside containers like Python does."""
     if isinstance(v, bool) or v is None:
         return str(v)
+    if isinstance(v, str):
+        return repr(v) if nested else v
     if isinstance(v, int):
         return str(v)
     if isinstance(v, float):
@@ -548,10 +551,10 @@ def _fmt(v) -> str:
 
         return format_number(Fraction(v).limit_denominator(10**9)) if abs(v) < 1e15 else repr(v)
     if isinstance(v, (list, tuple)):
-        inner = ", ".join(_fmt(x) for x in v)
+        inner = ", ".join(_fmt(x, True) for x in v)
         return f"[{inner}]" if isinstance(v, list) else f"({inner}{',' if len(v) == 1 else ''})"
     if isinstance(v, dict):
-        return "{" + ", ".join(f"{_fmt(k)}: {_fmt(x)}" for k, x in v.items()) + "}"
+        return "{" + ", ".join(f"{_fmt(k, True)}: {_fmt(x, True)}" for k, x in v.items()) + "}"
     return str(v)
 
 
