@@ -1,0 +1,45 @@
+# M7 stage 1c: last push on the two failing cells (needles at depth 0-0.1 of a full 8K context).
+# Stage 1b moved them from 0%/6% to 12%/50% (everything else 100%); the errors are still near-miss copies of the
+# last digits at ~7,500 tokens of distance. This continues from 1b with a source made only of 6K-8K documents
+# whose facts sit in the first 15% four times out of five (`synth-retrieval-8k-early`). Same gate.
+run_name: m7_ctx8k_retrieval3_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+model:
+  loss_chunk_size: 4096
+init_from: runs/m7_ctx8k_retrieval2_149m/checkpoints/final.pt
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {synth-retrieval-8k-early: 0.20, synth-retrieval-8k: 0.10, fineweb-edu-long: 0.30, fineweb-edu-b: 0.25, cosmopedia: 0.05, finemath: 0.04, python-edu: 0.04, stack-edu-shell: 0.02}
+  seq_len: 8192
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-b: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+optim:
+  lr: 4.0e-5
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 300000000
+  warmup_tokens: 5000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 262144
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 50000000
+  gen_every_tokens: 100000000
+  report_every_minutes: 10
+  prompts: ["The history of the Roman Empire begins"]
+  needle_lengths: [4096, 6000, 8000]
+  needle_depths: [0.0, 0.05, 0.1, 0.25, 1.0]
+  needle_n: 6
+  needle_source: fineweb-edu-b
+milestone_tokens: 100000000
+notes: "Stage 1c of the context curriculum. If depth 0-0.1 at 8K is still < 80% after this, effective context is reported as 6K and the 16K stage waits for a decision."

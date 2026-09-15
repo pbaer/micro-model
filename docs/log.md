@@ -164,7 +164,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - The tool track was released by hand at 01:27 (its wait condition only fires when the gate passes) and is
   running: M5 tools SFT → evals → M6 tools RL → full GSM8K with tools.
 - Overnight: the machine rebooted at ~04:50. Tool SFT + evals had finished (GSM8K with tool 0.8%, tool use 93%,
-  answers-from-tool 68%; the templated tasks jump: arith2 88%, arith_multi 82%, algebra 63%). The tool RL was
+  answers-from-tool 68%; templated tasks 98–100% except multi-step 34%). The tool RL was
   killed at step 190/400 — and had been collapsing since ~step 110 (entropy 0.8 → 5, KL → 0.28, garbage
   rollouts) with kl_coef 0.01; held-out accuracy still crept 9% → 12%. Archived as `m6_rl_gsm_tools_try1_149m`.
 - RL trainer hardening: `best.pt` by held-out accuracy (index carries heldout_acc; read back on resume) and
@@ -173,3 +173,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Stage 1b started 07:40 (GPU was idle). Re-sequenced the day with `scripts/pipeline_day.sh`: stage-1b gate →
   tool RL attempt 2 + full GSM8K eval → stage 2 (16K) only if 1b passed → 16K gate. The earlier gated pipeline
   shell was stopped (not the training) to make room for the RL before stage 2.
+- 09:48 stage 1b measured: 8K depth 0/0.1 = 12%/50% (from 0%/6%), all other cells 100%; effective context still
+  6000, gate not passed. Correction to the earlier log line: the tool-SFT templated numbers were misquoted; the
+  real ones are 98–100% on every templated task except multi-step arithmetic (34%).
+- 12:26 tool RL attempt 2 ended at step 222 when the KL guard fired (0.159); no collapse (entropy stayed 0.4–1.1).
+  best.pt = step 175, held-out 11.5% (from 9%). Full GSM8K with the tool: 1.3% (from 0.8%), malformed 18% (from
+  30%), tool use 94%, answers-from-tool 78%; every templated task now 100% (multi-step 34% → 100%).
+- 12:45 stage 1c launched (`m7_ctx8k_retrieval3_149m`: +300M tokens, 20% of a 6K–8K-only source with 80% early
+  facts). Decision pending if it still misses the 8K gate: report effective 6K, or extend anyway with the caveat.
