@@ -1,0 +1,47 @@
+# M7 stage 2: extend 8K -> 16K (YaRN x2) with the retrieval recipe, from the stage-1 checkpoint.
+# Launched by scripts/pipeline_ctx.sh only if stage 1 passed its gate (needle min-depth >= 80% at 1K..8K).
+# Gate to 32K: needle_min_8000 and needle_min_16000 >= 0.8 with no short-context regression.
+run_name: m7_ctx16k_retrieval_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+model:
+  max_seq_len: 16384
+  rope_scaling: {type: yarn, factor: 2.0, original_max_seq_len: 8192}
+  grad_checkpointing: true
+  loss_chunk_size: 4096
+init_from: runs/m7_ctx8k_retrieval_149m/checkpoints/final.pt
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {synth-retrieval: 0.15, fineweb-edu-long: 0.50, fineweb-edu-b: 0.20, cosmopedia: 0.05, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+  seq_len: 16384
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-b: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}
+optim:
+  lr: 1.0e-4
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 600000000
+  warmup_tokens: 10000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 1
+  tokens_per_update: 262144
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  log_every_updates: 5
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 50000000
+  gen_every_tokens: 100000000
+  report_every_minutes: 10
+  prompts: ["The history of the Roman Empire begins"]
+  needle_lengths: [2048, 4096, 8000, 12000, 16000]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 4
+  needle_source: fineweb-edu-b
+milestone_tokens: 100000000
+notes: "Stage 2 of the context curriculum (see docs/roadmap.md). ~6.5 h at 24.5K tok/s with checkpointing."
