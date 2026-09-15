@@ -210,8 +210,11 @@ class Harness:
         if mode == "chat":
             parsed = parse_assistant(tok, gen_ids, think_expected=think_required)
             malformed = bool(parsed["malformed"]) or reason not in ("stop",)
+            think_open = tok.special("<|think|>")
+            # with think_required the opening tag was part of the prompt: put it back so the ids are the whole turn
+            turn_ids = ([think_open] if think_required and (not gen_ids or gen_ids[0] != think_open) else []) + gen_ids
             done["assistant"] = {"think": parsed["think"], "answer": parsed["answer"], "terminated": parsed["terminated"], "malformed": malformed,
-                                 "well_formed": parsed["terminated"] and not malformed, "ids": gen_ids, "n_calls": len(calls),
+                                 "well_formed": parsed["terminated"] and not malformed, "ids": turn_ids, "n_calls": len(calls),
                                  "tool_errors": sum(not c["ok"] for c in calls)}
         yield done
 

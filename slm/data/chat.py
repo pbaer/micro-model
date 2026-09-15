@@ -79,6 +79,9 @@ def format_chat(
         target = 1 if role == "assistant" else 0
         if role == "assistant" and msg.get("ids"):
             gen_ids = [int(i) for i in msg["ids"]]
+            t_open, t_close = tok.special("<|think|>"), tok.special("<|/think|>")
+            if t_close in gen_ids and t_open not in gen_ids[: gen_ids.index(t_close)]:
+                gen_ids = [t_open, *gen_ids]  # generated under a forced <|think|> prompt: the opening tag was not sampled
             push(gen_ids, 1, "assistant_ids")
             if not gen_ids or gen_ids[-1] not in (tok.end_id, tok.eos_id):
                 push([tok.end_id], 1, "end")

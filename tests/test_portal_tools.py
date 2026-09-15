@@ -59,7 +59,7 @@ def test_harness_tool_call_session_and_wellformed(tmp_path, monkeypatch):
     assert done["event"] == "done" and done["reason"] == "stop" and len(done["calls"]) == 2
     a = done["assistant"]
     assert a["well_formed"] and a["answer"] == "#### 12" and a["think"] == "<<<x = 6>>>=(no output; use print(...) to show a value, or end with a bare expression) ok <<x*2=12>>"
-    assert a["ids"] == [e["id"] for e in toks] and a["n_calls"] == 2
+    assert a["ids"] == [tok.special("<|think|>"), *[e["id"] for e in toks]] and a["n_calls"] == 2  # forced <|think|> restored
     # turn 2 in the same conversation: the verbatim assistant ids are reused (no re-execution), and x is still defined
     msgs2 = msgs + [{"role": "assistant", "think": a["think"], "content": a["answer"], "ids": a["ids"]}, {"role": "user", "content": "again"}]
     _scripted(monkeypatch, tok, [sp["<|python_call|>"], *tok.encode("x*3"), sp["<|/python_call|>"], sp["<|/think|>"], *tok.encode("#### 18"), tok.end_id])
@@ -87,5 +87,8 @@ def test_format_chat_uses_generated_ids_verbatim():
     enc = format_chat(tok, [{"role": "user", "content": "hi"}, {"role": "assistant", "ids": gen, "content": "IGNORED"}], add_generation_prompt=True)
     i = enc.ids.index(tok.special("<|assistant|>")) + 1
     assert enc.ids[i : i + len(gen)] == gen and enc.ids[i + len(gen)] == tok.end_id and all(enc.loss_mask[k] == 1 for k in range(i, i + len(gen) + 1))
+    # ids generated under a forced think prompt (no opening tag) get it back
+    enc_f = format_chat(tok, [{"role": "user", "content": "hi"}, {"role": "assistant", "ids": gen[1:]}], add_generation_prompt=True)
+    assert enc_f.ids[i : i + len(gen)] == gen
     assert tok.encode("IGNORED")[0] not in enc.ids[i:]
     assert json.dumps(enc.ids)  # serializable
