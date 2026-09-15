@@ -241,6 +241,11 @@ Protocol on the reserved tokens (`slm/tools/protocol.py`); the call body is plai
 
     ... 120 - 36 = <|python_call|>120-36<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
 
+Tool calls are part of thinking: they are only converted inside the think span in SFT, a call emitted after
+`<|/think|>` is refused by the generation loop (the row terminates as malformed), and the parser flags tool tokens
+in the answer as malformed, so the `tool` reward scheme pays nothing for them. The dataset's echoed number after a
+result ("<<12*52=624>>624 pages") is dropped in conversion: the result span carries it, and the model is not trained to
+repeat tool output (only the final `#### N` is repeated, for the verifier).
 The model generates through `<|/python_call|>`; the harness runs the code and appends the result span; generation
 resumes. Result tokens are environment-written: loss mask 0 in SFT (`format_chat(tools=True)`), `gen_mask` 0 in RL
 so they are excluded from the policy gradient and the KL term. One `PySession` per conversation keeps variables and

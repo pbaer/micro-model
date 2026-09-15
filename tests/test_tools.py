@@ -28,6 +28,8 @@ def test_calculator():
 def test_markup_roundtrip_and_masks(tok):
     spans = split_markup("He has 10 - 2 = <<10-2=8>>8 trees. <<1/0=?>> ok <<<a = 4\nprint(a * 2)>>> and <<a+1=5>>")
     assert [s.kind for s in spans] == ["text", "tool", "text", "text", "text", "tool", "text", "tool"] and spans[1].result == "8" and spans[3].text == "1/0 = ?"
+    assert spans[2].text == " trees. "  # the dataset's echoed "8" after the markup is dropped: the result span carries it
+    assert [s.text for s in split_markup("costs $<<13-11=2>>2. Then <<2*2=4>>4 total") if s.kind == "text"] == ["costs $", ". Then ", " total"]
     assert spans[1].code == "10-2" and spans[5].code == "a = 4\nprint(a * 2)" and spans[5].result == "8" and spans[7].result == "5"  # state carried to the next call
     msgs = [{"role": "user", "content": "How many?"}, {"role": "assistant", "think": "10 - 2 = <<10-2=8>>8 trees", "content": "#### 8"}]
     enc = format_chat(tok, msgs, think_required=True, tools=True)
@@ -44,9 +46,15 @@ def test_markup_roundtrip_and_masks(tok):
     # rendering the assistant turn brings the markup back (with the tool's own result format)
     a_start = enc.ids.index(tok.special("<|assistant|>")) + 1
     parsed = parse_assistant(tok, enc.ids[a_start:])
-    assert parsed["think"] == "10 - 2 = <<10-2=8>>8 trees" and parsed["answer"] == "#### 8" and not parsed["malformed"]
+    assert parsed["think"] == "10 - 2 = <<10-2=8>> trees" and parsed["answer"] == "#### 8" and not parsed["malformed"]
     # unclosed spans render as far as they go
     assert render_tools(tok, [call_open, *tok.encode("1+1")]) == "<<<1+1"
+    # markup in the answer (outside think) is NOT a tool call: it stays literal text
+    enc3 = format_chat(tok, [{"role": "user", "content": "q"}, {"role": "assistant", "think": "<<2*3=6>>", "content": "#### <<2*3=6>>"}], think_required=True, tools=True)
+    assert enc3.ids.count(call_open) == 1 and enc3.ids.index(call_open) < enc3.ids.index(tok.special("<|/think|>"))
+    # a call in the answer part of a generated turn is malformed
+    gen = [*tok.encode("x"), tok.special("<|/think|>"), call_open, *tok.encode("1+1"), call_close, tok.end_id]
+    assert parse_assistant(tok, gen)["malformed"]
     # a multi-turn conversation shares one session: the second turn can use the first turn's variable
     convo = [{"role": "user", "content": "a?"}, {"role": "assistant", "think": "<<<a = 5\nprint(a)>>>", "content": "#### 5"},
              {"role": "user", "content": "double it"}, {"role": "assistant", "think": "<<a*2=10>>", "content": "#### 10"}]
@@ -85,6 +93,11 @@ def test_tool_loop_with_scripted_sampler(tok, monkeypatch):
     assert len(r0.ids) == len(r0.gen_mask) and sum(1 - m for m in r0.gen_mask) == len([t["<|python_result|>"], *tok.encode("420"), t["<|/python_result|>"]])
     assert render_tools(tok, r0.ids) == "<<12*35=420>> so 420" and r0.calls == [("12*35", "420")]
     assert "error:" in render_tools(tok, outs[2].ids) and render_tools(tok, outs[2].ids).endswith("<<12*35=420>> done")
+    # a call after </think> is refused without running it
+    state["round"].clear()
+    script[0] = [[tok.special("<|/think|>"), *call]]
+    outs = sample_with_tools(M(), tok, [[0, 5, 6]], max_new_tokens=64, temperature=0.0, max_calls=8)
+    assert outs[0].termination == "tool_outside_think" and outs[0].n_calls == 0 and outs[0].calls == []
     # max_calls stops a row that keeps calling
     state["round"].clear()
     script[0] = [call] * 5
@@ -118,6 +131,7 @@ def test_session_persists_and_reward_needs_real_tool_work():
     assert not answer_from_tool("413", [("print(413)", "413")]) and not answer_from_tool("413", [("x", "error: NameError")]) and not answer_from_tool("413", [("print(1+1)", "2")])
     ok, bad = Verdict(True, "413", "numeric compare"), Verdict(False, "5", "numeric compare")
     assert reward_from_verdict(ok, False, "tool", True) == 1.0 and reward_from_verdict(ok, False, "tool", False) == 0.5 and reward_from_verdict(bad, False, "tool", True) == 0.0
+    assert reward_from_verdict(ok, True, "tool", True) == 0.0  # malformed (e.g. a call outside think) earns nothing
 
 
 def test_synth_tool_traces_verify():
@@ -134,5 +148,5 @@ def test_synth_tool_traces_verify():
             assert tool_spans, (name, tr)
             assert all(s.code for s in tool_spans)
             assert tool_spans[-1].result == t.answer, (name, tr, tool_spans[-1].result)  # the sandbox reproduces the gold answer
-            assert tr.rstrip(".").endswith(t.answer)
+            assert not tr.rstrip(".").endswith(">>" + t.answer), "traces must not echo the tool result"
     random.Random(0)

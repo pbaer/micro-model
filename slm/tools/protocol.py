@@ -15,6 +15,8 @@ Text form (datasets, synthetic traces, display):
     <<<code>>>             a short program (may span lines) -> code; its output is the result
 `split_markup` turns text into (text | tool) spans, running the code in a session so the recorded result
 is exactly what the harness would insert; `render_tools` turns generated ids back into the same markup.
+Dataset annotations echo the number right after the markup ("<<12*52=624>>624 pages"); the echo is dropped
+because the result span already carries it, so the model is not trained to repeat tool output.
 """
 
 from __future__ import annotations
@@ -60,16 +62,24 @@ def split_markup(text: str, session: PySession | None = None) -> list[ToolSpan]:
     for m in TOOL_MARK_RE.finditer(text):
         if m.start() > pos:
             out.append(ToolSpan("text", text[pos : m.start()]))
+        pos = m.end()
         if m.group(1) is not None:  # <<<code>>>
             code = m.group(1).strip("\n")
             res, ok = run_tool(code, session)
             out.append(ToolSpan("tool", code=code, result=res) if ok else ToolSpan("text", code))
+            echo = res if ok else ""
         else:  # <<expr=result>>
             expr, annotated = m.group(2).strip(), m.group(3).strip()
             code = expr  # a bare expression echoes its value, like a REPL; no print() needed
             res, ok = run_tool(code, session)
             out.append(ToolSpan("tool", code=code, result=res) if ok else ToolSpan("text", f"{expr} = {annotated}" if annotated else expr))
-        pos = m.end()
+            echo = annotated if ok else ""
+        if echo:  # drop the dataset's echoed number ("<<a*b=c>>c pages" -> "<<a*b=c>> pages"); "$c" and "c." forms too
+            rest = text[pos:]
+            for form in (echo, res if ok else ""):
+                if form and rest.startswith(form):
+                    pos += len(form)
+                    break
     if pos < len(text):
         out.append(ToolSpan("text", text[pos:]))
     return out

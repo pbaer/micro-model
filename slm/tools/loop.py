@@ -28,7 +28,7 @@ class ToolCompletion:
     n_calls: int = 0
     n_errors: int = 0
     calls: list[tuple[str, str]] = field(default_factory=list)  # (code, result) per call, in order
-    termination: str = "length"  # stop | length | max_calls
+    termination: str = "length"  # stop | length | max_calls | tool_outside_think
 
 
 @torch.no_grad()
@@ -48,6 +48,7 @@ def sample_with_tools(
     from slm.rl.rollout import sample_completions  # local import: rollout imports this module
 
     t = tool_ids(tok)
+    think_close = tok.special("<|/think|>")
     sessions = sessions or [PySession() for _ in prompts]
     stop = {tok.end_id, tok.eos_id} | ({t["call_close"]} if tools else set())
     outs = [ToolCompletion() for _ in prompts]
@@ -77,6 +78,10 @@ def sample_with_tools(
                     outs[i].termination = "stop"
                     active.discard(i)
                 elif tools and last == t["call_close"]:
+                    if think_close in outs[i].ids:  # tool calls belong to thinking; after </think> the call is refused
+                        outs[i].termination = "tool_outside_think"
+                        active.discard(i)
+                        continue
                     outs[i].n_calls += 1
                     if outs[i].n_calls > max_calls:
                         outs[i].termination = "max_calls"

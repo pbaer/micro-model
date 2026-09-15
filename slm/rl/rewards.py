@@ -76,6 +76,8 @@ def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", fro
     if scheme == "binary":
         return 1.0 if v.correct else 0.0
     if scheme == "tool":
+        if malformed:
+            return 0.0  # includes tool calls outside the think span
         return (1.0 if from_tool else 0.5) if v.correct else 0.0
     if scheme == "signed":
         return 1.0 if v.correct else -1.0

@@ -49,7 +49,7 @@ def trace_for_tools(t: Task) -> str:
     if t.task.startswith("arith") and "expr" in t.meta and t.task != "arith_multi":
         a, op, b = t.meta["expr"].split()
         v = eval(f"{a}{op}{b}")  # noqa: S307 - trusted generator output
-        return f"{a} {op} {b} = <<{a}{op}{b}={v}>>{v}."
+        return f"{a} {op} {b} = <<{a}{op}{b}={v}>>."
     if t.task == "arith_multi":
         toks = t.meta["expr"].split()
         nums = [int(x) for x in toks[0::2]]
@@ -68,20 +68,20 @@ def trace_for_tools(t: Task) -> str:
         lines.append(f"total = {expr}")
         lines.append("total")  # bare name: the sandbox echoes its value like a REPL
         val = eval(t.meta["expr"])  # noqa: S307 - trusted generator output
-        return "Multiply first, then add and subtract from left to right. <<<" + "\n".join(lines) + f">>>{val}"
+        return "Multiply first, then add and subtract from left to right. <<<" + "\n".join(lines) + ">>>"
     if t.task == "algebra":
         m = re.match(r"(-?\d+)x ([+-]) (\d+) = (-?\d+)", t.meta["eq"])
         a, sign, b, c = int(m.group(1)), m.group(2), int(m.group(3)), int(m.group(4))
         b_signed = b if sign == "+" else -b
         rhs = c - b_signed
-        return f"Move the constant to the right and divide by {a}. <<<rhs = {c} - ({b_signed})\nx = rhs // {a}\nx>>>{rhs // a}"
+        return f"Move the constant to the right and divide by {a}. <<<rhs = {c} - ({b_signed})\nx = rhs // {a}\nx>>>"
     if t.task == "word":
         nums = [int(x) for x in re.findall(r"\d+", t.prompt)]
         if "buys" in t.prompt:
-            return f"Start with {nums[0]}, add {nums[1]}: {nums[0]} + {nums[1]} = <<{nums[0]}+{nums[1]}={nums[0] + nums[1]}>>{nums[0] + nums[1]}."
+            return f"Start with {nums[0]}, add {nums[1]}: {nums[0]} + {nums[1]} = <<{nums[0]}+{nums[1]}={nums[0] + nums[1]}>>."
         if "gives away" in t.prompt:
-            return f"Start with {nums[0]}, take away {nums[1]}: {nums[0]} - {nums[1]} = <<{nums[0]}-{nums[1]}={nums[0] - nums[1]}>>{nums[0] - nums[1]}."
-        return f"{nums[0]} boxes with {nums[1]} each: {nums[0]} * {nums[1]} = <<{nums[0]}*{nums[1]}={nums[0] * nums[1]}>>{nums[0] * nums[1]}."
+            return f"Start with {nums[0]}, take away {nums[1]}: {nums[0]} - {nums[1]} = <<{nums[0]}-{nums[1]}={nums[0] - nums[1]}>>."
+        return f"{nums[0]} boxes with {nums[1]} each: {nums[0]} * {nums[1]} = <<{nums[0]}*{nums[1]}={nums[0] * nums[1]}>>."
     raise ValueError(t.task)
 
 

@@ -50,8 +50,9 @@ def format_chat(
     session = None  # one sandbox session per conversation: state carries across calls and turns
 
     def push_text(text: str, m: int, label: str) -> None:
+        """Tool markup is honoured only in the think span: tool calls are part of thinking, never of the answer."""
         nonlocal session
-        if not (tools and m == 1 and TOOL_MARK in text):
+        if not (tools and m == 1 and label == "think" and TOOL_MARK in text):
             push(tok.encode(text), m, label)
             return
         from slm.tools.protocol import encode_tool_span, split_markup
@@ -111,16 +112,17 @@ def parse_assistant(tok: SlmTokenizer, ids: list[int], think_expected: bool = Tr
         had_open = True
     else:
         had_open = False
+    tool_ids = {tok.special(s) for s in ("<|python_call|>", "<|/python_call|>", "<|python_result|>", "<|/python_result|>")}
     if think_close in body:
         j = body.index(think_close)
         think, answer = body[:j], body[j + 1 :]
-        malformed = think_close in answer or think_open in answer  # nested / repeated tags
+        malformed = think_close in answer or think_open in answer or any(i in tool_ids for i in answer)  # nested tags / tool use outside think
     elif think_expected:
         think, answer = None, body  # no closing tag: treat everything as the answer, flag it
         malformed = True
     else:
         think, answer = None, body
-        malformed = had_open  # opened a think span without closing it
+        malformed = had_open or any(i in tool_ids for i in body)  # opened a think span without closing it / tool call with no think span
     from slm.tools.protocol import render_tools  # tool spans render as <<expr=result>> markup
 
     return {
