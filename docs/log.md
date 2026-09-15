@@ -115,3 +115,19 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Gap noticed: the M7 config had no `extra_val_mixture`, so the short-context loss was not tracked during
   the run (checked afterwards with the diagnostics loss instead). Added to the config for future runs.
 - Pipeline finished 13:22. The full M0–M7 stack has now run end to end on the real base.
+
+## 2026-09-14 (evening) — needle retrieval is the problem; context curriculum
+
+- Peter's direction: long context only counts if needle retrieval holds; work up from 2K and stop wherever
+  retrieval breaks, 32K is optional.
+- Needle eval v2: real validation text as haystack (boundaries stripped), 7 depths, n = 16, failure samples,
+  effective-context summary; the trainer can run it at every eval (`eval.needle_lengths`) and the portal /
+  report chart `needle_<L>`. Measured (real text): 2K model effective 1K (71% at 2K); 8K base effective 1K
+  (79% at 2K, 35% at 8K); first 16K run effective 2K (88% at 2K, 31% at 16K). The filler haystack had
+  overstated retrieval by ~20 points.
+- New source `synth-retrieval` (`slm.data.synth_retrieval`, templated, no model): 150M tokens of real
+  training text with inserted facts + questions at the end (70%) and key-value ledgers (30%), 512–16K tokens.
+  Bug caught by inspection before use: two facts from the same template in one document made a question
+  ambiguous; templates are now distinct per document (tested).
+- Stage 1 `m7_ctx8k_retrieval_149m` launched 21:07 from the base: 600M tokens at 8K, 15% retrieval docs,
+  needle tracked at 1K/2K/4K/8K every 50M tokens; gate to 16K is min-depth ≥ 80% at all four lengths.

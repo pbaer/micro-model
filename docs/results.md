@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-14 13:45.
+the command center shows the live version of the same data. Last updated 2026-09-14 21:15.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -38,6 +38,7 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | python-edu | 140M | 0.7M | 248K | |
 | stack-edu-shell | 51M | 0.2M | 59K | |
 | tinystories | 463M | 4.6M | 2.10M | M1 only |
+| synth-retrieval | 150M | 2.0M | 29.8K | templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
 
 SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens (88% targets,
 16K dropped for length), openhermes-100k 94K / 36M, systemchats-30k 34K / 20M, smol-constraints 34K /
@@ -109,32 +110,54 @@ algebra, word) moved little because arith_multi yields almost no correct samples
 groups carry no signal) — a curriculum gap to fix with easier intermediate tasks or partial credit.
 GSM8K stays at ~2%: beyond this model at this stage. Rehearsal (1B base): arith2 25% → 44% after stage A.
 
-Long-context needle eval on the 8K base (single needle, n = 4 per cell, retrieval accuracy):
+Long-context needle retrieval (`slm.eval.long_context`, v2: haystack = continuous *validation* text with
+document boundaries removed, 7 depths, n = 16 per cell, greedy, 6-digit secret). The first version used a
+loop of 8 filler sentences and n = 4; it overstated retrieval by ~20 points at 2K (99% vs 79% for the base) and
+its numbers are superseded by the tables below.
 
-| Length | depth 0.1 | depth 0.5 | depth 0.9 |
-|---|---|---|---|
-| 1024 | 100% | 100% | 100% |
-| 2048 | 100% | 100% | 100% |
-| 4096 | 75% | 100% | 100% |
-| 8000 | 0% | 100% | 100% |
+**2K-trained model (m3_base_stable_149m, RoPE table 8192):**
 
-Retrieval is solid up to the trained context except for needles placed at the very start of a full-length
-8K context (the "lost at the beginning" cell), the usual weak spot right after a short 8K phase. The M2
-attempt (2K model) failed on a RoPE-table assertion; fixed since.
+| Length | d=0.0 | d=0.1 | d=0.25 | d=0.5 | d=0.75 | d=0.9 | d=1.0 | mean | min |
+|---|---|---|---|---|---|---|---|---|---|
+| 512 | 100% | 94% | 100% | 100% | 100% | 94% | 100% | 98% | 94% |
+| 1024 | 100% | 94% | 94% | 81% | 100% | 94% | 100% | 95% | 81% |
+| 2048 | 56% | 38% | 56% | 62% | 88% | 94% | 100% | 71% | 38% |
+| 3072 | 0% | 0% | 0% | 19% | 81% | 81% | 94% | 39% | 0% |
+| 4096 | 0% | 0% | 0% | 0% | 6% | 69% | 94% | 24% | 0% |
+| 8000 | 0% | 0% | 0% | 0% | 0% | 0% | 94% | 13% | 0% |
 
-After the 16K extension (m7_ctx16k_149m, YaRN ×2 + 200M tokens at 16K):
+Effective context (min over depths ≥ 80%): **1024**.
 
-| Length | depth 0.1 | depth 0.5 | depth 0.9 |
-|---|---|---|---|
-| 2048 | 100% | 75% | 100% |
-| 8000 | 50% | 100% | 100% |
-| 12000 | 0% | 75% | 100% |
-| 16000 | 0% | 25% | 100% |
+**8K base (m3_base_8k_149m):**
 
-Effective context after the short extension: recent material (depth 0.9) is retrieved at every length up
-to 16K; needles in the first half of a 12–16K context are mostly lost, and the 8K depth-0.1 cell improved
-from 0% to 50%. More extension tokens or a longer YaRN ramp would be the next lever; the 32K branch should
-wait until the 16K early-depth cells are fixed.
+| Length | d=0.0 | d=0.1 | d=0.25 | d=0.5 | d=0.75 | d=0.9 | d=1.0 | mean | min |
+|---|---|---|---|---|---|---|---|---|---|
+| 512 | 94% | 100% | 88% | 94% | 94% | 94% | 100% | 95% | 88% |
+| 1024 | 100% | 94% | 94% | 81% | 94% | 100% | 100% | 95% | 81% |
+| 2048 | 94% | 56% | 62% | 69% | 75% | 94% | 100% | 79% | 56% |
+| 4096 | 6% | 12% | 38% | 50% | 62% | 94% | 100% | 52% | 6% |
+| 6000 | 0% | 0% | 0% | 44% | 88% | 81% | 100% | 45% | 0% |
+| 8000 | 0% | 0% | 0% | 6% | 75% | 69% | 94% | 35% | 0% |
+
+Effective context (min over depths ≥ 80%): **1024**.
+
+**16K extension, first attempt (m7_ctx16k_149m, YaRN ×2 + 200M tokens):**
+
+| Length | d=0.0 | d=0.1 | d=0.25 | d=0.5 | d=0.75 | d=0.9 | d=1.0 | mean | min |
+|---|---|---|---|---|---|---|---|---|---|
+| 2048 | 81% | 94% | 88% | 81% | 81% | 94% | 100% | 88% | 81% |
+| 4096 | 62% | 69% | 44% | 62% | 69% | 94% | 94% | 71% | 44% |
+| 8000 | 6% | 12% | 6% | 38% | 81% | 100% | 100% | 49% | 6% |
+| 12000 | 0% | 0% | 0% | 31% | 62% | 50% | 100% | 35% | 0% |
+| 16000 | 0% | 0% | 0% | 0% | 38% | 81% | 100% | 31% | 0% |
+
+Effective context (min over depths ≥ 80%): **2048**.
+
+Reading: none of the checkpoints retrieves reliably beyond ~1K tokens of real text, including at their own
+training length; failures are the model ignoring the needle (it answers with a number from the text or
+`10000000000`), not misreading it. Long-document training helps (the 16K run beats the base at every shared
+length), so the fix is targeted training at each length with a gate before extending — see the context
+curriculum in `roadmap.md`. Filler-haystack control on the base: 99% at 2K, 57% at 8K.
 
 ## 5. Diagnostics
 

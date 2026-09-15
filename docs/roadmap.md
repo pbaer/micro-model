@@ -40,13 +40,27 @@ Remaining work, with GPU-time estimates from measured throughput. Updated 2026-0
 4. **A larger model** (e.g. 300–400M) as a second base once the 149M pipeline is fully validated, at the
    cost of iteration speed.
 
+## Context curriculum (current focus, 2026-09-14 evening)
+
+Long context is only claimed where needle retrieval holds. Gate at every stage: `needle_min_<L>` ≥ 0.8
+(worst depth, real-text haystack) at every length up to the stage length, and no short-context regression
+(pretraining-mixture val, lm-eval at the same limit). Each stage branches from the previous stage's final
+checkpoint; the base is never modified. The old `m7_ctx16k_149m` stays as the "before" record.
+
+| Stage | Run | Length | Data | Gate to next |
+|---|---|---|---|---|
+| 1 (running) | `m7_ctx8k_retrieval_149m` | 8K rows (docs 512–8K inside) | 15% synth-retrieval + 35% long docs + pretraining mix, 600M tokens | needle min ≥ 80% at 1K, 2K, 4K, 8K |
+| 2 | `m7_ctx16k_retrieval_149m` | 16K, YaRN ×2 | same recipe with 16K retrieval docs, 400–800M tokens | needle min ≥ 80% at 8K and 16K |
+| 3 (optional) | `m7_ctx32k_retrieval_149m` | 32K | only if stage 2 passes | needle min ≥ 80% at 16K and 32K |
+
+If a stage stalls below the gate after its token budget, the honest result is "effective context = previous
+stage" and the report says so.
+
 ## Next candidates (after the decisions below)
 
 - RL curriculum fix: stage B learned nothing from arith_multi (no correct samples). Add intermediate tasks
   (two-step expressions, small numbers), partial credit, or a reward for a correct intermediate line; then
   stage C (code with unit tests, logic puzzles).
-- 16K early-depth retrieval: extend longer (400M+ tokens) or ramp YaRN; track short-context loss via
-  `extra_val_mixture` (now in the config).
 - M7 speed: try microbatch 2 without gradient checkpointing (4.3 GiB peak leaves room).
 
 ## Known gaps

@@ -1,0 +1,45 @@
+# M7 stage 1: make retrieval work at the trained context (1K–8K) before extending it.
+# Continues the 8K base on a mixture with templated retrieval documents (slm.data.synth_retrieval) and
+# long documents. Needle accuracy at 1K/2K/4K/8K is measured at every eval and charted; the gate for the
+# next stage is min-over-depth >= 80% at every length up to 8K (see docs/roadmap.md, "context curriculum").
+run_name: m7_ctx8k_retrieval_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_149m.yaml
+model:
+  loss_chunk_size: 4096
+init_from: runs/m3_base_8k_149m/checkpoints/final.pt
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {synth-retrieval: 0.15, fineweb-edu-long: 0.35, fineweb-edu-b: 0.30, cosmopedia: 0.08, finemath: 0.05, python-edu: 0.04, stack-edu-shell: 0.03}
+  seq_len: 8192
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-b: 0.8, cosmopedia: 0.1, finemath: 0.05, python-edu: 0.03, stack-edu-shell: 0.02}  # pretraining-mixture drift check
+optim:
+  lr: 1.0e-4
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 600000000
+  warmup_tokens: 10000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 262144
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 50000000
+  gen_every_tokens: 100000000
+  report_every_minutes: 10
+  prompts: ["The history of the Roman Empire begins"]
+  needle_lengths: [1024, 2048, 4096, 8000]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 4
+  needle_source: fineweb-edu-b
+milestone_tokens: 100000000
+notes: "Stage 1 of the context curriculum. Gate to 16K: needle_min_<L> >= 0.8 for L in 1024..8000."

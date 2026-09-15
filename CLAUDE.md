@@ -40,6 +40,9 @@ placeholder and may change, so don't bake it into code.
   checkpoint on Ctrl-C, and refresh a self-contained `runs/<run>/report.html` (inline charts, ETA,
   per-100M-token milestone timings) at least every 30 minutes and at every milestone.
 - Tests live in `tests/`; run `.venv/Scripts/python.exe -m pytest`.
+- Long context is claimed only where needle retrieval holds: `slm.eval.long_context` with the real-text haystack
+  (never the filler control) and n >= 16; extension runs set `eval.needle_lengths` so the gate (min over depths
+  >= 0.8 at every length) is visible in the run page before the next stage starts.
 - GPU telemetry: both trainers run `slm.utils.gpu.GpuSampler` (nvidia-smi on a daemon thread) and put
   `gpu_temp_c`/`gpu_power_w`/`gpu_util` in every train record; above `runtime.gpu_warn_temp_c` (80 C) they print a
   console warning and log a `warn` event (rate-limited to one per 5 min). Runs started before 2026-09-13 (M3a) lack these fields.
