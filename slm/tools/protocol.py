@@ -1,7 +1,7 @@
 """The Python-tool protocol on the reserved special tokens.
 
 Generated form (what the model emits and sees):
-    ... 120 - 36 = <|python_call|>print(120-36)<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
+    ... 120 - 36 = <|python_call|>120-36<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
 The call body is plain Python for the sandboxed interpreter (slm.tools.pysandbox). The model generates
 through <|/python_call|>; the harness runs the code and appends the result span; generation resumes.
 Result tokens are environment-written: loss mask 0 in SFT, excluded from the policy gradient in RL.

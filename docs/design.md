@@ -239,7 +239,7 @@ exposes the latest temperature, power, utilization, clocks and throttle reasons;
 
 Protocol on the reserved tokens (`slm/tools/protocol.py`); the call body is plain Python:
 
-    ... 120 - 36 = <|python_call|>print(120-36)<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
+    ... 120 - 36 = <|python_call|>120-36<|/python_call|><|python_result|>84<|/python_result|>84 pages left ...
 
 The model generates through `<|/python_call|>`; the harness runs the code and appends the result span; generation
 resumes. Result tokens are environment-written: loss mask 0 in SFT (`format_chat(tools=True)`), `gen_mask` 0 in RL

@@ -1,5 +1,5 @@
 # M5 (tools): reasoning SFT where every arithmetic step is a tool call (sandboxed Python; see docs/design.md).
-#   <|think|>... 12 x 2 = <|python_call|>print(12*2)<|/python_call|><|python_result|>24<|/python_result|>24 pages ...<|/think|>#### 42<|end|>
+#   <|think|>... 12 x 2 = <|python_call|>12*2<|/python_call|><|python_result|>24<|/python_result|>24 pages ...<|/think|>#### 42<|end|>
 # Loss on the think text and the calls; tool results are masked (the harness writes them at inference).
 # Data: GSM8K train with its own <<a*b=c>> annotations converted to calls, the 682 MetaMathQA rows that carry
 # annotations, and 40K templated traces with calls (slm.rl.synth --tools). The GSM8K *test* split only feeds
