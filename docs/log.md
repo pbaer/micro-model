@@ -163,3 +163,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   pipeline now has a `stage1b` entry that waits for the tool track, then runs 1b → gate → stage 2.
 - The tool track was released by hand at 01:27 (its wait condition only fires when the gate passes) and is
   running: M5 tools SFT → evals → M6 tools RL → full GSM8K with tools.
+- Overnight: the machine rebooted at ~04:50. Tool SFT + evals had finished (GSM8K with tool 0.8%, tool use 93%,
+  answers-from-tool 68%; the templated tasks jump: arith2 88%, arith_multi 82%, algebra 63%). The tool RL was
+  killed at step 190/400 — and had been collapsing since ~step 110 (entropy 0.8 → 5, KL → 0.28, garbage
+  rollouts) with kl_coef 0.01; held-out accuracy still crept 9% → 12%. Archived as `m6_rl_gsm_tools_try1_149m`.
+- RL trainer hardening: `best.pt` by held-out accuracy (index carries heldout_acc; read back on resume) and
+  collapse guards `entropy_stop` / `kl_stop` that stop the run with a warn event. Attempt 2 config: kl 0.05,
+  lr 1e-6, temperature 0.8, entropy_stop 2.5, kl_stop 0.15, 300 steps; evals use best.pt.
+- Stage 1b started 07:40 (GPU was idle). Re-sequenced the day with `scripts/pipeline_day.sh`: stage-1b gate →
+  tool RL attempt 2 + full GSM8K eval → stage 2 (16K) only if 1b passed → 16K gate. The earlier gated pipeline
+  shell was stopped (not the training) to make room for the RL before stage 2.

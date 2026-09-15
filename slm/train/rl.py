@@ -48,6 +48,10 @@ class RlConfig:
     gpu_sample_s: float = 2.0  # nvidia-smi telemetry period (s); temperature/power go into every train record
     tools: bool = False  # Python tool: rollouts pause at <|/python_call|>, results are inserted and excluded from the objective
     max_tool_calls: int = 8
+    # Collapse guards (0 = off): stop the run (checkpoint + report) when the rollout entropy or the KL to the
+    # reference exceeds these, which is what a diverging policy looks like before it produces garbage.
+    entropy_stop: float = 0.0
+    kl_stop: float = 0.0
     gpu_warn_temp_c: float = 80.0
     # tasks / curriculum
     tasks: list[str] = field(default_factory=lambda: ["arith1", "arith2"])
@@ -133,6 +137,13 @@ class RlTrainer:
         self.session_start = time.time()
         self.elapsed_before = 0.0
         latest = self.ckpt_dir / "latest.pt"
+        idx_path = self.ckpt_dir / "index.json"
+        self.best_acc = -1.0  # best held-out accuracy so far (best.pt); read back from the index on resume
+        if idx_path.exists():
+            try:
+                self.best_acc = float(json.loads(idx_path.read_text(encoding="utf-8")).get("best.pt", {}).get("heldout_acc", -1.0))
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
         if latest.exists():
             st = ckpt.load_full(latest, self.model, self.optimizer)
             self.step, self.tokens, self.elapsed_before = st["counters"]["step"], st["counters"]["tokens"], st["counters"]["elapsed_s"]
@@ -257,6 +268,9 @@ class RlTrainer:
                 ev = self.evaluate()
                 self.log.log("eval", tokens=0, update=0, step=0, val_loss=1.0 - ev["heldout_acc"], val_ppl=0.0, best=True, **ev)
                 console(f"pre-RL: heldout acc {ev['heldout_acc']:.3f} (malformed {ev['heldout_malformed']:.2f}, len {ev['heldout_len']:.0f}) | train acc {ev['train_acc']:.3f}")
+                self.best_acc = ev["heldout_acc"]
+                ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"step": 0, "tokens": 0, "heldout_acc": ev["heldout_acc"], "tokenizer_sha256": self.tok.sha256})
+                ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=0, update=0, heldout_acc=ev["heldout_acc"])
             while self.step < c.total_steps and not self.stop_requested:
                 t0 = time.time()
                 rollouts, rs = self.collect()
@@ -275,12 +289,22 @@ class RlTrainer:
                 console(f"step {self.step} | reward {rs['reward_mean']:.3f} succ {rs['success_rate']:.2f} | len {rs['len_mean']:.0f} | malformed {rs['malformed_rate']:.2f} | "
                         f"kl {os_['kl']:.4f} ent {os_['entropy']:.2f} clip {os_['clip_frac']:.2f} | gn {os_['grad_norm']:.2f} | no-signal groups {rs['groups_no_signal']:.2f} | "
                         f"rollout {t1 - t0:.0f}s opt {time.time() - t1:.0f}s")
-                if self.step % c.eval_every_steps == 0:
+                if (c.entropy_stop and os_["entropy"] > c.entropy_stop) or (c.kl_stop and os_["kl"] > c.kl_stop):
+                    msg = f"collapse guard: entropy {os_['entropy']:.2f} (limit {c.entropy_stop}) kl {os_['kl']:.3f} (limit {c.kl_stop}); stopping, best.pt keeps the best held-out policy"
+                    console(f"*** {msg} ***")
+                    self.log.log("warn", tokens=self.tokens, update=self.step, msg=msg)
+                    self.stop_requested = True
+                if self.step % c.eval_every_steps == 0 or self.stop_requested:
                     ev = self.evaluate()
-                    self.log.log("eval", tokens=self.tokens, update=self.step, step=self.step, val_loss=1.0 - ev["heldout_acc"], val_ppl=0.0, best=False, **ev)
-                    console(f"eval step {self.step}: heldout acc {ev['heldout_acc']:.3f} (malformed {ev['heldout_malformed']:.2f}, len {ev['heldout_len']:.0f}) | train acc {ev['train_acc']:.3f}")
+                    improved = ev["heldout_acc"] > self.best_acc
+                    self.log.log("eval", tokens=self.tokens, update=self.step, step=self.step, val_loss=1.0 - ev["heldout_acc"], val_ppl=0.0, best=improved, **ev)
+                    console(f"eval step {self.step}: heldout acc {ev['heldout_acc']:.3f} (malformed {ev['heldout_malformed']:.2f}, len {ev['heldout_len']:.0f}) | train acc {ev['train_acc']:.3f}{' (best)' if improved else ''}")
                     ckpt.save_snapshot(self.ckpt_dir / f"step_{self.step:05d}.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "heldout_acc": ev["heldout_acc"], "tokenizer_sha256": self.tok.sha256})
                     ckpt.update_index(self.ckpt_dir, f"step_{self.step:05d}.pt", kind="snapshot", tokens=self.tokens, update=self.step, heldout_acc=ev["heldout_acc"])
+                    if improved:
+                        self.best_acc = ev["heldout_acc"]
+                        ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"step": self.step, "tokens": self.tokens, "heldout_acc": ev["heldout_acc"], "tokenizer_sha256": self.tok.sha256})
+                        ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=self.tokens, update=self.step, heldout_acc=ev["heldout_acc"])
                 if time.time() - t_ckpt > c.ckpt_every_minutes * 60:
                     self._save()
                     t_ckpt = time.time()

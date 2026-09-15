@@ -14,10 +14,11 @@ if [ "${1:-}" != "now" ]; then
   sleep 60
 fi
 
-eval_reasoning() {  # eval_reasoning <run> <tools-flag>
-  local run=$1 flag=$2 tag=${2:-notools}
+eval_reasoning() {  # eval_reasoning <run> <tools-flag> ; uses best.pt (RL, held-out best) when present, else final.pt
+  local run=$1 flag=$2 tag=${2:-notools} ck="runs/$1/checkpoints/final.pt"
   [ -n "$flag" ] && tag=tools
-  $P -u -m slm.eval.reasoning --checkpoint "runs/$run/checkpoints/final.pt" --n 100 --gsm8k -1 --max-new 320 $flag \
+  [ -f "runs/$run/checkpoints/best.pt" ] && ck="runs/$run/checkpoints/best.pt"
+  $P -u -m slm.eval.reasoning --checkpoint "$ck" --n 100 --gsm8k -1 --max-new 320 $flag \
      --out "runs/$run/reasoning_eval_$tag.json" --dump "runs/$run/reasoning_dump_$tag.jsonl" > "runs/$run/reasoning_eval_$tag.log" 2>&1
   log "$run ($tag): $(grep -E 'gsm8k_test|mean accuracy' "runs/$run/reasoning_eval_$tag.log" | tr '\n' ' ')"
 }
@@ -34,6 +35,6 @@ eval_reasoning m5_reasoning_tools_149m ""
 log "M6 tools RL"
 mkdir -p runs/m6_rl_gsm_tools_149m
 $P -u -m slm.train.rl --config configs/train/m6_rl_gsm_tools_149m.yaml > runs/m6_rl_gsm_tools_149m/train.log 2>&1
-[ -f runs/m6_rl_gsm_tools_149m/checkpoints/final.pt ] || { log "M6 tools RL produced no final.pt; aborting"; exit 1; }
+[ -f runs/m6_rl_gsm_tools_149m/checkpoints/best.pt ] || { log "M6 tools RL produced no best.pt; aborting"; exit 1; }
 eval_reasoning m6_rl_gsm_tools_149m "--tools"
 log "TOOLS_PIPELINE_DONE"

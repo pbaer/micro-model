@@ -14,24 +14,26 @@ n_heldout_prompts: 200
 group_size: 8
 prompts_per_step: 8
 max_new_tokens: 320
-temperature: 0.9
+temperature: 0.8
 top_p: 0.95
 think_required: true
 reward_scheme: tool  # 1.0 only when the final number came out of a Python call; 0.5 if correct without one
-lr: 2.0e-6
+lr: 1.0e-6
 weight_decay: 0.0
 grad_clip: 1.0
 clip_eps: 0.2
 use_ratio: true
-kl_coef: 0.01
+kl_coef: 0.05  # try1 collapsed with 0.01 (entropy 0.8 -> 5 by step 150)
 kl_kind: k3
 normalize_std: true
 ppo_epochs: 1
 microbatch: 8
-total_steps: 400
+total_steps: 300
+entropy_stop: 2.5  # rollout entropy above this = the policy is diverging; stop and keep best.pt
+kl_stop: 0.15
 eval_every_steps: 25
 eval_max_new_tokens: 320
 ckpt_every_minutes: 15
 report_every_minutes: 5
 seed: 2
-notes: "Tool-use RL on GSM8K-train prompts (listed 3x to weight them). Watch tool_error_rate and groups_no_signal."
+notes: "Tool-use RL on GSM8K-train prompts (listed 3x to weight them). Second attempt: stronger KL, lower LR, collapse guards. Use best.pt (held-out) for evals."

@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-15 01:45.
+the command center shows the live version of the same data. Last updated 2026-09-15 08:10.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -62,6 +62,8 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m6_rl_arith_149m | GRPO stage A (arith1/arith2) | m5 final | 200 steps | 11 min | held-out acc 0.53 → 0.58 | KL 0.005, length 32, no malformed; resumed once at step 125 |
 | m6_rl_multi_149m | GRPO stage B (arith2/arith2mul/arith_multi/algebra/word) | m6 A final | 300 steps | 21 min | held-out acc 0.37 → 0.39 | KL 0.012, 38% of groups without signal (arith_multi is all-zero) |
 | m7_ctx16k_149m | context extension 8K → 16K (YaRN ×2), long-doc mixture | m3b final (base) | 200M | 2.3 h (24.5K tok/s, mb 1 + grad checkpointing, 4.3 GiB) | 2.70 / 2.712 | Val on the 16K mixture. Short-context check: 2K loss on fineweb-edu-b 3.069 vs base 3.076; lm-eval unchanged (see below) |
+| m5_reasoning_tools_149m | reasoning SFT with the Python tool | m4 final | 14M (3 epochs) | 4 min | 0.50 / 0.675 | Tool use 93% of GSM8K answers, 68% of final numbers from a call, tool errors 1%; GSM8K 0.8% (plans wrong, 21% of attempts loop to the length cap); without the tool 0.5% (malformed 87%: it expects the tool) |
+| m6_rl_gsm_tools_try1_149m | GRPO with the tool on GSM8K-train (attempt 1) | m5 tools final | 190 of 400 steps (reboot) | 2.8 h | held-out 9% → 12% at step 175 | Collapsed from ~step 110: entropy 0.8 → 5, KL 0 → 0.28, garbage tokens; kl_coef 0.01 too weak. Archived; attempt 2 uses kl 0.05, lr 1e-6, collapse guards |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -102,6 +104,8 @@ GSM8K test n = 200):
 |---|---|---|---|---|---|---|---|---|
 | m5_reasoning_149m (real base) | 40% | 50% | 42% | 3% | 34% | 68% | 2.0% | 15% |
 | m6_rl_arith_149m (stage A, 200 steps) | 70% | 61% | 49% | 2% | 37% | 67% | 1.5% | 8% |
+| m5_reasoning_tools_149m (Python tool, greedy) | 100% (n=10) | 88% | 79% | 82% | 63% | 45% | 0.8% | 30% |
+| m5_reasoning_tools_149m, tool disabled | 0% | 2% | 4% | 0% | 1% | 6% | 0.5% | 87% |
 | m6_rl_multi_149m (stage B, +300 steps) | 50% | 61% | 48% | 3% | 32% | 67% | 2.0% | 16% |
 | m5_reasoning_rehearsal_149m | 60% | 25% | 22% | 0% | 31% | 58% | 2.5% | 9.5% |
 | m6_rl_arith_rehearsal_149m (200 GRPO steps on arith1/arith2) | 80% | 44% | 36% | 0% | 29% | 55% | 2.5% | 8.5% |
