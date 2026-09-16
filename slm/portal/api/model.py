@@ -85,7 +85,19 @@ def status(request: Request) -> dict:
     st["worker"] = True
     st["gpu"] = gpu_info()
     st["live_runs"] = request.app.state.runs.live_runs()
+    for info in st.get("slots", {}).values():  # stage/run of each loaded checkpoint, for the chat-mode warning
+        if info.get("checkpoint"):
+            info.update(_stage_of(request, info["checkpoint"]))
     return st
+
+
+def _stage_of(request: Request, checkpoint: str) -> dict:
+    p = Path(checkpoint)
+    run_name = p.parent.parent.name if p.parent.name == "checkpoints" else None
+    try:
+        return {"stage": run_stage(request.app.state.runs.get(run_name).meta()) if run_name else "base", "run": run_name}
+    except (KeyError, OSError):
+        return {"stage": "base", "run": run_name}
 
 
 @router.post("/worker/stop")
@@ -136,12 +148,7 @@ async def load(request: Request, slot: str, body: LoadRequest) -> dict:
     except RuntimeError as e:
         raise HTTPException(500, str(e)) from None
     info["device_reason"] = reason
-    try:  # which kind of model this is, so the UI can warn about chat mode on a base checkpoint
-        run_name = p.parent.parent.name if p.parent.name == "checkpoints" else None
-        info["stage"] = run_stage(request.app.state.runs.get(run_name).meta()) if run_name else "base"
-        info["run"] = run_name
-    except (KeyError, OSError):
-        info["stage"] = "base"
+    info.update(_stage_of(request, str(p)))  # which kind of model this is, so the UI can warn about chat mode on a base checkpoint
     return info
 
 
