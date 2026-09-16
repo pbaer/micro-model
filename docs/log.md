@@ -217,3 +217,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   kept as `python-edu-v1`). Phase 1 was stopped gracefully at 63M tokens, the directory swapped under the same
   source name (the loader's stream state keys by name), and the pipeline relaunched; it resumed at update 121 at
   29.6K tok/s. Cost: ~4 minutes.
+- 15:30 first sanity check (250M tokens): train loss 336M 4.35 vs 149M 3.84 at 200M tokens — above the reference,
+  but the comparison is not like-for-like this early: the 336M run uses 524K-token updates (half the optimizer steps
+  per token) and a 100M-token warmup vs 262K / 20M for the 149M run. Per update it is ahead (4.35 at update 381 vs
+  4.61 for the 149M at its update 381) and its slope is steeper (−0.41 vs −0.26 per 50M). Kept running; the
+  decisive check is val at 500M (must be ≤ 3.35) and 750M (≤ 3.22), the 149M values.
