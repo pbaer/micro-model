@@ -25,7 +25,7 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
     <div class="row" style="margin-top:6px">
       <select value=${sel} onChange=${(e) => setSel(e.target.value)} style="max-width:min(420px,100%);min-width:0">
         <option value="">choose checkpoint…</option>
-        ${ckpts.map((c) => html`<option value=${c.path}>[${c.stage || "base"}] ${c.run} / ${c.name} · ${fmtTok(c.tokens)} tok${c.val_loss != null ? ` · val ${c.val_loss.toFixed(3)}` : ""}${c.heldout_acc != null ? ` · held-out ${(c.heldout_acc * 100).toFixed(0)}%` : ""}</option>`)}
+        ${ckpts.map((c) => html`<option value=${c.path}>[${c.stage || "base"}] ${c.run} / ${c.name}${c.stage === "rl" && !["best", "final"].includes(c.kind) ? " (training snapshot; prefer best.pt)" : ""} · ${fmtTok(c.tokens)} tok${c.val_loss != null ? ` · val ${c.val_loss.toFixed(3)}` : ""}${c.heldout_acc != null ? ` · held-out ${(c.heldout_acc * 100).toFixed(0)}%` : ""}</option>`)}
       </select>
       <select value=${dev} onChange=${(e) => setDev(e.target.value)}><option value="auto">auto</option><option value="cuda">cuda</option><option value="cpu">cpu</option></select>
       <label class="muted"><input type="checkbox" checked=${force} onChange=${(e) => setForce(e.target.checked)} /> force cuda</label>
@@ -82,7 +82,13 @@ export function ModelPage() {
   const refresh = () => { api("/api/model/status").then(setStatus).catch(() => {}); api("/api/model/checkpoints").then(setCkpts).catch(() => {}); };
   // the think-span switch follows the loaded checkpoint: reasoning / RL models were trained to open every answer with <|think|>, instruct models were not
   const stageA = status && status.slots && status.slots.A ? status.slots.A.stage : undefined;
-  useEffect(() => { if (stageA) setThinkReq(stageA === "reasoning" || stageA === "rl"); }, [stageA]);
+  useEffect(() => {
+    if (!stageA) return;
+    const reasoning = stageA === "reasoning" || stageA === "rl";
+    setThinkReq(reasoning);
+    // small reasoning/RL policies are fragile under sampling (their RL rollouts at 0.8 were 30-40% malformed): default to greedy
+    setSampling((sp) => ({ ...sp, temperature: reasoning ? 0 : 0.8 }));
+  }, [stageA]);
   useEffect(() => { refresh(); const id = setInterval(() => api("/api/model/status").then(setStatus).catch(() => {}), 10000); return () => clearInterval(id); }, []);
 
   const load = async (slot, path, device, force) => {
@@ -170,7 +176,7 @@ export function ModelPage() {
     </div>
     ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage || "base") === "base" && html`<div class="panel warn"><b>Slot A holds a base checkpoint (${slots.A.run || slots.A.name}).</b> A base model has never seen the chat tokens: after ${"<|assistant|>"} it just continues web text, so chat output will be garbage. Use <b>completion</b> mode for it, or load an instruct / reasoning / RL checkpoint (m4_sft_149m, m5_reasoning_149m, m6_rl_gsm_tools_149m best.pt) for chat.</div>`}
     ${mode === "chat" && slots.A && slots.A.checkpoint && slots.A.stage === "sft" && html`<div class="legend">Instruct checkpoint: leave "force ${"<|think|>"}" off (it was not trained with think spans). Answers can run long; the reply is added to the conversation only if it closes with ${"<|end|>"} within max-new tokens.</div>`}
-    ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage === "reasoning" || slots.A.stage === "rl") && !thinkReq && html`<div class="legend">Reasoning / RL checkpoint: turn on "force ${"<|think|>"}" — it was trained to start every answer with a think span (and, for tool models, to call Python inside it).</div>`}
+    ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage === "reasoning" || slots.A.stage === "rl") && html`<div class="legend">Reasoning / RL checkpoint: "force ${"<|think|>"}" is on (it opens every answer with a think span; tool models call Python inside it) and decoding defaults to greedy — at temperature 0.8 these small policies often fail to close the turn.</div>`}
     ${mode === "completion" ? html`<textarea value=${text} onInput=${(e) => setText(e.target.value)}></textarea>` : html`<div class="panel">
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">
         <select value=${m.role} onChange=${(e) => editMessage(i, { role: e.target.value })}><option>system</option><option>user</option><option>assistant</option></select>
