@@ -43,7 +43,7 @@ SCIENCE = [("The chemical symbol for gold is", "What is the chemical symbol for 
            ("The red planet is", "Which planet is known as the red planet?", "Mars"), ("The planet with the most prominent rings is", "Which planet is famous for its rings?", "Saturn"),
            ("At sea level, water boils at a temperature of", "At what temperature does water boil at sea level, in Celsius?", "100"), ("Water freezes at a temperature of", "At what temperature does water freeze, in Celsius?", "0|zero"),
            ("The speed of light is approximately", "What is the speed of light in km per second, approximately?", "300,000|300000|299,792|299792|3 x 10"), ("The hardest natural substance is", "What is the hardest natural substance?", "diamond"),
-           ("The powerhouse of the cell is the", "Which organelle is called the powerhouse of the cell?", "mitochondri"), ("The molecule that carries genetic information is", "Which molecule carries genetic information in cells?", "DNA|deoxyribonucleic"),
+           ("The powerhouse of the cell is the", "Which organelle is called the powerhouse of the cell?", "mitochondri*"), ("The molecule that carries genetic information is", "Which molecule carries genetic information in cells?", "DNA|deoxyribonucleic"),
            ("The number of bones in the adult human body is", "How many bones are in the adult human body?", "206"), ("The largest organ of the human body is the", "What is the largest organ of the human body?", "skin"),
            ("Sound travels faster in water than in", "Does sound travel faster in water or in air?", "air|water"), ("The chemical formula for table salt is", "What is the chemical formula for table salt?", "NaCl"),
            ("The atomic number of carbon is", "What is the atomic number of carbon?", "6|six"), ("The atomic number of hydrogen is", "What is the atomic number of hydrogen?", "1|one"),
@@ -62,7 +62,7 @@ HISTORY = [("World War II ended in the year", "In what year did World War II end
            ("The first human landed on the Moon in", "In what year did the first human land on the Moon?", "1969"), ("The Berlin Wall fell in", "In what year did the Berlin Wall fall?", "1989"),
            ("Christopher Columbus reached the Americas in", "In what year did Columbus reach the Americas?", "1492"), ("The French Revolution began in", "In what year did the French Revolution begin?", "1789"),
            ("The first president of the United States was", "Who was the first president of the United States?", "Washington"), ("The Titanic sank in the year", "In what year did the Titanic sink?", "1912"),
-           ("The Roman Empire's first emperor was", "Who was the first Roman emperor?", "Augustus|Octavian"), ("The ancient Egyptian writing system is called", "What is the ancient Egyptian writing system called?", "hieroglyph"),
+           ("The Roman Empire's first emperor was", "Who was the first Roman emperor?", "Augustus|Octavian"), ("The ancient Egyptian writing system is called", "What is the ancient Egyptian writing system called?", "hieroglyph*"),
            ("The Great Wall is located in", "In which country is the Great Wall?", "China"), ("The pyramids of Giza are in", "In which country are the pyramids of Giza?", "Egypt"),
            ("The Magna Carta was signed in the year", "In what year was the Magna Carta signed?", "1215"), ("Napoleon was defeated at the Battle of", "At which battle was Napoleon finally defeated?", "Waterloo"),
            ("The printing press was invented by", "Who invented the printing press?", "Gutenberg"), ("The telephone was invented by", "Who is credited with inventing the telephone?", "Bell"),
@@ -128,7 +128,9 @@ def _hit(text: str, answers: str) -> bool:
     t = text.lower()
     for a in answers.split("|"):
         a = a.strip().lower()
-        if re.search(r"(?<![a-z0-9])" + re.escape(a) + r"(?![a-z0-9])", t):
+        prefix = a.endswith("*")  # "mitochondri*" matches mitochondria / mitochondrion
+        a = a.rstrip("*")
+        if re.search(r"(?<![a-z0-9])" + re.escape(a) + ("" if prefix else r"(?![a-z0-9])"), t):
             return True
     return False
 

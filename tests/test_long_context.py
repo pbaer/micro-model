@@ -88,4 +88,4 @@ def test_facts_probe_items_and_matching():
 
     its = items()
     assert len(its) >= 150 and len({i["completion"] for i in its}) == len(its)
-    assert _hit("Paris, the largest city", "Paris") and _hit("is 1,000 meters", "1000|1,000|thousand") and not _hit("Parisian streets", "Paris") and _hit("the mitochondria.", "mitochondri")
+    assert _hit("Paris, the largest city", "Paris") and _hit("is 1,000 meters", "1000|1,000|thousand") and not _hit("Parisian streets", "Paris") and _hit("the mitochondria.", "mitochondri*")
