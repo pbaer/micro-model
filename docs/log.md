@@ -191,3 +191,6 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Decision on how to proceed (redefine the gate to skip the sink zone vs stop at 8K vs investigate) left to Peter.
 - Inference page: stage badges and a base-checkpoint warning in chat mode; think switch and greedy default follow
   the loaded checkpoint; RL training snapshots labelled. Peter's chat test had used the collapsed try1 snapshot.
+- 2026-09-16 00:15 — corrected diagnosis: shallow needles pass 100% at 4K–6K and degrade from 7K (7.5K: 62–94%, 8K:
+  38–88%), so the blind spot is the edge of the trained window (max relative distance), not the first tokens.
+  Strict effective context 7K. Recommendation to Peter: extend to 16K, gate on 8K-all-depths + 16K-from-5%.

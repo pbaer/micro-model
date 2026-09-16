@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-15 21:40.
+the command center shows the live version of the same data. Last updated 2026-09-16 00:20.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -180,9 +180,12 @@ cells with 3K–8K retrieval documents whose facts sit in the first 15% half of 
 
 **Stage 1d (m7_ctx8k_retrieval4_149m, +300M, same recipe as 1c):** 8K: 44% / 94% / 100% / 100% / 100% / 100% / 100%, mean 91%.
 The depth-0 cell no longer moves (50% → 44%). A finer probe at 8K (n = 16, depths 0, 0.005, 0.01, 0.02, 0.05, 0.1) gives
-50% / 31% / 69% / 69% / 94% / 100%: retrieval is precise from about 400 tokens into the context onward, and the failure is
-confined to needles in the first ~160 tokens after `<|bos|>`, the region small models use as an attention sink. This is a
-position-specific artifact, not a distance limit (depth 0.1 at 8K is 7,200 tokens away and passes).
+50% / 31% / 69% / 69% / 94% / 100%. A second probe across lengths (depths 0, 0.005, 0.02, 0.05) shows the same shallow
+needles at 100% for 4K and 6K, 88–100% at 7K, 62–94% at 7.5K and 38–88% at 8K: the failure is the far edge of the
+trained window (relative distance ≥ ~7,500 tokens), not a property of the first tokens. Full-window distances are rare in
+packed 8K rows (a long document only spans the whole row when it starts at a row boundary), which is why targeted data
+plateaued. Strict effective context: **7K**; 8K for anything outside the first ~2% of the window. Extending the window
+(16K rows) makes 7–8K distances interior and common, which is how stage 1 fixed the base's 4K edge.
 
 **Stage 1c (m7_ctx8k_retrieval3_149m, +300M tokens, 6K–8K documents with 80% early facts):** 100% at every depth for
 1K–6K; 8K: 50% / 94% / 100% / 100% / 100% / 100% / 100%, mean 92%, min 50%. Only the depth-0 cell (needle in the first ~30
