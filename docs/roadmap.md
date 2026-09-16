@@ -57,6 +57,12 @@ checkpoint; the base is never modified. The old `m7_ctx16k_149m` stays as the "b
 If a stage stalls below the gate after its token budget, the honest result is "effective context = previous
 stage" and the report says so.
 
+**Status 2026-09-15 evening (decision pending):** stages 1–1d reached 100% at every depth up to 6K and 94–100% at 8K for
+every depth from 0.05 on; the only failing cells are needles in the first ~160 tokens of an 8K context (31–69%), which no
+longer improve with data. Options: (a) proceed to 16K with the gate redefined to exclude the first 2% of the context
+(documented as a known blind spot), (b) stop the curriculum at 8K, (c) investigate the blind spot first (attention-sink
+mitigation such as a few pad/sink tokens after `<|bos|>` in the eval, or training rows that put facts in that zone).
+
 ## Tool use track (queued behind the context curriculum, 2026-09-14 evening)
 
 Goal: push GSM8K by letting the model offload arithmetic. Built and tested: sandboxed Python subset interpreter

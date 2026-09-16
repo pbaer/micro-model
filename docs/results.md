@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-15 19:20.
+the command center shows the live version of the same data. Last updated 2026-09-15 21:40.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -67,6 +67,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m6_rl_gsm_tools_149m | GRPO with the tool on GSM8K-train (attempt 2: kl 0.05, lr 1e-6, guards) | m5 tools final | 222 steps (KL guard fired at 0.159) | 2.6 h | held-out 9% → 11.5% (best step 175) | No collapse (entropy 0.4–1.1); GSM8K with tool 1.3% (from 0.8%), malformed 18% (from 30%), tool use 94%, answers-from-tool 78%; all templated tasks 100% |
 | m7_ctx8k_retrieval2_149m | context curriculum stage 1b: 8K, 20% early-depth retrieval docs | stage 1 final | 300M | 2.0 h (41K tok/s) | 2.53 / 2.609 (mixture) | 8K depth 0 / 0.1: 0% → 12%, 6% → 50%; everything else 100%; effective still 6000 (gate not passed); pretraining val 2.709 → 2.711 |
 | m7_ctx8k_retrieval3_149m | context curriculum stage 1c: 8K, 20% of a 6K–8K early-fact source | stage 1b final | 300M | 2.0 h | 2.55 / 2.643 (mixture) | 8K depth 0 / 0.1: 12% → 50%, 50% → 94%; all else 100%; effective still 6000 by the strict gate; 2K loss 3.064 (base 3.076) |
+| m7_ctx8k_retrieval4_149m | context curriculum stage 1d: same recipe as 1c, +300M | stage 1c final | 300M | 2.1 h | 2.55 / 2.647 (mixture) | 8K depth 0 = 44% (plateau), depth 0.1 = 94%, all else 100%; effective 6000 by the strict gate. Depth probe: 8K needles fail only inside the first ~2% (≈160 tokens): 50/31/69/69% at depths 0/0.005/0.01/0.02, 94% at 0.05, 100% from 0.1 |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -176,6 +177,12 @@ Effective context **6000** (from 1K). The remaining failures are needles in the 
 they are near-misses (556423 for 556413): the model finds the needle but copies the last digits wrong at maximum
 distance. Short context unchanged (pretraining-mixture val 2.7286 → 2.7085 over the run). Stage 1b targets those
 cells with 3K–8K retrieval documents whose facts sit in the first 15% half of the time.
+
+**Stage 1d (m7_ctx8k_retrieval4_149m, +300M, same recipe as 1c):** 8K: 44% / 94% / 100% / 100% / 100% / 100% / 100%, mean 91%.
+The depth-0 cell no longer moves (50% → 44%). A finer probe at 8K (n = 16, depths 0, 0.005, 0.01, 0.02, 0.05, 0.1) gives
+50% / 31% / 69% / 69% / 94% / 100%: retrieval is precise from about 400 tokens into the context onward, and the failure is
+confined to needles in the first ~160 tokens after `<|bos|>`, the region small models use as an attention sink. This is a
+position-specific artifact, not a distance limit (depth 0.1 at 8K is 7,200 tokens away and passes).
 
 **Stage 1c (m7_ctx8k_retrieval3_149m, +300M tokens, 6K–8K documents with 80% early facts):** 100% at every depth for
 1K–6K; 8K: 50% / 94% / 100% / 100% / 100% / 100% / 100%, mean 92%, min 50%. Only the depth-0 cell (needle in the first ~30

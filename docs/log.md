@@ -185,3 +185,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   19:05. Stage 1c measured: 8K depth 0 = 50%, depth 0.1 = 94%, everything else 100% (effective 6000 by the
   strict gate). Stage 1d (`m7_ctx8k_retrieval4_149m`, same recipe, +300M) launched 19:15; the gated pipeline
   (`STAGE1=m7_ctx8k_retrieval4_149m bash scripts/pipeline_ctx.sh`) measures it and starts stage 2 if it passes.
+- 21:21 stage 1d gate: 8K depth 0 = 44% (no longer improving), depth 0.1 = 94%, all else 100%; effective 6000 by
+  the strict gate; stage 2 not launched. Depth probe at 8K: failures are confined to the first ~160 tokens after
+  `<|bos|>` (31–69%), 94% at 400 tokens, 100% from 800 tokens — a position artifact, not a distance limit.
+  Decision on how to proceed (redefine the gate to skip the sink zone vs stop at 8K vs investigate) left to Peter.
+- Inference page: stage badges and a base-checkpoint warning in chat mode; think switch and greedy default follow
+  the loaded checkpoint; RL training snapshots labelled. Peter's chat test had used the collapsed try1 snapshot.
