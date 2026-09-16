@@ -1,7 +1,7 @@
 # Small language model, from scratch
 
-A learning project: train a small language model (SLM, ~149M parameters) **from random initialization
-on one consumer GPU**, using the same state-of-the-art recipe that frontier LLMs use, in order to build a
+A learning project: train a small language model (SLM; a 149M first model, now a 336M second base) **from random
+initialization on one consumer GPU**, using the same state-of-the-art recipe that frontier LLMs use, in order to build a
 solid, hands-on intuition for how those models work. Every stage of the modern pipeline is implemented
 in-house and instrumented for inspection:
 
@@ -35,29 +35,45 @@ templated and correct by construction). No paid APIs.
 | M4 | `m4_sft_149m` | Instruction SFT (SmolTalk subsets, assistant-token loss) | Chat formatting, loss masks, measuring base-model drift during SFT |
 | M5 | `m5_reasoning_149m` | Reasoning SFT with a mandatory think span (`<\|think\|>`) and `#### answer` | Traces as supervision, format learning, what a 150M model can and cannot reason about |
 | M6 | `m6_rl_arith_149m` (+ stages B/C, `m6_rl_gsm_tools_149m`) | GRPO with programmatic verifiers, no critic, no reward model; later with a sandboxed Python tool (`slm/tools`) | Group-relative advantages, clipped ratios, KL to a reference, reward hacking, held-out generalization |
-| M7 | `m7_ctx16k_149m` (+ 32K) | YaRN RoPE scaling + short continued training on long documents | Configured vs effective context, needle-in-a-haystack, short-context regression checks |
+| M7 | `m7_ctx16k_149m`, `m7_ctx8k_retrieval*_149m` | YaRN RoPE scaling; a gated retrieval curriculum (templated needle documents, gate = worst-depth retrieval ≥ 80%) | Configured vs effective context, needle-in-a-haystack, why the window edge fails, short-context regression checks |
+| M8 | `m8_base_stable_336m` → `m8_base_4k_336m` | The second base: 336M, 10B tokens, 2K then 4K rows, chat and tool-call conversations mixed into the decay phase | Scaling the model instead of the microbatch, size/throughput trade-offs, pretraining the chat format |
 
 Everything is measured. Each run writes a self-contained `runs/<run>/report.html`, a JSONL metrics log,
 bf16 snapshots every 100M tokens, and the command center renders all of it live.
 
 ## 2. The model
 
-`configs/model/base_149m.yaml` is a Llama-3-style decoder-only Transformer.
+Two bases share one architecture family (Llama-3-style decoder-only Transformer). The first, `base_149m.yaml`, was
+used for M1–M7 and for every ablation; the second, `base_336m.yaml`, is the model the project now builds on. The
+size was chosen from a throughput/VRAM sweep (docs/results.md §1): 336M keeps the 149M model's utilization and
+leaves headroom for 4K rows, while ~565M is the memory ceiling of a 16 GB card with fp32 Adam state.
+
+| | base_149m (first) | base_336m (second) |
+|---|---|---|
+| Layers × width | 18 × 768 | 24 × 1024 |
+| Attention heads | 12 query / 4 KV | 16 query / 8 KV |
+| d_ff (SwiGLU) | 2304 | 3072 |
+| RoPE base | 100 000 | 500 000 |
+| Params (non-embedding) | 149.1M (123.9M) | 335.6M (302.0M) |
+| Native context | 2K, extended to 8K | 2K for 75% of tokens, then 4K |
+| Throughput | 62K tok/s at 2K | 28.6K tok/s at 2K, 25.4K at 4K |
+
+Common to both:
 
 | Component | Choice | Notes |
 |---|---|---|
-| Layers / width | 18 × d_model 768 | 149.1M params total, 123.9M non-embedding |
-| Attention | 12 query heads, 4 KV heads (GQA), head_dim 64, QK-norm | GQA handed to fused SDPA (`enable_gqa=True`); cuDNN backend on Windows (flash unavailable) |
-| Positions | RoPE, θ = 100000, table for 8192 positions | Scaling variants: linear, NTK, YaRN; `Transformer.set_rope` rebuilds tables for extension |
-| MLP | SwiGLU, d_ff 2304, fused gate/up projection, no biases | |
+| Attention | GQA, head_dim 64, QK-norm | GQA handed to fused SDPA (`enable_gqa=True`); cuDNN backend on Windows (flash unavailable) |
+| Positions | RoPE, table for 8192 positions | Scaling variants: linear, NTK, YaRN; `Transformer.set_rope` rebuilds tables for extension |
+| MLP | SwiGLU (d_ff = 3·d_model), fused gate/up projection, no biases | |
 | Norms | Pre-norm RMSNorm (eps 1e-6) + final norm | Norm gains excluded from weight decay |
-| Output | Tied to the input embedding (32768 × 768) | An untied head would add 25M params |
+| Output | Tied to the input embedding | An untied head would add 25M (149M) / 34M (336M) params |
 | Init | N(0, 0.02), residual-writing projections scaled by 1/√(2L) | GPT-2 convention |
 | Loss | Chunked cross-entropy returning `(loss_sum, n_valid)` | Never materializes [B·T, V] fp32 logits when chunked |
 | Memory options | Gradient checkpointing (for 16K+), `loss_chunk_size` | |
 
-Parameter arithmetic per layer: attention 768·(768 + 2·256) + 768·768 ≈ 1.6M; MLP 3·768·2304 ≈ 5.3M;
-about 6.9M per block, 18 blocks ≈ 124M, plus 25M embedding. The Architecture page of the command
+Parameter arithmetic per layer of the 149M model: attention 768·(768 + 2·256) + 768·768 ≈ 1.6M; MLP 3·768·2304 ≈ 5.3M;
+about 6.9M per block, 18 blocks ≈ 124M, plus 25M embedding. For the 336M model: attention 1024·(1024 + 2·512) + 1024² ≈
+3.1M, MLP 3·1024·3072 ≈ 9.4M, 12.6M per block, 24 blocks ≈ 302M, plus 34M embedding. The Architecture page of the command
 center derives this graph, the FLOPs per token and the memory budget from the real module tree.
 
 A 26M sibling (`sanity_26m.yaml`: 8 × 384, 6q/2kv) is used for M1 and for cheap ablations, and
@@ -91,13 +107,15 @@ volumes are on the Data page of the command center and in [docs/results.md](docs
 
 | Source | Kind | Role |
 |---|---|---|
-| fineweb-edu (sample-10BT); `fineweb-edu-b` = more files; `fineweb-edu-long` = docs ≥ 4096 tokens | educational web prose | ~80% of the pretraining mixture; long-doc variant for the 8K/16K phases |
+| fineweb-edu (sample-10BT): `fineweb-edu-10bt` = all 14 files (10.07B tokens, the second base); `fineweb-edu` / `fineweb-edu-b` = the first 2 / 7 files; `fineweb-edu-long` = docs ≥ 4096 tokens | educational web prose | 66–80% of the pretraining mixture; long-doc variant for the context phases |
 | cosmopedia v2 | synthetic textbooks | ~10% |
 | finemath 4+ | math web text with LaTeX | ~5% |
 | python-edu (file contents fetched from Software Heritage S3) | Python | ~3% |
 | stack-edu Shell (Software Heritage S3) | bash/sh | ~2% |
 | tinystories | children's stories | M1 only |
-| SmolTalk subsets (magpie-ultra, openhermes, systemchats, constraints, everyday) | chat | instruction SFT |
+| SmolTalk subsets (magpie-ultra, openhermes, systemchats, constraints, everyday) | chat | instruction SFT; also mixed into the second base's decay phase as `smoltalk-chat` (4.5%) |
+| GSM8K / MetaMathQA / templated traces with Python tool calls (`gsm8k-tools`, `synthetic-reasoning-tools`) | tool-use reasoning | tool SFT; also mixed into the decay phase as `tool-chat` (1.5%) |
+| `synth-retrieval*` (templated: facts inserted into real text + questions; key-value ledgers) | retrieval | context curriculum and 3.5% of the second base's mixture |
 | GSM8K, MetaMathQA (converted to think spans + `#### X`), synthetic traces from our task generators | reasoning | reasoning SFT |
 
 Language filtering: `language == "en"` where the source provides it plus an ASCII-letter-ratio test at
@@ -206,8 +224,8 @@ The pipeline, in order (all commands use `.venv/Scripts/python.exe`):
 | fetch code contents | `python -m slm.data.swh python-edu --max-files 200000` |
 | train tokenizer | `python scripts/train_tokenizer.py --out C:/slm-data/tokenizer/v1 --chars 1.5e9` |
 | tokenize to shards | `python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1` (`--min-doc-tokens 4096 --name fineweb-edu-long` for the long-doc source) |
-| benchmark | `python scripts/bench_throughput.py --config configs/model/base_149m.yaml --seq 2048 8192` |
-| pretrain / continue | `python -m slm.train.pretrain --config configs/train/m3_base_stable_149m.yaml` |
+| benchmark | `python scripts/bench_throughput.py --config configs/model/base_336m.yaml --seq 2048 4096` |
+| pretrain / continue | `python -m slm.train.pretrain --config configs/train/m8_base_stable_336m.yaml` (`scripts/pipeline_m8.sh` chains both phases) |
 | SFT data | `python -m slm.data.sft smoltalk-openhermes-100k --tokenizer C:/slm-data/tokenizer/v1` (`--think-required` for reasoning sets); `python -m slm.rl.synth --n 40000` for synthetic traces |
 | instruct / reasoning SFT | `python -m slm.train.pretrain --config configs/train/m4_sft_149m.yaml` (same loop, `data.kind: sft`) |
 | GRPO RL | `python -m slm.train.rl --config configs/train/m6_rl_arith_149m.yaml` |
@@ -233,7 +251,7 @@ slm/
   utils/               checkpoint.py, logging.py, metrics.py, report.py, sdpa.py, profiling.py, gpu.py
   portal/              app.py, settings.py, api/ (runs, data, tokenizer, model, arch, system), services/
                        (runs, datasets, tokenizer, hparams, worker, harness), static/ (Preact SPA)
-configs/model/         tiny (tests), sanity_26m (M1), base_149m (M2+)
+configs/model/         tiny (tests), sanity_26m (M1), base_149m (M2–M7), base_336m (M8+), base_250m/360m/500m/620m (size sweep candidates)
 configs/train/         one YAML per run, named after the run
 scripts/               bench_throughput, param_count, train/eval_tokenizer, diagnose, backfill_ckpt_index,
                        pipeline_after_m2.sh, portal_smoke

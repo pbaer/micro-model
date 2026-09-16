@@ -198,3 +198,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Benchmarked 211M/323M/440M/565M candidates (table in results.md): 323M keeps 74% MFU at 30K tok/s, 440M drops to
   66% at 20K, 565M is the memory ceiling. Recommended 323M on ≥ 10B tokens; started downloading FineWeb-Edu files
   7–13 for the larger token budget.
+- 09:00–13:00 Peter chose 323M-class / 10B tokens and asked for an architecture and data-mix sanity check. Adopted:
+  8 KV heads (16q/8kv, +12.6M params → 336M), RoPE base 500K, a 2K→4K sequence schedule inside the run (phase 2 at
+  4K carries the decay), chat and tool conversations mixed into the decay phase (SmolTalk subsets and the tool SFT
+  sets converted to pretraining sources; Peter: pretraining need not be human-text only), peak LR 4e-4, 524K-token
+  updates. Data: all 14 FineWeb-Edu 10BT files tokenized (10.07B tokens); a second Software Heritage fetch for
+  ~1M Python files started (python-edu would otherwise repeat 3.6× over 10B tokens).
+- 13:07 M8 phase 1 (`m8_base_stable_336m`) launched via `scripts/pipeline_m8.sh` (phase 2 and measurements chained):
+  30K tok/s, 13.8 GiB, ETA ~3 d 7 h. README/design/roadmap/results/CLAUDE.md updated for the second base.

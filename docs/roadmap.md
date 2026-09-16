@@ -5,25 +5,37 @@
 Priority 1: the strongest model the parameter footprint allows — multi-turn chat, tool calling, basic problem solving,
 reasonable factual knowledge. Priority 2: extend context only as far as it costs ≤ 5% on the short-context evals; a
 great 2K/4K model beats a mediocre 8K one. The machine is dedicated; use the VRAM by growing the model, not the
-microbatch. Size benchmark in `results.md` §1; recommendation 323M (24×1024) on ≥ 10B tokens, decision pending.
-Data for that: the remaining FineWeb-Edu 10BT files (7–13, downloading) plus a slice of the 100BT sample.
+microbatch. Pretraining may include chat/tool data that would otherwise only appear in SFT.
 
-Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-14 afternoon: the full M0–M7 chain has run on the real base (see `results.md`); items 1–9 below are done except RL stage C, which is not built.
+## The second base: M8 (running since 2026-09-16 13:07)
 
-## GPU critical path (~35 GPU-hours)
+`base_336m` (24 × 1024, 16q/8kv, d_ff 3072, RoPE base 500K, 336M params), chosen from the size sweep in `results.md` §1.
+`scripts/pipeline_m8.sh` chains the phases and the measurements; each phase resumes from `latest.pt` if relaunched.
 
-| # | Work | Estimate | Depends on |
-|---|---|---|---|
-| 1 | M3a stable continuation to 3.4B tokens (running) | ~4 h left | — |
-| 2 | Rename `runs/m3_base_149m_stable` → `m3_base_stable_149m` (background job on exit) | minutes | 1 |
-| 3 | Measure 8K × microbatch 2 throughput (`bench_throughput --seq 8192 --max-mb 2`) | 10 min | 2 |
-| 4 | M3b: 8K phase with WSD decay, 800M tokens (`m3_base_8k_149m`) → the base checkpoint | ~7 h (at ~30K tok/s) | 3 |
-| 5 | Base evals: lm-eval (HellaSwag, ARC, PIQA, MMLU subsets), diagnostics, needle 1K–8K | ~1 h | 4 |
-| 6 | M4 instruct SFT on the real base | ~2 h | 4 |
-| 7 | M5 reasoning SFT | ~15 min | 6 |
-| 8 | M6 RL stage A (arithmetic), B (multi-step, algebra), C (code with unit tests, logic puzzles) | ~1 h each | 7, and C needs its tasks built |
-| 9 | M7 16K extension (YaRN ×2, 200M tokens, grad checkpointing) + needle eval + short-context check | ~4 h | 4 |
-| 10 | Optional 32K branch (YaRN ×4 from the 16K model) | ~6 h | 9, decision below |
+| Phase | Run | Tokens | Rows | Mixture | Time |
+|---|---|---|---|---|---|
+| 1 stable | `m8_base_stable_336m` | 7.5B | 2K, mb 4 | fineweb-edu-10bt 72 / cosmopedia 11 / finemath 7 / python-edu 5 / shell 1.5 / synth-retrieval 3.5 | ~73 h at 28.6K tok/s |
+| 2 decay | `m8_base_4k_336m` | 2.5B | 4K, mb 2 | same minus 6 pts of fineweb, plus smoltalk-chat 4.5 / tool-chat 1.5; LR decay over the last 80% | ~27 h at 25.4K tok/s |
+| measure | needle 1K–4K (n = 16), lm-eval full + 2000-limit, diagnostics | | | | ~1 h |
+
+Sanity rule for phase 1: loss below the 149M curve at matching token counts from ~200M on, or stop. Python data: a
+second Software Heritage fetch (~1M files, ≈ 500M tokens) is in flight; when tokenized it replaces `python-edu` in
+the mixture at the next resume so code is not repeated 3.6× over 10B tokens.
+
+## After the base (in order)
+
+1. Post-training on the 336M base: instruct SFT (multi-turn kept), tool-use reasoning SFT, GRPO with the Python tool
+   (`tool` reward scheme, collapse guards, best.pt), all with the multi-turn/REPL evals from the command center.
+2. Context: 8K only through the gated retrieval curriculum, and only if short-context evals stay within 5%. The 149M
+   curriculum reached 7K effective (window-edge failures beyond ~7.5K); 16K/32K are off the table unless 8K is clean.
+3. RL stage C (code with unit tests, logic puzzles) and a factual-recall probe so knowledge is measured.
+4. Ablations on the 26M model, portal P1/P2, writeups (unchanged).
+
+## First base (149M): status at hand-off
+
+M0–M7 all ran on it (results in `results.md`): base val 2.693 at 8K; HellaSwag 29.3, ARC-Easy 51.6, PIQA 64.0; tool
+SFT + RL reach 100% on the templated tasks and 1.3% on GSM8K; retrieval curriculum effective context 7K. It stays as
+the ablation/reference model.
 
 ## Engineering (CPU-side, can overlap with training)
 

@@ -1,0 +1,55 @@
+# M8 phase 2: 4K rows, LR decay, and chat / tool-call conversations mixed into pretraining (SmolTalk subsets and the
+# tool SFT sets in the real chat format, converted with scripts/sft_to_pretrain.py) so the chat tokens, turn structure
+# and <|python_call|> protocol are pretrained rather than met for the first time in SFT. Produces the base checkpoint.
+# Benchmark: 4K x mb2 compiled = 25.4K tok/s, 12.5 GiB -> ~27 h for 2.5B tokens.
+run_name: m8_base_4k_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  loss_chunk_size: 4096
+init_from: runs/m8_base_stable_336m/checkpoints/final.pt
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu-10bt: 0.66, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, stack-edu-shell: 0.015, synth-retrieval: 0.035, smoltalk-chat: 0.045, tool-chat: 0.015}
+  seq_len: 4096
+  val_tokens: 4000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, stack-edu-shell: 0.015, synth-retrieval: 0.035}  # phase-1 mixture: comparable to the stable-phase val
+optim:
+  lr: 4.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: wsd
+  total_tokens: 2500000000
+  warmup_tokens: 0
+  min_lr_ratio: 0.1
+  decay_frac: 0.8
+batch:
+  microbatch: 2
+  tokens_per_update: 524288   # 2 x 4096 x 64 accum
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 1
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 100000000
+  gen_every_tokens: 250000000
+  gen_max_new_tokens: 96
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "The history of the Roman Empire begins"
+    - "def fibonacci(n):"
+    - "<|user|>What is 17 + 26?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.5, 1.0]
+  needle_n: 4
+  needle_source: fineweb-edu-b
+milestone_tokens: 250000000
+notes: "Base checkpoint = final.pt of this run (natively 4K). Gate for any 8K step: <= 5% loss on short-context evals and needle min-depth >= 80% inside the window."

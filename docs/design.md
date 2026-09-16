@@ -187,6 +187,16 @@ Evaluation every `eval_every_steps` on held-out prompts (greedy) and an equal-si
 `val_loss` for RL runs is `1 − heldout_acc` so `best.pt` semantics carry over. Checkpoints:
 `step_<n>.pt`, `latest.pt`, `final.pt`.
 
+## 6b. Chat and tool data inside pretraining (`scripts/sft_to_pretrain.py`)
+
+SFT shards (`tokens_*.bin` + `idx_*.npy`, chat-formatted examples `<|bos|>…<|eos|>`) are re-laid as an ordinary
+pretraining source (`shard_*.bin` + `shard_*.idx.npy`) with the loss mask dropped, so a pretraining run can sample
+whole conversations, including the `<|user|>`/`<|assistant|>`/`<|think|>`/`<|python_call|>` tokens and the inserted
+tool results, as plain next-token targets. The second base mixes `smoltalk-chat` (225M tokens) at 4.5% and `tool-chat`
+(4.7M tokens: GSM8K, MetaMathQA and templated traces with calls) at 1.5% into its 4K decay phase, following the
+SmolLM2 recipe of putting instruction data in the decay. Decision (Peter, 2026-09-16): pretraining is not limited
+to human text.
+
 ## 7. Context extension
 
 `RopeScaling` in the training config's `model:` block rebuilds the RoPE tables when the model is

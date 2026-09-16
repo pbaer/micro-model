@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-16 01:30.
+the command center shows the live version of the same data. Last updated 2026-09-16 13:30.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -32,7 +32,8 @@ Size candidates for the second base (2026-09-16, 2K context, compiled, cuDNN, la
 | base_500m (26×1152) | 440.4M | 402.6M | 2 | 20.3K | 66% | 10.8 GiB | 5.7 d |
 | base_620m (28×1280) | 565.0M | 523.1M | 2 | 16.9K | 69% | 13.2 GiB | 6.8 d |
 
-The next microbatch up spills in every case (14.6–20 GiB). fp32 weights + grads + Adam cost 16 B/param (8.4 GiB at 565M), so
+Chosen: **base_336m** (24×1024, 16q/8kv, d_ff 3072, RoPE 500K): 2K × mb4 = 28.6K tok/s (72% MFU), 4K × mb2 = 25.4K tok/s
+(78%), 12.5 GiB peak in the benchmark, 13.8 GiB in the live run. The next microbatch up spills in every case (14.6–20 GiB). fp32 weights + grads + Adam cost 16 B/param (8.4 GiB at 565M), so
 ~565M is the VRAM ceiling and ~440M the last size with a usable microbatch; 323M keeps the 149M model's MFU with headroom.
 
 Conclusions baked into the configs: 2K × mb 8 (M2/M3a/M4), 8K × mb 2 with `loss_chunk_size 4096`
@@ -51,6 +52,9 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | python-edu | 140M | 0.7M | 248K | |
 | stack-edu-shell | 51M | 0.2M | 59K | |
 | tinystories | 463M | 4.6M | 2.10M | M1 only |
+| fineweb-edu-10bt | 10.07B | 51.5M | 9.66M | all 14 files of sample-10BT, min 16 tokens (second base) |
+| smoltalk-chat | 225M | 31.3M | 285K | the 5 SmolTalk SFT sets re-laid as a pretraining source (chat format, no mask) |
+| tool-chat | 4.7M | 0.3M | 48K | gsm8k-tools + synthetic-reasoning-tools + metamathqa-tools as a pretraining source |
 | synth-retrieval | 150M | 2.0M | 29.8K | templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
 
 SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens (88% targets,
@@ -81,6 +85,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m7_ctx8k_retrieval2_149m | context curriculum stage 1b: 8K, 20% early-depth retrieval docs | stage 1 final | 300M | 2.0 h (41K tok/s) | 2.53 / 2.609 (mixture) | 8K depth 0 / 0.1: 0% → 12%, 6% → 50%; everything else 100%; effective still 6000 (gate not passed); pretraining val 2.709 → 2.711 |
 | m7_ctx8k_retrieval3_149m | context curriculum stage 1c: 8K, 20% of a 6K–8K early-fact source | stage 1b final | 300M | 2.0 h | 2.55 / 2.643 (mixture) | 8K depth 0 / 0.1: 12% → 50%, 50% → 94%; all else 100%; effective still 6000 by the strict gate; 2K loss 3.064 (base 3.076) |
 | m7_ctx8k_retrieval4_149m | context curriculum stage 1d: same recipe as 1c, +300M | stage 1c final | 300M | 2.1 h | 2.55 / 2.647 (mixture) | 8K depth 0 = 44% (plateau), depth 0.1 = 94%, all else 100%; effective 6000 by the strict gate. Depth probe: 8K needles fail only inside the first ~2% (≈160 tokens): 50/31/69/69% at depths 0/0.005/0.01/0.02, 94% at 0.05, 100% from 0.1 |
+| m8_base_stable_336m | second base, phase 1: 336M, 2K, constant LR | random | 7.5B (running, started 09-16 13:07) | ~73 h | | 30K tok/s, 13.8 GiB, 69–72 °C |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |

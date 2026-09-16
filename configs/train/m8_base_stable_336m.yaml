@@ -1,0 +1,51 @@
+# M8 phase 1: the second base model, stable phase. 336M (configs/model/base_336m.yaml), 7.5B tokens at 2K context,
+# constant LR after a 1% warmup (the decay happens in phase 2, m8_base_4k_336m, at 4K rows with chat/tool data mixed in).
+# Benchmark: 2K x mb4 compiled = 28.6K tok/s, 12.5 GiB -> ~73 h.
+run_name: m8_base_stable_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  loss_chunk_size: 4096
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, stack-edu-shell: 0.015, synth-retrieval: 0.035}
+  seq_len: 2048
+  val_tokens: 4000000
+optim:
+  lr: 4.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: constant
+  total_tokens: 7500000000
+  warmup_tokens: 100000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 4
+  tokens_per_update: 524288   # 4 x 2048 x 64 accum
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 0
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 100000000
+  gen_every_tokens: 250000000
+  gen_max_new_tokens: 96
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "The history of the Roman Empire begins"
+    - "def fibonacci(n):"
+    - "The capital of France is"
+  needle_lengths: [1024, 2048]
+  needle_depths: [0.0, 0.5, 1.0]
+  needle_n: 4
+  needle_source: fineweb-edu-b
+milestone_tokens: 250000000
+notes: "Sanity rule: the loss must sit below the 149M curve (runs/m2_base_149m + m3_base_stable_149m) at matching token counts from ~200M on; otherwise stop and investigate."

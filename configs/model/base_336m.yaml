@@ -1,0 +1,14 @@
+# Second base model (2026-09-16): 24 layers x d_model 1024, 16 query / 8 KV heads (GQA 2:1), d_ff 3072 (3d), SwiGLU,
+# pre-norm RMSNorm, QK-norm, tied embeddings, RoPE base 500K (so a later 8K step is a plain continuation).
+# 336M total, ~302M non-embedding. Benchmark: artifacts/bench/base_336m_*.log.
+vocab_size: 32768
+n_layers: 24
+d_model: 1024
+n_heads: 16
+n_kv_heads: 8
+head_dim: 64
+d_ff: 3072
+max_seq_len: 8192
+rope_theta: 500000.0
+qk_norm: true
+tie_embeddings: true
