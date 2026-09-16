@@ -18,4 +18,5 @@ $P -u -m slm.eval.long_context --checkpoint "$CK" --lengths 1024 2048 3072 4096 
 $P -u -m slm.eval.lm_eval_wrapper --checkpoint "$CK" --tasks hellaswag,arc_easy,piqa --batch-size 8 --out $R/lm_eval.json > $R/lm_eval.log 2>&1
 $P -u -m slm.eval.lm_eval_wrapper --checkpoint "$CK" --tasks hellaswag,arc_easy,piqa --batch-size 8 --limit 2000 --out $R/lm_eval_limit2000.json > $R/lm_eval_limit2000.log 2>&1
 $P -u scripts/diagnose.py "$CK" --root C:/slm-data/tokenized/v1 --source fineweb-edu-b --seq 2048 --batches 8 --mb 4 > $R/diagnostics.log 2>&1
+$P -u -m slm.eval.facts --checkpoint "$CK" --out $R/facts.json > $R/facts.log 2>&1
 log "M8_PIPELINE_DONE"

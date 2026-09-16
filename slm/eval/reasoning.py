@@ -24,10 +24,10 @@ from slm.rl.tasks import Task, make_tasks
 from slm.utils.sdpa import sdpa_context
 
 
-def load_model(path: str) -> Transformer:
-    ck = torch.load(path, map_location="cuda", weights_only=False)
+def load_model(path: str, device: str = "cuda") -> Transformer:
+    ck = torch.load(path, map_location=device, weights_only=False)
     mcfg = from_dict(ModelConfig, ck.get("meta", {}).get("model_config") or ck["config"])
-    m = Transformer(mcfg).cuda()
+    m = Transformer(mcfg).to(device)
     m.load_state_dict({k: v.float() if v.is_floating_point() else v for k, v in ck["model"].items()})
     return m.eval()
 

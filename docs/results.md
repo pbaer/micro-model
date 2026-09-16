@@ -219,6 +219,13 @@ training length; failures are the model ignoring the needle (it answers with a n
 length), so the fix is targeted training at each length with a gate before extending — see the context
 curriculum in `roadmap.md`. Filler-haystack control on the base: 99% at 2K, 57% at 8K.
 
+Factual-recall probe (`slm.eval.facts`, 194 items, greedy, whole-word match):
+
+| Checkpoint | mode | total | capitals | science | history | culture | geography | units | language |
+|---|---|---|---|---|---|---|---|---|---|
+| m3_base_8k_149m (the 149M base) | completion | 43.3% | 64% | 40% | 57% | 25% | 40% | 10% | 40% |
+| m4_sft_149m | chat | 45.9% | 70% | 42% | 60% | 15% | 40% | 25% | 35% |
+
 ## 5. Diagnostics
 
 `scripts/diagnose.py` on the final checkpoints (validation batches from fineweb-edu / tinystories):

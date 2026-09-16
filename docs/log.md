@@ -206,3 +206,6 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   ~1M Python files started (python-edu would otherwise repeat 3.6× over 10B tokens).
 - 13:07 M8 phase 1 (`m8_base_stable_336m`) launched via `scripts/pipeline_m8.sh` (phase 2 and measurements chained):
   30K tok/s, 13.8 GiB, ETA ~3 d 7 h. README/design/roadmap/results/CLAUDE.md updated for the second base.
+- Built a factual-recall probe (`slm.eval.facts`, 194 items over 7 categories, completion or chat form) so
+  "reasonable factual knowledge" is measured: the 149M base scores 43% (capitals 64%, units 10%), the instruct
+  checkpoint 46% in chat form. This is the reference the 336M base must beat.

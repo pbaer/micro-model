@@ -81,3 +81,11 @@ def test_trainer_tracks_needle(tmp_path):
     assert ser["needle_keys"] == ["needle_64", "needle_min_64"] and len(ser["eval"]["needle_64"]) == len(evals)
     assert M.summary(MetricsLogger.read(cfg.run_dir / "metrics.jsonl"), {})["needle"]["64"] is not None
     assert "c_needle" in (cfg.run_dir / "report.html").read_text(encoding="utf-8")
+
+
+def test_facts_probe_items_and_matching():
+    from slm.eval.facts import _hit, items
+
+    its = items()
+    assert len(its) >= 150 and len({i["completion"] for i in its}) == len(its)
+    assert _hit("Paris, the largest city", "Paris") and _hit("is 1,000 meters", "1000|1,000|thousand") and not _hit("Parisian streets", "Paris") and _hit("the mitochondria.", "mitochondri")
