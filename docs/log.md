@@ -181,3 +181,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   30%), tool use 94%, answers-from-tool 78%; every templated task now 100% (multi-step 34% → 100%).
 - 12:45 stage 1c launched (`m7_ctx8k_retrieval3_149m`: +300M tokens, 20% of a 6K–8K-only source with 80% early
   facts). Decision pending if it still misses the 8K gate: report effective 6K, or extend anyway with the caveat.
+- The Claude session crashed around 13:00; stage 1c finished on its own at 14:47 and the GPU sat idle until
+  19:05. Stage 1c measured: 8K depth 0 = 50%, depth 0.1 = 94%, everything else 100% (effective 6000 by the
+  strict gate). Stage 1d (`m7_ctx8k_retrieval4_149m`, same recipe, +300M) launched 19:15; the gated pipeline
+  (`STAGE1=m7_ctx8k_retrieval4_149m bash scripts/pipeline_ctx.sh`) measures it and starts stage 2 if it passes.

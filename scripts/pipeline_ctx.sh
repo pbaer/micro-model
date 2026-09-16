@@ -27,7 +27,7 @@ gate() {  # gate <run> <required effective context>
   [ "$eff" -ge "$2" ]
 }
 
-STAGE1=m7_ctx8k_retrieval_149m
+STAGE1=${STAGE1:-m7_ctx8k_retrieval_149m}   # override: STAGE1=<run> bash scripts/pipeline_ctx.sh
 if [ "${1:-}" = "stage1b" ]; then
   STAGE1=m7_ctx8k_retrieval2_149m
   log "waiting for the tool track (runs/pipeline_tools.log: TOOLS_PIPELINE_DONE) before stage 1b"
