@@ -94,16 +94,30 @@ def worker_stop(request: Request) -> dict:
     return {"worker": False}
 
 
+def run_stage(meta: dict) -> str:
+    """base (pretraining / context extension) | sft | reasoning (SFT with think spans) | rl, from run.json."""
+    cfg = meta.get("config") or {}
+    if meta.get("stage") == "grpo" or cfg.get("group_size"):
+        return "rl"
+    data = cfg.get("data") or {}
+    if isinstance(data, dict) and data.get("kind") == "sft":
+        mix = " ".join((data.get("mixture") or {}).keys())
+        return "reasoning" if "reasoning" in mix or "tools" in mix or "gsm8k" in mix else "sft"
+    return "base"
+
+
 @router.get("/checkpoints")
 def checkpoints(request: Request) -> list[dict]:
     out = []
     ri = request.app.state.runs
     for name in ri.names():
         r = ri.get(name)
+        stage = run_stage(r.meta())
         for c in r.checkpoints():
             if c["kind"] in ("latest_prev",):
                 continue
             c["run"] = name
+            c["stage"] = stage
             out.append(c)
     return out
 
@@ -122,6 +136,12 @@ async def load(request: Request, slot: str, body: LoadRequest) -> dict:
     except RuntimeError as e:
         raise HTTPException(500, str(e)) from None
     info["device_reason"] = reason
+    try:  # which kind of model this is, so the UI can warn about chat mode on a base checkpoint
+        run_name = p.parent.parent.name if p.parent.name == "checkpoints" else None
+        info["stage"] = run_stage(request.app.state.runs.get(run_name).meta()) if run_name else "base"
+        info["run"] = run_name
+    except (KeyError, OSError):
+        info["stage"] = "base"
     return info
 
 

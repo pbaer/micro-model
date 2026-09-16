@@ -19,13 +19,13 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
   const loaded = info && info.checkpoint;
   return html`<div class="panel">
     <div class="row"><b>slot ${slot}</b>
-      ${loaded ? html`<span class="muted">${info.name} (${info.run || ""}) · ${info.device}/${info.dtype} · ${fmtInt(info.params)} params · trained ${fmtTok(info.tokens)} · val ${fmtNum(info.val_loss, 3)} · tokenizer ${info.tokenizer}${info.tokenizer_matched ? "" : " ⚠ sha mismatch"}</span>
+      ${loaded ? html`<span class="muted"><span class=${"stage-badge " + (info.stage || "base")}>${info.stage || "base"}</span> ${info.name} (${info.run || ""}) · ${info.device}/${info.dtype} · ${fmtInt(info.params)} params · trained ${fmtTok(info.tokens)} · val ${fmtNum(info.val_loss, 3)} · tokenizer ${info.tokenizer}${info.tokenizer_matched ? "" : " ⚠ sha mismatch"}</span>
         <button onClick=${() => onUnload(slot)} disabled=${busy}>unload</button>` : html`<span class="muted">empty</span>`}
     </div>
     <div class="row" style="margin-top:6px">
       <select value=${sel} onChange=${(e) => setSel(e.target.value)} style="max-width:min(420px,100%);min-width:0">
         <option value="">choose checkpoint…</option>
-        ${ckpts.map((c) => html`<option value=${c.path}>${c.run} / ${c.name} · ${fmtTok(c.tokens)} tok${c.val_loss != null ? ` · val ${c.val_loss.toFixed(3)}` : ""}</option>`)}
+        ${ckpts.map((c) => html`<option value=${c.path}>[${c.stage || "base"}] ${c.run} / ${c.name} · ${fmtTok(c.tokens)} tok${c.val_loss != null ? ` · val ${c.val_loss.toFixed(3)}` : ""}${c.heldout_acc != null ? ` · held-out ${(c.heldout_acc * 100).toFixed(0)}%` : ""}</option>`)}
       </select>
       <select value=${dev} onChange=${(e) => setDev(e.target.value)}><option value="auto">auto</option><option value="cuda">cuda</option><option value="cpu">cpu</option></select>
       <label class="muted"><input type="checkbox" checked=${force} onChange=${(e) => setForce(e.target.checked)} /> force cuda</label>
@@ -66,7 +66,7 @@ export function ModelPage() {
   const [mode, setMode] = useState("completion");
   const [text, setText] = useState("Once upon a time, there was a little girl named Lily. She loved to");
   const [messages, setMessages] = useState([{ role: "user", content: "What is 17 + 26?" }]);
-  const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 120, seed: 1234, logprobs_topk: 5 });
+  const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 300, seed: 1234, logprobs_topk: 5 });
   const [useBoth, setUseBoth] = useState(false);
   const [thinkReq, setThinkReq] = useState(true);
   const [tools, setTools] = useState(true);
@@ -165,6 +165,9 @@ export function ModelPage() {
         <label class="muted"><input type="checkbox" checked=${tools} onChange=${(e) => setTools(e.target.checked)} /> python tool (REPL session ${sessionId})</label>
         <button onClick=${newConversation}>new conversation</button>`}
     </div>
+    ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage || "base") === "base" && html`<div class="panel warn"><b>Slot A holds a base checkpoint (${slots.A.run || slots.A.name}).</b> A base model has never seen the chat tokens: after ${"<|assistant|>"} it just continues web text, so chat output will be garbage. Use <b>completion</b> mode for it, or load an instruct / reasoning / RL checkpoint (m4_sft_149m, m5_reasoning_149m, m6_rl_gsm_tools_149m best.pt) for chat.</div>`}
+    ${mode === "chat" && slots.A && slots.A.checkpoint && slots.A.stage === "sft" && html`<div class="legend">Instruct checkpoint: leave "force ${"<|think|>"}" off (it was not trained with think spans). Answers can run long; the reply is added to the conversation only if it closes with ${"<|end|>"} within max-new tokens.</div>`}
+    ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage === "reasoning" || slots.A.stage === "rl") && !thinkReq && html`<div class="legend">Reasoning / RL checkpoint: turn on "force ${"<|think|>"}" — it was trained to start every answer with a think span (and, for tool models, to call Python inside it).</div>`}
     ${mode === "completion" ? html`<textarea value=${text} onInput=${(e) => setText(e.target.value)}></textarea>` : html`<div class="panel">
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">
         <select value=${m.role} onChange=${(e) => editMessage(i, { role: e.target.value })}><option>system</option><option>user</option><option>assistant</option></select>
