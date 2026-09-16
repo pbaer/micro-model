@@ -80,6 +80,9 @@ export function ModelPage() {
   const abortRef = useRef(null);
 
   const refresh = () => { api("/api/model/status").then(setStatus).catch(() => {}); api("/api/model/checkpoints").then(setCkpts).catch(() => {}); };
+  // the think-span switch follows the loaded checkpoint: reasoning / RL models were trained to open every answer with <|think|>, instruct models were not
+  const stageA = status && status.slots && status.slots.A ? status.slots.A.stage : undefined;
+  useEffect(() => { if (stageA) setThinkReq(stageA === "reasoning" || stageA === "rl"); }, [stageA]);
   useEffect(() => { refresh(); const id = setInterval(() => api("/api/model/status").then(setStatus).catch(() => {}), 10000); return () => clearInterval(id); }, []);
 
   const load = async (slot, path, device, force) => {
