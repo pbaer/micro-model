@@ -49,7 +49,7 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | fineweb-edu-long | 730M | 3.6M | 88K | docs ≥ 4096 tokens |
 | cosmopedia | 538M | 2.7M | 749K | |
 | finemath | 455M | 2.4M | 309K | |
-| python-edu | 140M | 0.7M | 248K | |
+| python-edu | 589M | 2.9M | 1.23M | 1.3M files fetched from Software Heritage (was 140M / 248K files until 2026-09-16; the old shards are `python-edu-v1`) |
 | stack-edu-shell | 51M | 0.2M | 59K | |
 | tinystories | 463M | 4.6M | 2.10M | M1 only |
 | fineweb-edu-10bt | 10.07B | 51.5M | 9.66M | all 14 files of sample-10BT, min 16 tokens (second base) |

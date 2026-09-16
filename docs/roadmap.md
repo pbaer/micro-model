@@ -18,9 +18,8 @@ microbatch. Pretraining may include chat/tool data that would otherwise only app
 | 2 decay | `m8_base_4k_336m` | 2.5B | 4K, mb 2 | same minus 6 pts of fineweb, plus smoltalk-chat 4.5 / tool-chat 1.5; LR decay over the last 80% | ~27 h at 25.4K tok/s |
 | measure | needle 1K–4K (n = 16), lm-eval full + 2000-limit, diagnostics | | | | ~1 h |
 
-Sanity rule for phase 1: loss below the 149M curve at matching token counts from ~200M on, or stop. Python data: a
-second Software Heritage fetch (~1M files, ≈ 500M tokens) is in flight; when tokenized it replaces `python-edu` in
-the mixture at the next resume so code is not repeated 3.6× over 10B tokens.
+Sanity rule for phase 1: loss below the 149M curve at matching token counts from ~200M on, or stop. Python data: `python-edu` was
+enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so the 5% share is 0.85 epochs, not 3.6.
 
 ## After the base (in order)
 

@@ -213,3 +213,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (`*-4k`), a multi-turn tool-conversation generator (`slm.rl.synth_multiturn`, 19K conversations, follow-ups
   reuse the REPL variable; tested for consistency), and `tool-chat` rebuilt to include it (67K docs, 7.5M tokens)
   before phase 2 samples it.
+- 13:43 Python swap: the Software Heritage fetch delivered 1.3M files → `python-edu` now 589M tokens (old shards
+  kept as `python-edu-v1`). Phase 1 was stopped gracefully at 63M tokens, the directory swapped under the same
+  source name (the loader's stream state keys by name), and the pipeline relaunched; it resumed at update 121 at
+  29.6K tok/s. Cost: ~4 minutes.
