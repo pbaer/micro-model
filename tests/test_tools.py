@@ -150,3 +150,22 @@ def test_synth_tool_traces_verify():
             assert tool_spans[-1].result == t.answer, (name, tr, tool_spans[-1].result)  # the sandbox reproduces the gold answer
             assert not tr.rstrip(".").endswith(">>" + t.answer), "traces must not echo the tool result"
     random.Random(0)
+
+
+def test_multiturn_tool_conversations_are_consistent(tok):
+    """Every follow-up reuses `total` from the session; the sandbox result must equal the gold answer in each turn."""
+    import random
+
+    from slm.rl.synth_multiturn import conversation
+    from slm.tools import PySession, split_markup
+
+    rng = random.Random(5)
+    for _ in range(200):
+        msgs = conversation(rng)
+        sess = PySession()
+        assert msgs[0]["role"] == "user" and len(msgs) >= 4 and len(msgs) % 2 == 0
+        for m in msgs:
+            if m["role"] != "assistant":
+                continue
+            spans = [s for s in split_markup(m["think"], sess) if s.kind == "tool"]
+            assert len(spans) == 1 and spans[0].result == m["content"].split("#### ")[1], (msgs, spans)

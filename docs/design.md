@@ -284,4 +284,6 @@ case), and interpreter bugs; both are contained to a wrong tool result, not to t
 `tests/test_pysandbox.py` holds the refusal, limit and message cases.
 
 Data: `slm.data.sft --tools` converts GSM8K's calculator annotations into calls and drops rows without any;
-`slm.rl.synth --tools` writes templated traces whose every step is a call (programs for multi-step tasks).
+`slm.rl.synth --tools` writes templated traces whose every step is a call (programs for multi-step tasks);
+`slm.rl.synth_multiturn` writes 2–4-turn conversations whose follow-ups ("now add 5", "double it") reuse the session
+variable set in the first turn, so multi-turn REPL behaviour is trained directly.

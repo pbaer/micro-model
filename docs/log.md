@@ -209,3 +209,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Built a factual-recall probe (`slm.eval.facts`, 194 items over 7 categories, completion or chat form) so
   "reasonable factual knowledge" is measured: the 149M base scores 43% (capitals 64%, units 10%), the instruct
   checkpoint 46% in chat form. This is the reference the 336M base must beat.
+- Post-training data for the 4K base prepared while phase 1 trains: SmolTalk SFT sets rebuilt at 4096 tokens
+  (`*-4k`), a multi-turn tool-conversation generator (`slm.rl.synth_multiturn`, 19K conversations, follow-ups
+  reuse the REPL variable; tested for consistency), and `tool-chat` rebuilt to include it (67K docs, 7.5M tokens)
+  before phase 2 samples it.

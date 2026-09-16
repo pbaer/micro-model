@@ -54,13 +54,14 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | tinystories | 463M | 4.6M | 2.10M | M1 only |
 | fineweb-edu-10bt | 10.07B | 51.5M | 9.66M | all 14 files of sample-10BT, min 16 tokens (second base) |
 | smoltalk-chat | 225M | 31.3M | 285K | the 5 SmolTalk SFT sets re-laid as a pretraining source (chat format, no mask) |
-| tool-chat | 4.7M | 0.3M | 48K | gsm8k-tools + synthetic-reasoning-tools + metamathqa-tools as a pretraining source |
+| tool-chat | 7.5M | 0.5M | 67K | gsm8k-tools + synthetic-reasoning-tools + metamathqa-tools + synthetic-multiturn-tools as a pretraining source |
 | synth-retrieval | 150M | 2.0M | 29.8K | templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
 
 SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens (88% targets,
 16K dropped for length), openhermes-100k 94K / 36M, systemchats-30k 34K / 20M, smol-constraints 34K /
 7M, everyday-conversations 2.3K / 0.4M, metamathqa-reasoning 44K / 10M, gsm8k-reasoning 7.4K / 1.4M,
-synthetic-reasoning 40K / 3.2M. numina-cot-100k (105K / 54M) is prepared but unused. Raw downloads
+synthetic-reasoning 40K / 3.2M, synthetic-multiturn-tools 19K conversations / 2.8M (2–4 turns, Python calls reusing the session variable),
+and 4096-token rebuilds of the five SmolTalk sets (`*-4k`: magpie-ultra keeps 134K conversations vs 121K at 2048). numina-cot-100k (105K / 54M) is prepared but unused. Raw downloads
 total 20 GB, tokenized shards 21 GB, SFT shards 1 GB.
 
 Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68d902ff03433ac7e`.
