@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-16 00:20.
+the command center shows the live version of the same data. Last updated 2026-09-16 01:30.
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -21,6 +21,19 @@ Rows marked SPILL ran at 1% MFU because the WDDM allocator spilled into host mem
 | 2048 | 8 | no (eager) | 0 | 9.5K | 1,723 | 18.5 GiB | 11% |
 | 8192 | 1 | yes | 4096 | 40.5K | 202 | 6.6 GiB | 87% |
 | 8192 | 2 | yes | 4096 | 41.9K | 391 | 10.9 GiB | 90% |
+
+Size candidates for the second base (2026-09-16, 2K context, compiled, cuDNN, largest non-spilling microbatch):
+
+| model (config) | params | non-embed | mb | tok/s | MFU | peak VRAM | 10B tokens |
+|---|---|---|---|---|---|---|---|
+| base_149m (18×768) | 149.1M | 123.9M | 8 | 62K | 69% | 12.1 GiB | 45 h |
+| base_250m (20×896) | 210.6M | 181.2M | 4 | 44.6K | 73% | 8.7 GiB | 62 h |
+| base_360m (24×1024) | 323.0M | 289.5M | 4 | 30.2K | 74% | 12.3 GiB | 3.8 d |
+| base_500m (26×1152) | 440.4M | 402.6M | 2 | 20.3K | 66% | 10.8 GiB | 5.7 d |
+| base_620m (28×1280) | 565.0M | 523.1M | 2 | 16.9K | 69% | 13.2 GiB | 6.8 d |
+
+The next microbatch up spills in every case (14.6–20 GiB). fp32 weights + grads + Adam cost 16 B/param (8.4 GiB at 565M), so
+~565M is the VRAM ceiling and ~440M the last size with a usable microbatch; 323M keeps the 149M model's MFU with headroom.
 
 Conclusions baked into the configs: 2K × mb 8 (M2/M3a/M4), 8K × mb 2 with `loss_chunk_size 4096`
 (M3b: 41.9K tok/s, 10.9 GiB; the PaLM-style MFU overstates efficiency at 8K because it counts full attention), 16K × mb 1 with gradient checkpointing (M7). In

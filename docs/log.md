@@ -194,3 +194,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - 2026-09-16 00:15 — corrected diagnosis: shallow needles pass 100% at 4K–6K and degrade from 7K (7.5K: 62–94%, 8K:
   38–88%), so the blind spot is the edge of the trained window (max relative distance), not the first tokens.
   Strict effective context 7K. Recommendation to Peter: extend to 16K, gate on 8K-all-depths + 16K-from-5%.
+- 01:00 Peter's redirect: strength per parameter first, context second (≤ 5% cost), use the VRAM for a bigger model.
+  Benchmarked 211M/323M/440M/565M candidates (table in results.md): 323M keeps 74% MFU at 30K tok/s, 440M drops to
+  66% at 20K, 565M is the memory ceiling. Recommended 323M on ≥ 10B tokens; started downloading FineWeb-Edu files
+  7–13 for the larger token budget.

@@ -1,5 +1,13 @@
 # Roadmap
 
+## Direction set 2026-09-16 (Peter)
+
+Priority 1: the strongest model the parameter footprint allows — multi-turn chat, tool calling, basic problem solving,
+reasonable factual knowledge. Priority 2: extend context only as far as it costs ≤ 5% on the short-context evals; a
+great 2K/4K model beats a mediocre 8K one. The machine is dedicated; use the VRAM by growing the model, not the
+microbatch. Size benchmark in `results.md` §1; recommendation 323M (24×1024) on ≥ 10B tokens, decision pending.
+Data for that: the remaining FineWeb-Edu 10BT files (7–13, downloading) plus a slice of the 100BT sample.
+
 Remaining work, with GPU-time estimates from measured throughput. Updated 2026-09-14 afternoon: the full M0–M7 chain has run on the real base (see `results.md`); items 1–9 below are done except RL stage C, which is not built.
 
 ## GPU critical path (~35 GPU-hours)

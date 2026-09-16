@@ -1,0 +1,12 @@
+# Candidate for the size decision (2026-09-16): 24 layers x d_model 1024, 16q/4kv heads, d_ff 3072. Same recipe as base_149m.
+vocab_size: 32768
+n_layers: 24
+d_model: 1024
+n_heads: 16
+n_kv_heads: 4
+head_dim: 64
+d_ff: 3072
+max_seq_len: 8192
+rope_theta: 100000.0
+qk_norm: true
+tie_embeddings: true

@@ -1,0 +1,22 @@
+{
+ "config": "configs/model/base_500m.yaml",
+ "gpu": "NVIDIA GeForce RTX 4080 SUPER",
+ "results": [
+  {
+   "seq": 2048,
+   "microbatch": 2,
+   "compile": true,
+   "backend": "cudnn",
+   "loss_chunk": 0,
+   "tokens_per_sec": 20281.752210195245,
+   "step_ms": 201.95493749997695,
+   "fwd_ms": 57.262436389923096,
+   "bwd_ms": 116.80051136016846,
+   "opt_ms": 27.884160041809082,
+   "peak_vram_gib": 10.786756992340088,
+   "mfu_palm": 0.6556747644487756,
+   "mfu_causal": 0.5842422049219742,
+   "warmup_s": 39.42758260000846
+  }
+ ]
+}
