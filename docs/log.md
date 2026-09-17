@@ -226,3 +226,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   0.008 with the 336M curve still falling at 0.14 per 100M vs 0.085; it crosses below by ~600M. Needle retrieval
   switched on at 500M (92% at 1K, 75% at 2K). Continuing. Next check at 1B: the constant-LR peer is M3a at 3.17
   (M2's 3.05 includes its decay).
+- 20:46 second data swap (Peter: expose the model to more data even if the gain is minor): cosmopedia 538M → 1.62B
+  tokens (4 more files), finemath 455M → 1.36B (6 more files), shell 51M → 505M (560K scripts via Software
+  Heritage), synth-retrieval 150M → 400M (new seed). Graceful stop at 808M tokens, directories swapped under the
+  same names (old shards kept as `*-v1`), resumed at update 1541. Every source in the 10B plan is now ≤ 1.2 epochs.

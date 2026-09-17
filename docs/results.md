@@ -47,15 +47,15 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | fineweb-edu | 3.04B | 15.2M | 2.90M | sample-10BT files 0–1 |
 | fineweb-edu-b | 5.32B | 27.1M | 5.10M | files 0–6, min 16 tokens (M3 mixture) |
 | fineweb-edu-long | 730M | 3.6M | 88K | docs ≥ 4096 tokens |
-| cosmopedia | 538M | 2.7M | 749K | |
-| finemath | 455M | 2.4M | 309K | |
+| cosmopedia | 1.62B | 8.1M | 2.25M | files 0–5 (was 538M / files 0–1 until 2026-09-16 20:45; old shards `cosmopedia-v1`) |
+| finemath | 1.36B | 6.6M | 926K | files 0–8 (was 455M / files 0–2; old shards `finemath-v1`) |
 | python-edu | 589M | 2.9M | 1.23M | 1.3M files fetched from Software Heritage (was 140M / 248K files until 2026-09-16; the old shards are `python-edu-v1`) |
-| stack-edu-shell | 51M | 0.2M | 59K | |
+| stack-edu-shell | 505M | 2.5M | 560K | 560K scripts from Software Heritage (was 51M / 60K; old shards `stack-edu-shell-v1`) |
 | tinystories | 463M | 4.6M | 2.10M | M1 only |
 | fineweb-edu-10bt | 10.07B | 51.5M | 9.66M | all 14 files of sample-10BT, min 16 tokens (second base) |
 | smoltalk-chat | 225M | 31.3M | 285K | the 5 SmolTalk SFT sets re-laid as a pretraining source (chat format, no mask) |
 | tool-chat | 7.5M | 0.5M | 67K | gsm8k-tools + synthetic-reasoning-tools + metamathqa-tools + synthetic-multiturn-tools as a pretraining source |
-| synth-retrieval | 150M | 2.0M | 29.8K | templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
+| synth-retrieval | 400M | 2.0M | 79K | regenerated 2026-09-16 with seed 7 (was 150M; old shards `synth-retrieval-v1`);  templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
 
 SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens (88% targets,
 16K dropped for length), openhermes-100k 94K / 36M, systemchats-30k 34K / 20M, smol-constraints 34K /
