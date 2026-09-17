@@ -244,3 +244,12 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   while training activations are freed). 80 samples per length now cost roughly what 12 cost before.
   Applying it needed a restart: graceful stop at 1.15B tokens, resumed at update 2189. GPU idle 10.5 min,
   most of it my own mistaken wait loop (it polled for *any* python.exe and the portal is one).
+- 08:04 the batched needle eval cost 8% of training throughput, permanently. Throughput held at 30,030
+  tok/s for ten log lines after the 00:09 restart and fell to 27,550 at the exact update of the first
+  eval, then stayed there: 19,030 ms/update instead of 17,500, 282 W instead of 303, 100% util, no
+  throttle flags, `nvidia-smi` showing 15.9 GiB of 16.4 GiB in use. Cause is reserved memory, not peak
+  allocated (unchanged at 13.8 GiB): the generation KV cache (8 rows x 2060 tokens x 49 KB = ~800 MB)
+  needs contiguous segments the training blocks cannot supply, so the allocator took new ones from the
+  driver and kept them, and WDDM started paging. Fix: `torch.cuda.empty_cache()` after the needle run,
+  `needle_batch_tokens` 16384 -> 8192, and `vram_reserved_gib` now logged next to the peak (console shows
+  `peak/reserved`). Restarted at 1.92B tokens, 22 s downtime, back to 30,035 tok/s at 13.9 GiB reserved.

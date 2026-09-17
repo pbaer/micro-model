@@ -190,6 +190,11 @@ class Trainer:
             lengths = [L for L in e.needle_lengths if L <= self.mcfg.max_seq_len]
             res = run_needle(self.model, self.tok, lengths, e.needle_depths, e.needle_n, seed=self.counters["update"], haystack=self._needle_haystack,
                              max_batch_tokens=e.needle_batch_tokens)
+            # The generation KV cache needs large contiguous segments that the training blocks cannot supply, so
+            # the allocator reserves new ones and keeps them. On WDDM that extra reservation is enough to push the
+            # device over its limit and the next training steps stall on memory (100% util, less power, ~8% slower).
+            # Hand the segments back; training re-reserves its own steady-state blocks within a few updates.
+            torch.cuda.empty_cache()
             self.last_needle = {}
             for L, sm in res["summary"].items():
                 self.last_needle[f"needle_{L}"] = sm["mean"]
@@ -273,10 +278,11 @@ class Trainer:
                     rec = dict(tokens=c["tokens"], update=c["update"], loss=loss, lr=lr, grad_norm=gn, tok_s=tok_s, tok_s_ema=self.tok_s_ema,
                                step_ms=(now - t_window) / cfg.runtime.log_every_updates * 1000, fwd_ms=fwd_ms, bwd_ms=bwd_ms, opt_ms=opt_ms,
                                data_ms=data_ms / cfg.runtime.log_every_updates, vram_gib=torch.cuda.max_memory_allocated() / 2**30,
+                               vram_reserved_gib=torch.cuda.memory_reserved() / 2**30,
                                elapsed_s=self.elapsed, eta_s=eta, **gpu.record())
                     self.log.log("train", **rec)
                     console(f"upd {c['update']} | {fmt_tokens(c['tokens'])} ({c['tokens'] / total * 100:.1f}%) | loss {loss:.4f} | lr {lr:.2e} | gn {gn:.2f} | "
-                            f"{tok_s:,.0f} tok/s | {rec['step_ms']:.0f} ms/upd (data {rec['data_ms']:.0f}) | {rec['vram_gib']:.1f} GiB{gpu.console_suffix()} | ETA {fmt_duration(eta)}")
+                            f"{tok_s:,.0f} tok/s | {rec['step_ms']:.0f} ms/upd (data {rec['data_ms']:.0f}) | {rec['vram_gib']:.1f}/{rec['vram_reserved_gib']:.1f} GiB{gpu.console_suffix()} | ETA {fmt_duration(eta)}")
                     if (hot := gpu.hot_warning()) is not None:
                         console(f"*** WARNING: {hot} ***")
                         self.log.log("warn", tokens=c["tokens"], update=c["update"], msg=hot, gpu_temp_c=rec["gpu_temp_c"], gpu_power_w=rec["gpu_power_w"])

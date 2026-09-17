@@ -64,7 +64,13 @@ placeholder and may change, so don't bake it into code.
   = efficient+math); cuDNN re-plans per KV length and generation crawls.
 - On Windows (WDDM) PyTorch does NOT OOM at 16 GiB: it spills into shared host memory and runs
   ~60x slower (bench showed "20-38 GiB peak" at ~1k tok/s). Treat peak VRAM > ~14.5 GiB as a
-  failure; keep training configs around 11 GiB. Benchmark table: artifacts/bench/base_149m_full.log.
+  failure; keep training configs around 11 GiB.
+- What crosses that limit is *reserved* memory, not peak allocated, and an in-run eval can raise it
+  permanently: a generation KV cache needs large contiguous segments the training blocks cannot supply,
+  so the allocator takes new ones from the driver and keeps them. The mild form is not a 60x collapse but
+  a steady ~8% loss with 100% util, lower power and lower clocks (M8, 2026-09-17). Trainers log
+  `vram_gib`/`vram_reserved_gib` (console `peak/reserved`); call `torch.cuda.empty_cache()` after any
+  eval that generates. Benchmark table: artifacts/bench/base_149m_full.log.
 - Measured 149M throughput (compiled, cuDNN SDPA): 2K x mb8 = 58k tok/s (69% MFU), 4K x mb4 = 43k,
   eager 2K x mb8 = 9.5k (torch.compile is a 6x win here, not optional). 336M: 2K x mb4 = 28.6k, 4K x mb2 = 25.4k
   (12.5 GiB bench / 13.8 GiB live; mb up spills). Size sweep table: docs/results.md §1.

@@ -46,6 +46,7 @@ eval:
   needle_lengths: [1024, 2048]
   needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
   needle_n: 16
+  needle_batch_tokens: 8192
   needle_source: fineweb-edu-b
 milestone_tokens: 250000000
 notes: "Sanity rule: the loss must sit below the 149M curve (runs/m2_base_149m + m3_base_stable_149m) at matching token counts from ~200M on; otherwise stop and investigate."

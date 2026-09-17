@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "gpu_temp_c", "gpu_power_w", "gpu_util", "elapsed_s", "eta_s"]
+TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd_ms", "bwd_ms", "opt_ms", "data_ms", "vram_gib", "vram_reserved_gib", "gpu_temp_c", "gpu_power_w", "gpu_util", "elapsed_s", "eta_s"]
 # RL (GRPO) runs log these extra per-step fields; absent (null) for pretraining/SFT.
 RL_FIELDS = ["reward_mean", "success_rate", "group_std_mean", "groups_no_signal", "adv_abs_mean", "len_mean", "len_correct", "len_wrong", "malformed_rate", "length_term_rate", "kl", "entropy", "clip_frac", "ratio_mean", "tool_calls_mean", "tool_error_rate", "tool_use_rate", "answer_from_tool_rate"]
 EVAL_RL_FIELDS = ["heldout_acc", "train_acc", "heldout_malformed", "heldout_len"]

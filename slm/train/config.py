@@ -86,7 +86,9 @@ class EvalConfig:
     needle_lengths: list[int] = field(default_factory=list)
     needle_depths: list[float] = field(default_factory=lambda: [0.0, 0.25, 0.5, 0.75, 1.0])
     needle_n: int = 16
-    needle_batch_tokens: int = 16384  # prompt tokens per generation batch; cells of one length decode together
+    needle_batch_tokens: int = 8192  # prompt tokens per generation batch; cells of one length decode together.
+    # Bigger is faster but reserves more VRAM, and on WDDM the reservation (not the peak) is what pushes the
+    # device over its limit; the trainer calls empty_cache() after the needle run to give it back.
     needle_source: str = "fineweb-edu-b"  # tokenized source whose val split is the haystack ("filler" = repetitive control)
 
 
