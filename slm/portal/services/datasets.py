@@ -138,9 +138,28 @@ class TokenizedSplit:
         self.paths = sorted(self.dir.glob("shard_*.bin"))
         self._mm: dict[int, np.memmap] = {}
         self._idx: dict[int, np.ndarray] = {}
+        self._idx_sig: dict[int, tuple] = {}  # (mtime, size) of the .idx.npy the cached index came from
+        self._dir_sig = self._dir_signature()
         self.lock = threading.Lock()
 
+    def _dir_signature(self) -> tuple:
+        try:
+            return (self.dir.stat().st_mtime, len(list(self.dir.glob("shard_*.bin"))))
+        except OSError:
+            return ()
+
+    def refresh(self) -> None:
+        """Shards can be replaced under the same names (data swaps at a resume): re-list and drop stale indexes."""
+        sig = self._dir_signature()
+        if sig != self._dir_sig:
+            with self.lock:
+                self.paths = sorted(self.dir.glob("shard_*.bin"))
+                self._idx.clear()
+                self._idx_sig.clear()
+                self._dir_sig = sig
+
     def shards(self) -> list[dict]:
+        self.refresh()
         out = []
         for i, p in enumerate(self.paths):
             n_tok = p.stat().st_size // 2
@@ -153,9 +172,14 @@ class TokenizedSplit:
         return np.memmap(self.paths[i], dtype=np.uint16, mode="r")
 
     def idx(self, i: int) -> np.ndarray:
+        self.refresh()
         with self.lock:
-            if i not in self._idx:
-                self._idx[i] = np.load(self.paths[i].with_name(self.paths[i].name.replace(".bin", ".idx.npy")))
+            ip = self.paths[i].with_name(self.paths[i].name.replace(".bin", ".idx.npy"))
+            st = ip.stat()
+            sig = (st.st_mtime, st.st_size)
+            if self._idx_sig.get(i) != sig:  # first use, or the file was replaced
+                self._idx[i] = np.load(ip)
+                self._idx_sig[i] = sig
             return self._idx[i]
 
     def doc_bounds(self, shard: int, doc: int) -> tuple[int, int]:

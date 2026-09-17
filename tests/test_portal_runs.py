@@ -96,3 +96,23 @@ def test_portal_js_modules_parse():
         shutil.copy(f, tmp)
         r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
         assert r.returncode == 0, f"{f}: {r.stderr[:400]}"
+
+
+def test_tokenized_split_notices_replaced_shards(tmp_path):
+    """A data swap replaces shard files under the same names; the cached document index must follow."""
+    import time
+
+    import numpy as np
+
+    from slm.portal.services.datasets import TokenizedSplit
+
+    d = tmp_path / "src" / "train"
+    d.mkdir(parents=True)
+    np.arange(1000, dtype=np.uint16).tofile(d / "shard_00000.bin")
+    np.save(d / "shard_00000.idx.npy", np.array([0, 100, 500], dtype=np.int64))
+    ts = TokenizedSplit(d)
+    assert ts.shards()[0]["docs"] == 3
+    time.sleep(0.05)
+    np.arange(4000, dtype=np.uint16).tofile(d / "shard_00000.bin")
+    np.save(d / "shard_00000.idx.npy", np.array([0, 10, 20, 30, 40], dtype=np.int64))
+    assert ts.shards()[0]["docs"] == 5 and ts.shards()[0]["tokens"] == 4000 and len(ts.idx(0)) == 5
