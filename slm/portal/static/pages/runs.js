@@ -10,6 +10,8 @@ function Tile({ k, v, s }) {
   return html`<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s || ""}</div></div>`;
 }
 
+const hasData = (a) => Array.isArray(a) && a.some((v) => v !== null && v !== undefined);
+
 export function RunDetail({ run }) {
   const [info, setInfo] = useState(null);
   const [series, setSeries] = useState(null);
@@ -113,7 +115,7 @@ export function RunDetail({ run }) {
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
       <${Chart} title="step time (ms)" xmode=${xmode} ymin=${0} series=${[{ label: "step", x: tokensX, y: t.step_ms }, { label: "fwd", x: tokensX, y: t.fwd_ms }, { label: "bwd", x: tokensX, y: t.bwd_ms }, { label: "opt", x: tokensX, y: t.opt_ms }, { label: "data", x: tokensX, y: t.data_ms }]} />
-      <${Chart} title="VRAM (GiB): peak allocated and reserved" xmode=${xmode} ymin=${0} series=${[{ label: "peak", x: tokensX, y: t.vram_gib }, { label: "reserved", x: tokensX, y: t.vram_reserved_gib }]} />
+      <${Chart} title="VRAM (GiB): peak allocated and reserved" xmode=${xmode} ymin=${0} series=${[{ label: "peak", x: tokensX, y: t.vram_gib }, ...(hasData(t.vram_reserved_gib) ? [{ label: "reserved", x: tokensX, y: t.vram_reserved_gib }] : [])]} />
       ${t.gpu_temp_c && t.gpu_temp_c.some((v) => v != null) && html`<${Chart} title="GPU temperature (\u00b0C, left) / power (W, right)" xmode=${xmode} ymin=${0} ymin2=${0} series=${[{ label: "\u00b0C", x: tokensX, y: t.gpu_temp_c, color: "#dc2626" }, { label: "W", x: tokensX, y: t.gpu_power_w, scale: "y2", color: "#2563eb" }]} />`}
       ${series.is_rl && html`
         <${Chart} title="reward / success rate (train rollouts)" xmode=${xmode} ymin=${0} series=${[{ label: "reward", x: tokensX, y: t.reward_mean }, { label: "success", x: tokensX, y: t.success_rate }]} />
