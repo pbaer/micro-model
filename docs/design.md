@@ -219,6 +219,19 @@ retrieval accuracy per (length, depth); multi-needle mode asks for several facts
 runs also keep `extra_val_mixture` pointed at the ordinary 2K validation mixture so short-context loss
 is tracked next to the long-context metric.
 
+Every prompt the eval builds for one length is exactly that length (the haystack budget absorbs the
+needle and question tokens), so all cells of a length decode in one batch: `answer_all` groups prompts
+by length and fills batches up to `max_batch_tokens` prompt tokens (`eval.needle_batch_tokens`, 16384).
+Decoding 16 rows costs about what one row costs, which is what makes a statistically useful `n`
+affordable inside a training run. A batch that runs out of memory is retried row by row, and rows that
+still fail are dropped from that cell rather than counted as misses. The batched path is asserted to
+return exactly the row-at-a-time answers (`tests/test_long_context.py`).
+
+In-run sample size matters more than it looks: at `needle_n: 4` over three depths a cell is 4 samples
+and the logged worst-depth line is the minimum of three 4-sample estimates, which swings by 25 points
+for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per length), matching the
+`n >= 16` the gate uses, so the in-run curve and the end-of-phase gate measure the same thing.
+
 ## 8. Evaluation tools (`slm/eval/`)
 
 - `generation.py` / `sampling.py`: fixed-seed greedy and sampled completions; one `sample_next`

@@ -188,7 +188,8 @@ class Trainer:
 
             e = self.cfg.eval
             lengths = [L for L in e.needle_lengths if L <= self.mcfg.max_seq_len]
-            res = run_needle(self.model, self.tok, lengths, e.needle_depths, e.needle_n, seed=self.counters["update"], haystack=self._needle_haystack)
+            res = run_needle(self.model, self.tok, lengths, e.needle_depths, e.needle_n, seed=self.counters["update"], haystack=self._needle_haystack,
+                             max_batch_tokens=e.needle_batch_tokens)
             self.last_needle = {}
             for L, sm in res["summary"].items():
                 self.last_needle[f"needle_{L}"] = sm["mean"]

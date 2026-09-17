@@ -109,7 +109,7 @@ for the previous checkpoint). After every base checkpoint run the evaluation set
 ```bash
 python -u -m slm.eval.lm_eval_wrapper --checkpoint <ckpt> --tasks hellaswag,arc_easy,piqa --batch-size 16 --out runs/<run>/lm_eval.json
 python -u scripts/diagnose.py <ckpt> --root C:/slm-data/tokenized/v1 --source fineweb-edu --seq 2048 --batches 8 --mb 4
-python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 4 --out runs/<run>/needle.json
+python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 16 --out runs/<run>/needle.json   # --batch-tokens 16384 caps the generation batch
 python -u -m slm.eval.reasoning --checkpoint <ckpt> --n 100 --gsm8k 200 --out runs/<run>/reasoning_eval.json   # post-M5/M6
 ```
 

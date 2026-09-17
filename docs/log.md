@@ -235,3 +235,12 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   `slm/data/answers.py` (50/50 instruction+marker vs bare question+sentence, consistent per conversation), applied
   it in SFT prep, both templated generators and the multi-turn set; regenerated all seven sets and `tool-chat`
   (phase 2 samples the corrected version; phase 1 uses none of this data). Lenient verifier for bare answers.
+
+## 2026-09-17
+- 00:09 in-run needle sample size raised from 4 to 16 over five depths (0/0.25/0.5/0.75/1.0) for both M8
+  phases, after a single 92% cell at 2048 turned out to be one miss out of twelve. Paid for by batching:
+  every prompt of a given length is exactly that length, so `answer_all` decodes a whole cell at once
+  (`eval.needle_batch_tokens`, 16384 prompt tokens per batch, VRAM taken from the headroom that exists
+  while training activations are freed). 80 samples per length now cost roughly what 12 cost before.
+  Applying it needed a restart: graceful stop at 1.15B tokens, resumed at update 2189. GPU idle 10.5 min,
+  most of it my own mistaken wait loop (it polled for *any* python.exe and the portal is one).

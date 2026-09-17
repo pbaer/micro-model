@@ -108,17 +108,78 @@ def build_haystack(tok: SlmTokenizer, total_tokens: int, depth: float, needle: s
 
 
 @torch.no_grad()
-def answer(model: Transformer, tok: SlmTokenizer, ids: list[int], max_new: int = 12) -> str:
-    x = torch.tensor([ids], device=next(model.parameters()).device)
+def answer_batch(model: Transformer, tok: SlmTokenizer, prompts: list[list[int]], max_new: int = 12) -> list[str]:
+    """Greedy answers for a batch of equal-length prompts (one KV cache, one decode loop). Every prompt a
+    needle run builds for a given length has exactly that length, so whole cells batch together."""
+    assert prompts and len({len(p) for p in prompts}) == 1, "answer_batch needs equal-length prompts"
+    t0 = len(prompts[0])
+    x = torch.tensor(prompts, device=next(model.parameters()).device)
     with sdpa_context("decode"), torch.autocast("cuda", dtype=torch.bfloat16, enabled=x.is_cuda):
         out = model.generate(x, max_new, temperature=0.0, stop_ids=(tok.eos_id,))
-    return tok.decode(out[0, len(ids) :].tolist())
+    texts = []
+    for row in out[:, t0:].tolist():
+        if tok.eos_id in row:  # rows that stopped early keep decoding while the batch runs: cut them back
+            row = row[: row.index(tok.eos_id) + 1]
+        texts.append(tok.decode(row))
+    return texts
+
+
+def answer(model: Transformer, tok: SlmTokenizer, ids: list[int], max_new: int = 12) -> str:
+    return answer_batch(model, tok, [ids], max_new)[0]
+
+
+def answer_all(model: Transformer, tok: SlmTokenizer, prompts: list[list[int]], max_batch_tokens: int = 16384,
+               max_new: int = 12) -> list[str | None]:
+    """Answer every prompt, batching equal-length prompts up to `max_batch_tokens` prompt tokens per batch.
+    A batch that runs out of memory is retried row by row; rows that still fail come back as None."""
+    order: dict[int, list[int]] = {}
+    for i, p in enumerate(prompts):
+        order.setdefault(len(p), []).append(i)
+    out: list[str | None] = [None] * len(prompts)
+    for length, idxs in order.items():
+        bs = max(1, max_batch_tokens // max(1, length))
+        for k in range(0, len(idxs), bs):
+            chunk = idxs[k : k + bs]
+            try:
+                texts = answer_batch(model, tok, [prompts[i] for i in chunk], max_new)
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                texts = []
+                for i in chunk:
+                    try:
+                        texts.append(answer_batch(model, tok, [prompts[i]], max_new)[0])
+                    except torch.OutOfMemoryError:
+                        torch.cuda.empty_cache()
+                        texts.append(None)
+            for i, t in zip(chunk, texts):
+                out[i] = t
+    return out
+
+
+def _make_case(tok: SlmTokenizer, L: int, d: float, rng: random.Random, haystack, multi: bool) -> tuple[list[int], int]:
+    """One (prompt ids, gold) case. The rng draws happen in the same order as the unbatched version."""
+    secret = rng.randint(100000, 999999)
+    needle = f"The secret number is {secret}."
+    if not multi:
+        ids, _ = build_haystack(tok, L, d, needle, "What is the secret number?", rng, haystack)
+        return ids, secret
+    secret2 = rng.randint(100000, 999999)
+    needle = f"The first secret number is {secret}."
+    ids, _ = build_haystack(tok, L, d, needle, "What is the sum of the first and second secret numbers?", rng, haystack)
+    extra = tok.encode(f" The second secret number is {secret2}. ")
+    k = rng.randint(1, max(1, len(ids) - 30))
+    ids = ids[:k] + extra + ids[k - len(extra) if k >= len(extra) else k :]
+    return ids[: L - 16], secret + secret2
 
 
 def run_needle(model: Transformer, tok: SlmTokenizer, lengths: list[int], depths: list[float] | None = None, n: int = 16, seed: int = 0,
-               multi: bool = False, haystack: FillerHaystack | RealHaystack | None = None, threshold: float = 0.8, keep_failures: int = 3) -> dict:
+               multi: bool = False, haystack: FillerHaystack | RealHaystack | None = None, threshold: float = 0.8, keep_failures: int = 3,
+               max_batch_tokens: int = 16384) -> dict:
     """Accuracy per (length, depth) cell plus a per-length summary and the effective context
-    (longest length whose worst depth is still >= threshold)."""
+    (longest length whose worst depth is still >= threshold).
+
+    All cases of one length are generated in batches (`max_batch_tokens` prompt tokens per batch), which is
+    what makes a useful `n` affordable inside a training run: decoding 16 rows costs about what 1 row costs."""
     depths = DEFAULT_DEPTHS if depths is None else depths
     haystack = haystack or FillerHaystack(tok)
     rng = random.Random(seed)
@@ -129,36 +190,23 @@ def run_needle(model: Transformer, tok: SlmTokenizer, lengths: list[int], depths
         if L > model.cfg.max_seq_len:
             results.append({"length": L, "skipped": "exceeds RoPE table"})
             continue
-        for d in depths:
-            hits, failures = 0, []
-            for i in range(n):
-                secret = rng.randint(100000, 999999)
-                needle = f"The secret number is {secret}."
-                question = "What is the secret number?"
-                if multi:
-                    secret2 = rng.randint(100000, 999999)
-                    needle = f"The first secret number is {secret}."
-                    ids, _ = build_haystack(tok, L, d, needle, "What is the sum of the first and second secret numbers?", rng, haystack)
-                    extra = tok.encode(f" The second secret number is {secret2}. ")
-                    k = rng.randint(1, max(1, len(ids) - 30))
-                    ids = ids[:k] + extra + ids[k - len(extra) if k >= len(extra) else k :]
-                    ids = ids[: L - 16]
-                    gold = secret + secret2
-                else:
-                    ids, _ = build_haystack(tok, L, d, needle, question, rng, haystack)
-                    gold = secret
-                try:
-                    out = answer(model, tok, ids)
-                except torch.OutOfMemoryError:
-                    results.append({"length": L, "depth": d, "oom": True})
-                    torch.cuda.empty_cache()
-                    break
+        cases = [(d, *_make_case(tok, L, d, rng, haystack, multi)) for d in depths for _ in range(n)]
+        outs = answer_all(model, tok, [c[1] for c in cases], max_batch_tokens)
+        for j, d in enumerate(depths):
+            hits, failures, n_oom = 0, [], 0
+            for (_, _, gold), out in zip(cases[j * n : (j + 1) * n], outs[j * n : (j + 1) * n]):
+                if out is None:
+                    n_oom += 1
+                    continue
                 m = _NUM_RE.search(out.replace(",", ""))
                 ok = m is not None and m.group(0) == str(gold)
                 hits += int(ok)
                 if not ok and len(failures) < keep_failures:
                     failures.append({"gold": gold, "out": out.strip()[:60]})
-            results.append({"length": L, "depth": d, "accuracy": hits / n, "n": n, "multi": multi, "failures": failures})
+            if n_oom == n:
+                results.append({"length": L, "depth": d, "oom": True})
+                continue
+            results.append({"length": L, "depth": d, "accuracy": hits / (n - n_oom), "n": n - n_oom, "multi": multi, "failures": failures})
     if was_training:
         model.train()
     summary: dict[int, dict] = {}
@@ -211,12 +259,13 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-seq-len", type=int, default=None, help="extend the RoPE table (with --rope-scaling) to probe beyond the trained context")
     ap.add_argument("--rope-scaling", default=None, help='json, e.g. {"type":"yarn","factor":2,"original_max_seq_len":8192}')
+    ap.add_argument("--batch-tokens", type=int, default=16384, help="prompt tokens per generation batch (higher = faster, more VRAM)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     tok = SlmTokenizer.load(a.tokenizer)
     model, meta = load(a.checkpoint, a.max_seq_len, json.loads(a.rope_scaling) if a.rope_scaling else None)
     hs = make_haystack(tok, a.haystack, Path(a.tokenized_root) / a.haystack_source / "val")
-    res = run_needle(model, tok, a.lengths, a.depths, a.n, seed=a.seed, multi=a.multi, haystack=hs, threshold=a.threshold)
+    res = run_needle(model, tok, a.lengths, a.depths, a.n, seed=a.seed, multi=a.multi, haystack=hs, threshold=a.threshold, max_batch_tokens=a.batch_tokens)
     res["checkpoint"] = a.checkpoint
     print(format_table(res))
     for r in res["results"]:

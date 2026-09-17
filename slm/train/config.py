@@ -85,7 +85,8 @@ class EvalConfig:
     # model's RoPE table are skipped. Logged as needle_<L> (mean over depths) and needle_min_<L>.
     needle_lengths: list[int] = field(default_factory=list)
     needle_depths: list[float] = field(default_factory=lambda: [0.0, 0.25, 0.5, 0.75, 1.0])
-    needle_n: int = 4
+    needle_n: int = 16
+    needle_batch_tokens: int = 16384  # prompt tokens per generation batch; cells of one length decode together
     needle_source: str = "fineweb-edu-b"  # tokenized source whose val split is the haystack ("filler" = repetitive control)
 
 
