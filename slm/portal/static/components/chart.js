@@ -6,7 +6,7 @@ import { fmtTok, fmtDur } from "./util.js";
 const html = htm.bind(h);
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
 
-/** props: title, series=[{label, x:[], y:[], color?, points?, scale?}], xmode ('tokens'|'update'|'time'), logy, height, ymin, ymin2
+/** props: title, series=[{label, x:[], y:[], color?, points?, scale?, dash?}], xmode ('tokens'|'update'|'time'), logy, height, ymin, ymin2
  *  A series with scale:"y2" is drawn against a second axis on the right (e.g. temperature vs power). */
 export function Chart({ title, series, xmode = "tokens", logy = false, height = 240, ymin, ymin2 }) {
   const ref = useRef(null);
@@ -36,7 +36,7 @@ export function Chart({ title, series, xmode = "tokens", logy = false, height = 
       ],
       series: [
         { label: xmode, value: (u, v) => (v == null ? "-" : xfmt(v)) },
-        ...series.map((s, i) => ({ label: s.label, scale: s.scale === "y2" ? "y2" : "y", stroke: s.color || COLORS[i % COLORS.length], width: s.width || 1.5, points: { show: !!s.points, size: 5 }, spanGaps: true, value: (u, v) => (v == null ? "-" : Number(v).toPrecision(5)) })),
+        ...series.map((s, i) => ({ label: s.label, scale: s.scale === "y2" ? "y2" : "y", stroke: s.color || COLORS[i % COLORS.length], width: s.width || 1.5, dash: s.dash ? [6, 4] : undefined, points: { show: !!s.points, size: 5 }, spanGaps: true, value: (u, v) => (v == null ? "-" : Number(v).toPrecision(5)) })),
       ],
     };
     if (plot.current) plot.current.destroy();
