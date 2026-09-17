@@ -123,7 +123,7 @@ class RunIndex:
         parent_cum = self._cumulative_tokens(by_name[parent_name], by_name, depth + 1) - int(by_name[parent_name].get("tokens") or 0)
         return own + int(base) + max(0, parent_cum)
 
-    def live_runs(self, within_s: float = 120.0) -> list[str]:
+    def live_runs(self, within_s: float = 900.0) -> list[str]:  # pretraining logs every ~3 min at 524K-token updates; keep a generous window
         import time
 
         now = time.time()

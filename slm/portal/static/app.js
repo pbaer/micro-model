@@ -72,7 +72,7 @@ function App() {
   const pages = meta ? meta.pages : [{ id: "home", label: "Home" }, { id: "runs", label: "Runs" }];
   return html`<div class="layout">
     <nav>
-      <div class="brand">slm command center</div>
+      <div class="brand">SLM Training Portal</div>
       ${pages.map((p) => html`<a href=${"#/" + (p.id === "home" ? "" : p.id)} class=${page === p.id || (p.id === "home" && page === "runs") || (p.id === "inference" && page === "model") ? "active" : ""}>${p.label}</a>`)}
       <${GpuTile} />
     </nav>
