@@ -46,7 +46,7 @@ function Mixture() {
       <table><tr><th>source</th><th>weight</th><th>planned tokens</th><th>available (train)</th><th>epochs</th><th>val tokens</th></tr>
       ${mix.rows.map((r) => html`<tr><td>${r.source}</td><td>${(r.weight * 100).toFixed(1)}%</td><td>${fmtTok(r.planned_tokens)}</td><td>${fmtTok(r.available_tokens)}</td>
         <td style=${r.epochs > 1.5 ? "color:#b91c1c;font-weight:600" : ""}>${r.epochs == null ? "no data" : r.epochs.toFixed(2)}</td><td>${fmtTok(r.val_tokens)}</td></tr>`)}</table>
-      <div class="legend" style="margin-top:6px">epochs &gt; 1.5 (red) means that source will be repeated; consider downloading more of it.</div></div>`}
+      <div class="legend" style="margin-top:6px">epochs > 1.5 (red) means that source will be repeated; consider downloading more of it.</div></div>`}
   </div>`;
 }
 
