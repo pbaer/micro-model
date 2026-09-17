@@ -122,8 +122,9 @@ def summary(records: list[dict], meta: dict) -> dict[str, Any]:
     status = run_status(records)
     # Elapsed = the trainer's own counter (excludes time lost to crashes before the last checkpoint),
     # extended by the time since the last record while the run is live.
-    end = next((r for r in reversed(records) if r["kind"] in ("finish", "stop") and r.get("elapsed_s") is not None), None)
-    if end is not None:
+    # a stop record only ends the run if no resume follows it (a stopped-and-resumed run keeps counting)
+    end = next((r for r in reversed(records) if r["kind"] in ("finish", "stop", "resume")), None)
+    if end is not None and end["kind"] != "resume" and end.get("elapsed_s") is not None:
         elapsed = float(end["elapsed_s"])
     elif last.get("elapsed_s") is not None:
         elapsed = float(last["elapsed_s"]) + (time.time() - last["time"] if status == "running" else 0.0)

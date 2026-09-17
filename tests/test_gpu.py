@@ -55,3 +55,16 @@ def test_query_gpu_real_or_absent():
         assert g["total_gib"] > 0 and (g["temp_c"] is None or 0 < g["temp_c"] < 120)
     else:
         assert "error" in g
+
+
+def test_summary_elapsed_survives_a_stop_and_resume():
+    t0 = time.time() - 1000
+    recs = [{"kind": "start", "time": t0, "tokens": 0, "msg": "fresh"},
+            {"kind": "train", "time": t0 + 100, "tokens": 1000, "update": 1, "loss": 3.0, "elapsed_s": 100.0},
+            {"kind": "stop", "time": t0 + 101, "tokens": 1000, "elapsed_s": 101.0, "msg": "stopped"},
+            {"kind": "resume", "time": t0 + 500, "tokens": 1000, "msg": "resumed"},
+            {"kind": "train", "time": t0 + 700, "tokens": 3000, "update": 3, "loss": 2.9, "elapsed_s": 301.0}]
+    s = M.summary(recs, {"config": {"schedule": {"total_tokens": 10_000}}})
+    assert s["status"] == "running" and 301.0 + 250 <= s["elapsed_s"] <= 301.0 + 350  # counter + time since the last record, not the stale stop
+    done = recs + [{"kind": "finish", "time": t0 + 800, "tokens": 4000, "elapsed_s": 400.0, "msg": "finished"}]
+    assert M.summary(done, {"config": {"schedule": {"total_tokens": 10_000}}})["elapsed_s"] == 400.0
