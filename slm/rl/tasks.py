@@ -138,4 +138,6 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
 
 
 def prompt_messages(t: Task) -> list[dict]:
-    return [{"role": "user", "content": t.prompt + "\nThink step by step, then give the final answer on its own line as '#### <number>'."}]
+    from slm.data.answers import SUFFIX
+
+    return [{"role": "user", "content": t.prompt + SUFFIX}]

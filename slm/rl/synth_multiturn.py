@@ -14,6 +14,7 @@ import random
 import sys
 from pathlib import Path
 
+from slm.data.answers import SUFFIX, apply_style  # noqa: F401 (SUFFIX re-exported for older callers)
 from slm.data.chat import format_chat
 from slm.data.sft import SFT_DIR, SftShardWriter
 from slm.data.tokenizer import SlmTokenizer
@@ -21,7 +22,6 @@ from slm.rl.tasks import _split_of
 
 NAMES = ["Ada", "Ben", "Cleo", "Dev", "Eli", "Fay", "Gus", "Hana", "Ivan", "Jo", "Kai", "Lena", "Mo", "Nia", "Omar", "Pia"]
 THINGS = ["apples", "books", "coins", "marbles", "stickers", "cards", "pencils", "shells", "cookies", "tickets"]
-SUFFIX = "\nThink step by step, then give the final answer on its own line as '#### <number>'."
 
 
 def first_turn(rng: random.Random) -> tuple[str, str, int]:
@@ -66,11 +66,11 @@ def follow_up(rng: random.Random, cur: int) -> tuple[str, str, int]:
 
 def conversation(rng: random.Random) -> list[dict]:
     u, think, val = first_turn(rng)
-    msgs = [{"role": "user", "content": u + (SUFFIX if rng.random() < 0.5 else "")}, {"role": "assistant", "think": think, "content": f"#### {val}"}]
+    msgs = [{"role": "user", "content": u}, {"role": "assistant", "think": think, "content": f"#### {val}"}]
     for _ in range(rng.choice([1, 1, 2, 2, 3])):
         u, think, val = follow_up(rng, val)
         msgs += [{"role": "user", "content": u}, {"role": "assistant", "think": think, "content": f"#### {val}"}]
-    return msgs
+    return apply_style(msgs, rng, 0.5)
 
 
 def build(tok: SlmTokenizer, n: int, out_root: Path, name: str = "synthetic-multiturn-tools", seed: int = 0) -> dict:

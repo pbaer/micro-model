@@ -187,6 +187,17 @@ Evaluation every `eval_every_steps` on held-out prompts (greedy) and an equal-si
 `val_loss` for RL runs is `1 − heldout_acc` so `best.pt` semantics carry over. Checkpoints:
 `step_<n>.pt`, `latest.pt`, `final.pt`.
 
+## 6a. Final-answer style (`slm/data/answers.py`)
+
+`#### <answer>` exists for verification, so the model must produce it only when asked. Every set with verifiable
+answers (GSM8K, MetaMathQA, the templated traces, the multi-turn tool conversations) is written as a 50/50 mix:
+either the user turn carries the instruction ("…give the final answer on its own line as '#### <number>'") and the
+answer is `#### X`, or the question is bare and the answer is a sentence ("So the answer is 624."). One coin flip
+per conversation. RL rollouts and the reasoning benchmark always prompt with the instruction and verify strictly;
+`verify_numeric(strict=False)` accepts the last number for bare-question answers. Before 2026-09-16 the GSM8K and
+MetaMathQA sets had the marker without the instruction, which taught `#### N` as the default reply to any math
+question.
+
 ## 6b. Chat and tool data inside pretraining (`scripts/sft_to_pretrain.py`)
 
 SFT shards (`tokens_*.bin` + `idx_*.npy`, chat-formatted examples `<|bos|>…<|eos|>`) are re-laid as an ordinary

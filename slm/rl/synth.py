@@ -12,6 +12,7 @@ import re
 import sys
 from pathlib import Path
 
+from slm.data.answers import apply_style
 from slm.data.chat import format_chat
 from slm.data.sft import SFT_DIR, SftShardWriter
 from slm.data.tokenizer import SlmTokenizer
@@ -128,7 +129,7 @@ def trace_for(t: Task, rng: random.Random) -> str:
     raise ValueError(t.task)
 
 
-def build(tok: SlmTokenizer, tasks: list[str], n: int, out_root: Path, name: str = "synthetic-reasoning", seed: int = 0, tools: bool = False) -> dict:
+def build(tok: SlmTokenizer, tasks: list[str], n: int, out_root: Path, name: str = "synthetic-reasoning", seed: int = 0, tools: bool = False, marker_mix: float = 0.5) -> dict:
     rng = random.Random(seed)
     items = make_tasks(tasks, n, "train", seed)
     val_items = make_tasks(tasks, max(200, n // 50), "heldout", seed + 1)
@@ -138,6 +139,7 @@ def build(tok: SlmTokenizer, tasks: list[str], n: int, out_root: Path, name: str
         w = SftShardWriter(out / split)
         for t in its:
             msgs = prompt_messages(t) + [{"role": "assistant", "think": trace_for_tools(t) if tools else trace_for(t, rng), "content": "#### " + t.answer}]
+            apply_style(msgs, rng, marker_mix)
             enc = format_chat(tok, msgs, think_required=True, tools=tools)
             w.add(enc.ids, enc.loss_mask)
         w.flush()
@@ -146,7 +148,7 @@ def build(tok: SlmTokenizer, tasks: list[str], n: int, out_root: Path, name: str
 
     (out / "manifest.json").write_text(json.dumps({"name": name, "tasks": tasks, "tokenizer_sha256": tok.sha256, "train_examples": stats["train"]["examples"],
                                                    "train_tokens": stats["train"]["tokens"], "train_targets": stats["train"]["targets"], "val_examples": stats["val"]["examples"],
-                                                   "val_tokens": stats["val"]["tokens"], "val_targets": stats["val"]["targets"], "think_required": True, "tools": tools}, indent=1), encoding="utf-8")
+                                                   "val_tokens": stats["val"]["tokens"], "val_targets": stats["val"]["targets"], "think_required": True, "tools": tools, "marker_mix": marker_mix}, indent=1), encoding="utf-8")
     return stats
 
 

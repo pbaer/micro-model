@@ -168,4 +168,5 @@ def test_multiturn_tool_conversations_are_consistent(tok):
             if m["role"] != "assistant":
                 continue
             spans = [s for s in split_markup(m["think"], sess) if s.kind == "tool"]
-            assert len(spans) == 1 and spans[0].result == m["content"].split("#### ")[1], (msgs, spans)
+            gold = m["content"].split("#### ")[1] if m["content"].startswith("#### ") else m["content"].rstrip(".").split()[-1]
+            assert len(spans) == 1 and spans[0].result == gold, (msgs, spans)

@@ -68,9 +68,16 @@ class SftShardWriter:
 
 
 def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2048, val_permille: int = 10, max_examples: int | None = None,
-                think_required: bool = False, name: str | None = None, tools: bool = False) -> dict:
+                think_required: bool = False, name: str | None = None, tools: bool = False, marker_mix: float = 0.5) -> dict:
     """tools=True: <<expr=result>> annotations in assistant text become calculator calls (see slm.tools);
-    rows whose assistant text has no such annotation are dropped, so the set teaches tool use consistently."""
+    rows whose assistant text has no such annotation are dropped, so the set teaches tool use consistently.
+    marker_mix: for verifiable (math) rows, the share whose user turn asks for `#### <number>` and gets it; the rest
+    keep the bare question and answer in a natural sentence (see slm.data.answers)."""
+    import random
+
+    from slm.data.answers import apply_style
+
+    style_rng = random.Random(f"style-{src.name}-{name}")
     files = sorted(p for p in src.local_dir.rglob("*.parquet"))
     assert files, f"no raw files for {src.name}"
     out = out_root / (name or src.name)
@@ -87,6 +94,8 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
                 if msgs is None:
                     n_drop += 1
                     continue
+                if src.kind in ("math_qa", "math_cot"):
+                    apply_style(msgs, style_rng, marker_mix)
                 if tools and not any("<<" in (m.get("think") or "") + m.get("content", "") for m in msgs if m["role"] == "assistant"):
                     n_notool += 1
                     continue
@@ -109,6 +118,7 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
     train.flush()
     val.flush()
     m = {"source": src.name, "name": name or src.name, "tokenizer_sha256": tok.sha256, "max_len": max_len, "think_required": think_required, "tools": tools, "no_tool_calls": n_notool,
+         "marker_mix": marker_mix if src.kind in ("math_qa", "math_cot") else None,
          "train_examples": train.total_examples, "train_tokens": train.total_tokens, "train_targets": train.total_targets, "train_shards": train.shard_idx,
          "val_examples": val.total_examples, "val_tokens": val.total_tokens, "val_targets": val.total_targets, "val_shards": val.shard_idx,
          "seen": n_seen, "dropped": n_drop, "too_long": n_trunc, "seconds": time.time() - t0}
@@ -232,11 +242,12 @@ def main() -> None:
     ap.add_argument("--think-required", action="store_true", help="always emit a <|think|> span (reasoning SFT)")
     ap.add_argument("--name", default=None)
     ap.add_argument("--tools", action="store_true", help="convert <<expr=result>> annotations to calculator calls; drop rows without any")
+    ap.add_argument("--marker-mix", type=float, default=0.5, help="share of math rows that ask for and use the '#### <number>' marker")
     a = ap.parse_args()
     tok = SlmTokenizer.load(a.tokenizer)
     out_root = SFT_DIR / Path(a.tokenizer).name
     for s in a.sources:
-        prepare_sft(SOURCES[s], tok, out_root, a.max_len, a.val_permille, a.max_examples, a.think_required, a.name if len(a.sources) == 1 else None, tools=a.tools)
+        prepare_sft(SOURCES[s], tok, out_root, a.max_len, a.val_permille, a.max_examples, a.think_required, a.name if len(a.sources) == 1 else None, tools=a.tools, marker_mix=a.marker_mix)
 
 
 if __name__ == "__main__":

@@ -230,3 +230,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   tokens (4 more files), finemath 455M → 1.36B (6 more files), shell 51M → 505M (560K scripts via Software
   Heritage), synth-retrieval 150M → 400M (new seed). Graceful stop at 808M tokens, directories swapped under the
   same names (old shards kept as `*-v1`), resumed at update 1541. Every source in the 10B plan is now ≤ 1.2 epochs.
+- 21:40 Peter caught a data defect: GSM8K/MetaMathQA SFT rows answered with `#### N` although the user turn never
+  asked for it, so reasoning SFT taught the marker as the default answer style (visible in the chat UI). Added
+  `slm/data/answers.py` (50/50 instruction+marker vs bare question+sentence, consistent per conversation), applied
+  it in SFT prep, both templated generators and the multi-turn set; regenerated all seven sets and `tool-chat`
+  (phase 2 samples the corrected version; phase 1 uses none of this data). Lenient verifier for bare answers.

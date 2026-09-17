@@ -39,8 +39,13 @@ class Verdict:
     reason: str
 
 
-def verify_numeric(answer_text: str, gold: str) -> Verdict:
+def verify_numeric(answer_text: str, gold: str, strict: bool = True) -> Verdict:
+    """strict=True expects the '#### <answer>' marker (prompts that asked for it: RL, benchmarks). strict=False
+    accepts the last number in the text, for answers to bare questions written as a sentence."""
     p = parse_final_answer(answer_text)
+    if p is None and not strict:
+        nums = _NUM_RE.findall(answer_text.replace(",", ""))
+        p = nums[-1] if nums else None
     if p is None:
         return Verdict(False, None, "no '####' answer line")
     a, g = _to_number(p), _to_number(gold)

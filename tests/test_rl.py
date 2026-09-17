@@ -35,6 +35,7 @@ def test_tasks_disjoint_and_deterministic():
     ("#### $12.50", "12.5", True),
     ("#### 3/4", "0.75", True),
     ("#### -7.", "-7", True),
+    ("So the answer is 42.", "42", False),  # natural style is wrong under the strict verifier...
     ("the answer is 42", "42", False),  # no marker
     ("#### 43", "42", False),
     ("####", "42", False),
@@ -107,3 +108,24 @@ def test_synthetic_traces_are_correct_by_construction():
         for t in make_tasks([name], 30, "train", 7):
             tr = trace_for(t, rng)
             assert tr.strip().endswith(t.answer + ".") or t.answer in tr, (name, t.prompt, tr, t.answer)
+
+
+def test_lenient_verifier_and_answer_styles():
+    import random
+
+    from slm.data.answers import SUFFIX, apply_style
+    from slm.rl.rewards import verify_numeric
+
+    assert verify_numeric("So the answer is 42.", "42", strict=False).correct and not verify_numeric("So the answer is 42.", "42").correct
+    assert verify_numeric("#### 41\nno, 42", "42", strict=False).parsed == "41"  # the marker still wins when present
+    seen = set()
+    for seed in range(20):
+        msgs = apply_style([{"role": "user", "content": "How many?"}, {"role": "assistant", "think": "t", "content": "#### 7"},
+                            {"role": "user", "content": "And double?"}, {"role": "assistant", "think": "t", "content": "#### 14"}], random.Random(seed), 0.5)
+        marker = msgs[1]["content"].startswith("#### ")
+        seen.add(marker)
+        assert marker == msgs[3]["content"].startswith("#### "), "one style per conversation"
+        assert (SUFFIX.strip() in msgs[0]["content"]) == marker and (SUFFIX.strip() in msgs[2]["content"]) == marker
+        if not marker:
+            assert "7" in msgs[1]["content"] and "14" in msgs[3]["content"] and "####" not in msgs[1]["content"]
+    assert seen == {True, False}
