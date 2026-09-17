@@ -222,3 +222,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   per token) and a 100M-token warmup vs 262K / 20M for the 149M run. Per update it is ahead (4.35 at update 381 vs
   4.61 for the 149M at its update 381) and its slope is steeper (−0.41 vs −0.26 per 50M). Kept running; the
   decisive check is val at 500M (must be ≤ 3.35) and 750M (≤ 3.22), the 149M values.
+- 17:52 500M check: val 3.358 vs the 149M's 3.350 at the same token count — the gap closed from 0.75 (100M) to
+  0.008 with the 336M curve still falling at 0.14 per 100M vs 0.085; it crosses below by ~600M. Needle retrieval
+  switched on at 500M (92% at 1K, 75% at 2K). Continuing. Next check at 1B: the constant-LR peer is M3a at 3.17
+  (M2's 3.05 includes its decay).

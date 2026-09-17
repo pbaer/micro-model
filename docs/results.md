@@ -98,6 +98,13 @@ Validation loss trajectory of the 149M base (2K context, nats per token):
 | M2 (WSD) | 4.593 | 3.812 | 3.350 | 3.201 | 3.051 | | | | |
 | M3a (constant LR from 0.8B) | | | | 3.168 (at +0.1B) | 3.010 (+1.0B) | 2.946 (+1.8B) | 2.914 (+2.4B) | 2.898 (+2.8B) | 2.882 (+3.2B); 2.878 at +3.4B (end) |
 
+The 336M base at the same token counts (constant LR, 524K-token updates, 100M warmup):
+
+| Tokens | 100M | 200M | 300M | 400M | 500M |
+|---|---|---|---|---|---|
+| 149M (M2, WSD) | 4.593 | 3.812 | 3.562 | 3.435 | 3.350 |
+| 336M (M8 phase 1) | 5.345 | 4.298 | 3.740 | 3.501 | 3.358 |
+
 (M3a counts tokens from its own start; add 0.8B for tokens seen by the weights. The final decay
 happens in M3b, so M3a's loss is a stable-phase loss and will drop further at decay.)
 
