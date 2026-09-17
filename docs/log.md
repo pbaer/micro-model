@@ -253,3 +253,5 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   driver and kept them, and WDDM started paging. Fix: `torch.cuda.empty_cache()` after the needle run,
   `needle_batch_tokens` 16384 -> 8192, and `vram_reserved_gib` now logged next to the peak (console shows
   `peak/reserved`). Restarted at 1.92B tokens, 22 s downtime, back to 30,035 tok/s at 13.9 GiB reserved.
+  Verified at the 2.00B eval: 30,035 tok/s before, 51 s eval, 30,009 tok/s after, reserved 13.9 -> 14.0 GiB
+  (the residue is 0.1 GiB, not the ~1 GiB that was being kept). Needle 99% at both 1024 and 2048.
