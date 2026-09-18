@@ -271,7 +271,7 @@ on correctness / coherence / task (1-5 each; overall = mean). Suite v1, rubric v
 items, so a single prompt moves the overall by about 0.03 and a category (2-8 prompts) by 0.1-0.5: read the
 trend, not the last digit.
 
-### Second base, phase 1 (`m8_base_stable_336m`, constant LR, 2K rows) — 2026-09-18, through 3.5B tokens
+### Second base, phase 1 (`m8_base_stable_336m`, constant LR, 2K rows) — 2026-09-18, through 5.0B tokens
 
 | tokens | overall | correctness | coherence | task | facts | pattern | python | prose | arithmetic | bash |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -284,6 +284,13 @@ trend, not the last digit.
 | 3.00B | 2.22 | 2.09 | 2.14 | 2.43 | 2.62 | 2.17 | 2.50 | 2.08 | 1.33 | 1.22 |
 | 3.25B | 2.33 | 2.11 | 2.31 | 2.57 | 2.58 | 3.33 | 2.94 | 1.83 | 1.67 | 1.33 |
 | 3.50B | 2.31 | 2.03 | 2.37 | 2.51 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
+| 3.50B | 2.31 | 2.03 | 2.37 | 2.51 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
+| 3.75B | 2.21 | 2.14 | 2.06 | 2.43 | 2.79 | 2.42 | 2.61 | 2.17 | 1.25 | 1.22 |
+| 4.00B | 2.20 | 2.00 | 2.26 | 2.34 | 2.46 | 3.08 | 2.67 | 2.33 | 1.25 | 1.22 |
+| 4.25B | 2.56 | 2.34 | 2.40 | 2.94 | 2.88 | 3.08 | 3.50 | 2.50 | 1.67 | 1.11 |
+| 4.50B | 2.66 | 2.54 | 2.43 | 3.00 | 3.46 | 2.92 | 3.78 | 2.50 | 1.42 | 1.22 |
+| 4.75B | 2.40 | 2.11 | 2.31 | 2.77 | 2.83 | 3.25 | 2.17 | 2.42 | 1.67 | 1.33 |
+| 5.00B | 2.35 | 2.03 | 2.23 | 2.80 | 2.83 | 2.67 | 2.56 | 2.25 | 1.33 | 1.22 |
 
 What the judge sees at 3.5B (all 14 checkpoints judged, 490 items): the right first sentence arrives long before
 the model learns to stop. `The capital of France is` → "Paris, the capital of France is Paris. The capital of
@@ -293,7 +300,7 @@ moved off the floor in 3.5B tokens: a base model at this size does not answer "W
 prompt (it restates the equation), and bash prompts drift into prose or number lists. Those two are the headroom
 the SFT / tool stages are for, and this table is the baseline they will be compared against.
 
-Reading the curve: overall rises 1.11 → 2.31, with a plateau at 1.75-2.5B (2.05-2.10) and a second rise after;
+Reading the curve: overall rises 1.11 → 2.66 (4.5B) with checkpoint-to-checkpoint wobble of ±0.2 under the constant LR (3.75-4.0B dipped to 2.20, 4.5B jumped to 2.66, 5.0B sits at 2.35), far larger than the ±0.03 judge noise: at a constant learning rate the greedy behaviours (where a loop starts) move between snapshots even as validation loss improves monotonically, so read the trend over several points, and expect the decay phase to settle it;
 `correctness` is the slowest rubric (1.0 → 2.0) and `task` the fastest (1.2 → 2.5), i.e. the model learns what
 kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
 40-item packet, zero measurable training-throughput impact.
