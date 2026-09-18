@@ -39,7 +39,7 @@ export function RunDetail({ run }) {
   useEffect(reload, [run]);
   useEffect(() => {
     if (qualityTok == null) return;
-    api(`/api/runs/${encodeURIComponent(run)}/quality/${qualityTok}`).then(setQualityDetail).catch(() => setQualityDetail(null));
+    api(`/api/runs/${encodeURIComponent(run)}/quality/${qualityTok}`).then(setQualityDetail).catch((e) => setQualityDetail({ error: String(e) }));
   }, [run, qualityTok, quality]);
 
   useEffect(() => {
@@ -164,7 +164,7 @@ export function RunDetail({ run }) {
         ${(() => { const c = quality.checkpoints.find((x) => x.tokens === qualityTok); return c && c.overall != null ? html`<table style="margin-bottom:10px"><tr><th>category</th><th>n</th><th>overall</th>${quality.rubrics.map((r) => html`<th>${r}</th>`)}</tr>
           <tr><td><b>all</b></td><td>${c.n_scored}/${c.n_items}</td><td><b>${fmtNum(c.overall, 2)}</b></td>${quality.rubrics.map((r) => html`<td>${fmtNum(c[r], 2)}</td>`)}</tr>
           ${quality.categories.map((cat) => { const k = c.categories[cat] || {}; return html`<tr><td>${cat}</td><td>${k.n || 0}</td><td>${fmtNum(k.overall, 2)}</td>${quality.rubrics.map((r) => html`<td>${fmtNum(k[r], 2)}</td>`)}</tr>`; })}</table>` : html`<div class="muted" style="margin-bottom:8px">outputs generated, not judged yet</div>`; })()}
-        ${!qualityDetail ? html`<div class="empty-note">…</div>` : html`<div class="muted" style="font-size:12px;margin-bottom:6px">${qualityDetail.header.checkpoint} · ${qualityDetail.header.stage} · generated ${qualityDetail.header.generated_at} on ${qualityDetail.header.device} in ${qualityDetail.header.seconds}s</div>
+        ${!qualityDetail ? html`<div class="empty-note">…</div>` : qualityDetail.error ? html`<div class="empty-note">could not load this checkpoint's outputs: ${qualityDetail.error}</div>` : html`<div class="muted" style="font-size:12px;margin-bottom:6px">${qualityDetail.header.checkpoint} · ${qualityDetail.header.stage} · generated ${qualityDetail.header.generated_at} on ${qualityDetail.header.device} in ${qualityDetail.header.seconds}s</div>
           <table><tr><th>prompt</th><th>category</th><th class="l">output (greedy)</th><th>correct</th><th>coherent</th><th>task</th><th class="l">judge note</th></tr>
           ${qualityDetail.items.map((it) => html`<tr><td class="l" title=${it.prompt}><b>${it.id}</b><div class="muted" style="white-space:pre-wrap;max-width:260px">${it.prompt}</div></td><td>${it.category}</td>
             <td class="l"><pre style="margin:0;max-height:160px;max-width:520px;overflow:auto;white-space:pre-wrap">${it.think ? "[think] " + it.think + "\n" : ""}${it.output}</pre></td>
