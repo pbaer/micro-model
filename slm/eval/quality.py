@@ -220,14 +220,46 @@ def cmd_generate(a: argparse.Namespace) -> None:
 
 # ----------------------------------------------------------------------------------------------- pack / ingest
 def unjudged_items(run_dir: Path) -> list[dict]:
+    """Items with no score yet. A byte-identical (prompt, output) pair is packed once: adjacent checkpoints often
+    produce the same text, and two judge instances scoring the same text a point apart is pure noise (measured:
+    15 of 28 identical pairs in M8 round 1). `propagate_scores` copies the score to the twins on ingest."""
     scores = read_scores(run_dir)
-    out = []
+    out, seen = [], set()
     for h, items in all_outputs(run_dir):
         for it in items:
             iid = item_id(h["run"], h["tokens"], it["id"], h.get("suite", SUITE_VERSION))
-            if iid not in scores:
-                out.append({"item_id": iid, "category": it["category"], "mode": it["mode"], "prompt": it["prompt"], "output": it["output"], "expect": it["expect"]})
+            key = (it["id"], it["output"])
+            if iid in scores or key in seen:
+                continue
+            seen.add(key)
+            out.append({"item_id": iid, "category": it["category"], "mode": it["mode"], "prompt": it["prompt"], "output": it["output"], "expect": it["expect"]})
     return out
+
+
+def propagate_scores(run_dir: Path, judge: str, now: str) -> int:
+    """Give every unjudged item whose (prompt id, output) matches a judged one that item's score. Returns the count."""
+    scores = read_scores(run_dir)
+    by_key: dict[tuple[str, str], dict] = {}
+    pending: list[tuple[str, int, str, dict]] = []
+    for h, items in all_outputs(run_dir):
+        for it in items:
+            iid = item_id(h["run"], h["tokens"], it["id"], h.get("suite", SUITE_VERSION))
+            key = (it["id"], it["output"])
+            if iid in scores:
+                by_key.setdefault(key, scores[iid])
+            else:
+                pending.append((iid, h["tokens"], it["id"], key))
+    n = 0
+    with (qdir(run_dir) / "scores.jsonl").open("a", encoding="utf-8", newline="\n") as out:
+        for iid, tokens, pid, key in pending:
+            src = by_key.get(key)
+            if src is None:
+                continue
+            rec = {"item_id": iid, "tokens": tokens, "prompt_id": pid, "scores": dict(src["scores"]), "note": src.get("note", ""), "run": Path(run_dir).name,
+                   "judge": src.get("judge", judge), "suite": SUITE_VERSION, "rubric": RUBRIC_VERSION, "judged_at": now, "copied_from": src["item_id"]}
+            out.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            n += 1
+    return n
 
 
 def cmd_pack(a: argparse.Namespace) -> None:
@@ -295,7 +327,8 @@ def cmd_ingest(a: argparse.Namespace) -> None:
             g.update(run=a.run, judge=a.judge, suite=SUITE_VERSION, rubric=RUBRIC_VERSION, judged_at=now)
             out.write(json.dumps(g, ensure_ascii=False) + "\n")
             n_new += 1
-    print(f"[{a.run}] ingested {n_new} scores ({n_dup} already judged, skipped)")
+    n_copy = propagate_scores(run_dir, a.judge, now)
+    print(f"[{a.run}] ingested {n_new} scores ({n_dup} already judged, skipped; {n_copy} copied to identical outputs at other checkpoints)")
     write_summary(run_dir)
 
 

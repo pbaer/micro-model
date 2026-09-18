@@ -61,13 +61,14 @@ def test_pack_ingest_summary_roundtrip(tmp_path, capsys):
     ids = {Q.item_id("r", t, sp["id"]) for t in (100, 200) for sp in SUITE}
     assert len(ids) == 2 * len(SUITE) and all(len(i) == 12 for i in ids)
     items = Q.unjudged_items(d)
-    assert len(items) == 2 * len(SUITE) and set(items[0]) == {"item_id", "category", "mode", "prompt", "output", "expect"}
+    # 34 prompts have byte-identical outputs at both checkpoints and are packed once; cap_france differs -> 2
+    assert len(items) == len(SUITE) + 1 and set(items[0]) == {"item_id", "category", "mode", "prompt", "output", "expect"}
     # pack: blind, shuffled, batched, carries the rubric
-    Q.cmd_pack(_ns(runs_root=tmp_path, run="r", batch=50, seed=1))
+    Q.cmd_pack(_ns(runs_root=tmp_path, run="r", batch=20, seed=1))
     packets = sorted((d / "quality" / "packets").glob("r-*.json"))
     assert len(packets) == 2
     pk = json.loads(packets[0].read_text(encoding="utf-8"))
-    assert pk["instructions"] == JUDGE_INSTRUCTIONS and len(pk["items"]) == 50 and "tokens" not in pk["items"][0] and "checkpoint" not in pk["items"][0]
+    assert pk["instructions"] == JUDGE_INSTRUCTIONS and len(pk["items"]) == 20 and "tokens" not in pk["items"][0] and "checkpoint" not in pk["items"][0]
     # a judge answers: score everything in the two packets, plus one bogus row and one out-of-range row
     rows = []
     for p in packets:
@@ -80,11 +81,13 @@ def test_pack_ingest_summary_roundtrip(tmp_path, capsys):
     sf.write_text(json.dumps(rows), encoding="utf-8")
     Q.cmd_ingest(_ns(runs_root=tmp_path, run="r", scores=[str(sf)], judge="test-judge", replace=False))
     out = capsys.readouterr().out
-    assert "rejected 2" in out and f"ingested {2 * len(SUITE)} scores" in out
+    assert "rejected 2" in out and f"ingested {len(SUITE) + 1} scores" in out and f"{len(SUITE) - 1} copied to identical outputs" in out
     # re-ingesting the same file adds nothing
     Q.cmd_ingest(_ns(runs_root=tmp_path, run="r", scores=[str(sf)], judge="test-judge", replace=False))
     assert "ingested 0 scores" in capsys.readouterr().out
     assert not Q.unjudged_items(d)
+    copied = [r for r in Q.read_scores(d).values() if r.get("copied_from")]
+    assert len(copied) == len(SUITE) - 1 and all(Q.read_scores(d)[c["copied_from"]]["scores"] == c["scores"] for c in copied)
     s = json.loads((d / "quality" / "summary.json").read_text(encoding="utf-8"))
     assert s["judges"] == ["test-judge"] and [c["tokens"] for c in s["checkpoints"]] == [100, 200]
     c100, c200 = s["checkpoints"]
