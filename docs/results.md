@@ -297,3 +297,35 @@ Reading the curve: overall rises 1.11 → 2.31, with a plateau at 1.75-2.5B (2.0
 `correctness` is the slowest rubric (1.0 → 2.0) and `task` the fastest (1.2 → 2.5), i.e. the model learns what
 kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
 40-item packet, zero measurable training-throughput impact.
+
+### The 149M chain, stage by stage (retroactive, 2026-09-18)
+
+Every stage's snapshots were generated on CPU and judged the same way (M3a every third snapshot). "last" is the
+stage's final checkpoint, which is what the next stage started from.
+
+| stage (run) | ckpts | first → last | best | correct | coherent | task | arithmetic | python | pattern | narrative |
+|---|---|---|---|---|---|---|---|---|---|---|
+| base 2K, cosine (`m2_base_149m`) | 10 | 1.18 → 1.80 | 1.80 @ 1.0B | 1.40 | 1.94 | 2.06 | 1.42 | 2.39 | 1.50 | 2.17 |
+| base 2K stable (`m3_base_stable_149m`) | 12 | 1.57 → 2.37 | 2.37 @ 3.4B | 2.06 | 2.29 | 2.77 | 1.17 | 2.44 | 2.75 | 2.83 |
+| base 8K + decay (`m3_base_8k_149m`) | 5 | 2.43 → 2.28 | 2.43 @ 100M | 2.14 | 2.11 | 2.57 | 1.50 | 2.61 | 3.17 | 2.67 |
+| chat SFT (`m4_sft_149m`) | 2 | 3.03 → 2.61 | 3.03 @ 225M | 2.06 | 2.83 | 2.94 | 2.25 | 2.83 | 2.00 | 2.83 |
+| reasoning SFT (`m5_reasoning_149m`) | 3 | 2.45 → 2.29 | 2.45 @ 15M | 1.89 | 2.63 | 2.34 | 2.92 | 1.94 | 2.33 | 1.83 |
+| tool reasoning SFT (`m5_reasoning_tools_149m`) | 3 | 2.73 → 2.49 | 2.73 @ 5M | 2.23 | 2.60 | 2.63 | 3.25 | 1.78 | 1.33 | 2.17 |
+| 8K retrieval curriculum (`m7_ctx8k_retrieval_149m`) | 6 | 2.27 → 2.37 | 2.37 @ 600M | 2.26 | 2.29 | 2.57 | 1.58 | 2.56 | 2.92 | 2.83 |
+
+What the chain says, and what it changes for the 336M post-training:
+
+- **Chat SFT is the big step** (2.28 → 3.03 at its midpoint): `task` and `coherence` jump because the model
+  learns to answer and stop; `correctness` barely moves (2.14 → 2.06), which is the base model's knowledge showing
+  through. **Its second half is worse than its first** (3.03 → 2.61; `pattern` 2.92 → 2.00, `evens` continued
+  correctly at 225M and merely restated at 450M). Validation loss picked `best.pt` at 380M. Pick SFT checkpoints
+  by judged quality, and evaluate mid-run, not only at the end.
+- **Reasoning SFT is a regression on everything but arithmetic** (2.61 → 2.29): narrow math data, and the
+  marker-by-default defect (the checkpoint answers "What is the capital of France?" with `#### 24`). The tool
+  variant regresses less and lifts `arithmetic` further (3.25) because the calls give real numbers. Both were
+  trained before the 50/50 answer-style fix; the 336M chain uses the corrected sets, and this suite will show
+  whether that closes the gap.
+- **Context work was cheap on this axis**: the 8K phase ends 0.09 below the 2K stable end, the retrieval
+  curriculum ends 0.09 above where it started. Consistent with the ≤5% rule.
+- **Per token, the 336M base is ahead from ~1B on**: 2.31 at 3.5B vs the 149M chain's 2.2 at the same
+  cumulative count and 2.37 at 4.2B.
