@@ -44,6 +44,9 @@ class RunReader:
         s = M.summary(self.records, self.meta())
         s["run_name"] = self.name
         s["has_report"] = (self.dir / "report.html").exists()
+        q = self.quality()
+        judged = [c for c in (q or {}).get("checkpoints", []) if c.get("overall") is not None]
+        s["quality"] = {"overall": judged[-1]["overall"], "tokens": judged[-1]["tokens"], "n_judged": len(judged), "judge": ", ".join(q.get("judges", []))} if judged else None
         return s
 
     def series(self, max_points: int = 1500) -> dict:
