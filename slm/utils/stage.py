@@ -18,6 +18,15 @@ def run_stage(meta: dict) -> str:
     return "base"
 
 
+def run_tools(meta: dict) -> bool:
+    """Whether the run's model was trained to call the Python tool (RL `tools: true`, or an SFT mixture of *-tools sets)."""
+    cfg = meta.get("config") or {}
+    if cfg.get("tools"):
+        return True
+    data = cfg.get("data") or {}
+    return isinstance(data, dict) and any("tools" in name for name in (data.get("mixture") or {}))
+
+
 def run_meta(run_dir: Path) -> dict:
     p = Path(run_dir) / "run.json"
     if not p.exists():

@@ -150,3 +150,33 @@ def test_generate_suite_on_tiny_model_both_modes(tmp_path):
     h, items = Q.read_outputs(p)
     assert h["tokens"] == 123 and h["n_items"] == len(SUITE) and len(items) == len(SUITE)
     assert json.loads((tmp_path / "quality" / "summary.json").read_text(encoding="utf-8"))["checkpoints"][0]["n_scored"] == 0
+
+
+def test_generate_suite_runs_the_tool_loop_for_tool_checkpoints(tmp_path, monkeypatch):
+    """A tool-trained checkpoint is answered through sample_with_tools (results inserted, one session per prompt);
+    the record carries the call counts and the termination reason."""
+    import torch
+
+    from slm.config import ModelConfig, load_config
+    from slm.data.tokenizer import SlmTokenizer, train_bpe
+    from slm.model import Transformer
+    from slm.tools.loop import ToolCompletion
+
+    tok = SlmTokenizer(train_bpe(["What is 17 + 25? 42 def fibonacci(n): return n " * 40, "once upon a time there lived a small village by the sea " * 40], vocab_size=400))
+    cfg = load_config(ModelConfig, "configs/model/tiny.yaml")
+    cfg.vocab_size, cfg.max_seq_len = tok.vocab_size, 512
+    torch.manual_seed(0)
+    model = Transformer(cfg).eval()
+    seen = {}
+
+    def fake_loop(m, t, prompts, max_new_tokens, temperature, max_calls=8, **kw):
+        seen.update(n=len(prompts), max_new=max_new_tokens, temperature=temperature, max_calls=max_calls)
+        return [ToolCompletion(ids=[*t.encode("x"), t.special("<|/think|>"), *t.encode(" 42"), t.end_id], gen_mask=[1] * 5, n_calls=1, n_errors=0, calls=[("17+25", "42")], termination="stop") for _ in prompts]
+
+    monkeypatch.setattr("slm.tools.loop.sample_with_tools", fake_loop)
+    items = Q.generate_suite(model, tok, "reasoning", "cpu", max_new_cap=8, tools=True)
+    assert seen == {"n": len(SUITE), "max_new": 8 + 32 + 64, "temperature": 0.0, "max_calls": 8}
+    assert all(i["tool_calls"] == 1 and i["termination"] == "stop" and i["stopped"] and i["output"].strip() == "42" and i["think"] == "x" for i in items)
+    # without tools the plain path is used and no tool fields appear
+    plain = Q.generate_suite(model, tok, "reasoning", "cpu", max_new_cap=8, tools=False)
+    assert "tool_calls" not in plain[0]

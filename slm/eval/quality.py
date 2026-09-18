@@ -31,7 +31,7 @@ import time
 from pathlib import Path
 
 from slm.eval.quality_suite import CATEGORIES, JUDGE_INSTRUCTIONS, RUBRIC_VERSION, RUBRICS, SUITE, SUITE_VERSION
-from slm.utils.stage import run_meta, run_stage
+from slm.utils.stage import run_meta, run_stage, run_tools
 
 LEGACY3 = ("rome", "fib", "cap_france")  # the three prompts the trainer has sampled since M1: the long-history subset
 DEFAULT_TOKENIZER = r"C:\slm-data\tokenizer\v1"
@@ -134,22 +134,47 @@ def load_tokenizer(run_dir: Path):
     return SlmTokenizer.load(cfg.get("tokenizer_dir") or DEFAULT_TOKENIZER)
 
 
-def generate_suite(model, tok, stage: str, device: str, max_new_cap: int | None = None) -> list[dict]:
+def generate_suite(model, tok, stage: str, device: str, max_new_cap: int | None = None, tools: bool = False) -> list[dict]:
     """Greedy output for every suite prompt. Base checkpoints continue the completion prompt; SFT/RL checkpoints
-    answer the chat prompt as an assistant (think span parsed off, tools not executed)."""
+    answer the chat prompt as an assistant (think span parsed off). tools=True runs the answer through the tool
+    loop (one PySession per prompt), so a model trained to call Python sees real results instead of derailing on
+    an empty one."""
     import torch
 
     from slm.data.chat import format_chat, parse_assistant
     from slm.utils.sdpa import sdpa_context
 
-    with torch.no_grad():
-        return _generate_suite(torch, model, tok, stage, device, max_new_cap, format_chat, parse_assistant, sdpa_context)
+    with torch.no_grad(), sdpa_context("decode"):
+        return _generate_suite(torch, model, tok, stage, device, max_new_cap, tools, format_chat, parse_assistant)
 
 
-def _generate_suite(torch, model, tok, stage: str, device: str, max_new_cap, format_chat, parse_assistant, sdpa_context) -> list[dict]:
+def _budget(p: dict, chat: bool, think_required: bool, max_new_cap: int | None) -> int:
+    max_new = min(p["max_new_tokens"], max_new_cap) if max_new_cap else p["max_new_tokens"]
+    if chat:
+        max_new += 32  # an assistant answer carries a preamble and code fences the completion form does not
+    if chat and think_required:
+        max_new += 64  # room for a think span before the answer
+    return max_new
+
+
+def _generate_suite(torch, model, tok, stage: str, device: str, max_new_cap, tools: bool, format_chat, parse_assistant) -> list[dict]:
     chat = stage != "base"
     think_required = stage in ("reasoning", "rl")
     items = []
+    if chat and tools:
+        from slm.tools.loop import sample_with_tools
+
+        prompts = [format_chat(tok, [{"role": "user", "content": p["chat"]}], add_generation_prompt=True, think_required=think_required, tools=True).ids for p in SUITE]
+        budget = max(_budget(p, True, think_required, max_new_cap) for p in SUITE)
+        t0 = time.time()
+        outs = sample_with_tools(model, tok, prompts, budget, temperature=0.0, max_calls=8)
+        per = round((time.time() - t0) / len(SUITE), 2)
+        for p, o in zip(SUITE, outs):
+            parsed = parse_assistant(tok, o.ids, think_expected=think_required)
+            items.append({"id": p["id"], "category": p["category"], "mode": "chat", "prompt": p["chat"], "expect": p["expect"], "n_new": len(o.ids), "max_new": budget,
+                          "seconds": per, "output": parsed["answer"], "think": parsed.get("think"), "malformed": bool(parsed.get("malformed")),
+                          "stopped": o.termination == "stop", "tool_calls": o.n_calls, "tool_errors": o.n_errors, "termination": o.termination})
+        return items
     for p in SUITE:
         if chat:
             ids = format_chat(tok, [{"role": "user", "content": p["chat"]}], add_generation_prompt=True, think_required=think_required).ids
@@ -157,14 +182,10 @@ def _generate_suite(torch, model, tok, stage: str, device: str, max_new_cap, for
         else:
             ids = [tok.bos_id, *tok.encode(p["completion"])]
             shown = p["completion"]
-        max_new = min(p["max_new_tokens"], max_new_cap) if max_new_cap else p["max_new_tokens"]
-        if chat:
-            max_new += 32  # an assistant answer carries a preamble and code fences the completion form does not
-        if chat and think_required:
-            max_new += 64  # room for a think span before the answer
+        max_new = _budget(p, chat, think_required, max_new_cap)
         x = torch.tensor([ids], device=device)
         t0 = time.time()
-        with sdpa_context("decode"), torch.autocast("cuda", dtype=torch.bfloat16, enabled=device != "cpu"):
+        with torch.autocast("cuda", dtype=torch.bfloat16, enabled=device != "cpu"):
             out = model.generate(x, max_new, temperature=0.0, stop_ids=(tok.eos_id, tok.end_id) if chat else (tok.eos_id,))
         gen = out[0, len(ids) :].tolist()
         rec = {"id": p["id"], "category": p["category"], "mode": "chat" if chat else "completion", "prompt": shown, "expect": p["expect"],
@@ -196,12 +217,13 @@ def write_outputs(run_dir: Path, run: str, tokens: int, checkpoint: str, stage: 
 
 def cmd_generate(a: argparse.Namespace) -> None:
     run_dir = Path(a.runs_root) / a.run
-    stage = run_stage(run_meta(run_dir))
+    meta = run_meta(run_dir)
+    stage, tools = run_stage(meta), run_tools(meta)
     picks = selected_checkpoints(run_dir, a.checkpoints, a.every, include_final=not a.no_final)
     if not picks:
         raise SystemExit(f"{a.run}: no checkpoints to score")
     todo = [(n, t) for n, t in picks if a.force or not outputs_path(run_dir, t).exists()]
-    print(f"[{a.run}] stage={stage} device={a.device} checkpoints={len(picks)} to generate={len(todo)} (suite {SUITE_VERSION}, {len(SUITE)} prompts)", flush=True)
+    print(f"[{a.run}] stage={stage}{' +tools' if tools else ''} device={a.device} checkpoints={len(picks)} to generate={len(todo)} (suite {SUITE_VERSION}, {len(SUITE)} prompts)", flush=True)
     if a.device == "cpu":
         import torch
 
@@ -213,9 +235,9 @@ def cmd_generate(a: argparse.Namespace) -> None:
         model, meta = load_model(run_dir / "checkpoints" / name, a.device)
         if meta.get("tokenizer_sha256") and meta["tokenizer_sha256"] != tok.sha256:
             print(f"  WARNING {name}: checkpoint tokenizer {meta['tokenizer_sha256'][:8]} != loaded {tok.sha256[:8]}", flush=True)
-        items = generate_suite(model, tok, stage, a.device, a.max_new)
+        items = generate_suite(model, tok, stage, a.device, a.max_new, tools=tools)
         del model
-        p = write_outputs(run_dir, a.run, tokens, name, stage, a.device, items, time.time() - t0)
+        p = write_outputs(run_dir, a.run, tokens, name, stage + (" +tools" if tools else ""), a.device, items, time.time() - t0)
         secs = time.time() - t0
         print(f"  {name:16s} {tokens / 1e9:6.2f}B  {secs:6.1f}s  {sum(i['n_new'] for i in items) / max(1e-6, secs):5.1f} tok/s  -> {p.name}", flush=True)
 

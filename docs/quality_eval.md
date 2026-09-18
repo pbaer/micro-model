@@ -20,7 +20,12 @@ Every prompt has two forms:
 - `chat` for SFT / reasoning / RL checkpoints: a user turn (`What is the capital of France?`) through the chat
   format, with a forced think span when the stage trains one. The answer span is what gets judged.
 
-The stage comes from `run.json` (`slm.utils.stage.run_stage`). Each prompt carries `expect`, a short description
+The stage comes from `run.json` (`slm.utils.stage.run_stage`). A checkpoint trained to call the Python tool
+(`slm.utils.stage.run_tools`: RL `tools: true`, or an SFT mixture of `*-tools` sets) answers through the tool loop
+(`slm.tools.loop.sample_with_tools`, one `PySession` per prompt, up to 8 calls), so its `<|python_call|>` gets a
+real result inserted; without that the model derails on an empty result and the score measures the harness, not
+the model. Tool spans render as `<<code=result>>` in the stored think text, and the record carries `tool_calls`,
+`tool_errors` and `termination`. Each prompt carries `expect`, a short description
 of what a good answer contains, and its own `max_new_tokens` (24 for a fact, 96 for code or prose). Decoding is
 greedy, so a checkpoint's outputs are reproducible. The three prompts the trainer has sampled since M1 (`rome`,
 `fib`, `cap_france`) are also averaged separately as `legacy3`.

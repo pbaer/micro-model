@@ -226,14 +226,14 @@ class Trainer:
         """Run the judged-quality prompt suite on the live model and write quality/outputs/<tokens>.jsonl
         (the same file `slm.eval.quality generate` writes from a saved checkpoint). A few seconds on the GPU."""
         from slm.eval.quality import generate_suite, write_outputs
-        from slm.utils.stage import run_stage
+        from slm.utils.stage import run_stage, run_tools
 
         t0 = time.time()
         self.model.eval()
         try:
-            stage = run_stage({"stage": "pretrain", "config": to_dict(self.cfg)})
-            with sdpa_context("decode"):
-                items = generate_suite(self.model, self.tok, stage, "cuda")
+            meta = {"stage": "pretrain", "config": to_dict(self.cfg)}
+            stage = run_stage(meta)
+            items = generate_suite(self.model, self.tok, stage, "cuda", tools=run_tools(meta))
             p = write_outputs(self.run_dir, self.cfg.run_name, self.counters["tokens"], checkpoint_name, stage, "cuda", items, time.time() - t0)
             torch.cuda.empty_cache()
             self.log.log("quality", tokens=self.counters["tokens"], update=self.counters["update"], msg=f"quality suite: {len(items)} prompts in {time.time() - t0:.1f}s -> {p.name}")
