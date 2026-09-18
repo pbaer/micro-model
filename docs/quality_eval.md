@@ -55,7 +55,7 @@ python -m slm.eval.quality generate --run m8_base_stable_336m --device cpu --thr
 python -m slm.eval.quality pack --run m8_base_stable_336m
 # 3. judge each packet (see below) -> a json list of {item_id, correctness, coherence, task, note}
 # 4. validate + store, rebuild summary.json (the portal reads it on the next page load)
-python -m slm.eval.quality ingest --run m8_base_stable_336m --scores scores_01.json scores_02.json --judge claude-sonnet-4.5
+python -m slm.eval.quality ingest --run m8_base_stable_336m --scores scores_01.json scores_02.json --judge claude-sonnet-5
 python -m slm.eval.quality status --run m8_base_stable_336m
 ```
 
