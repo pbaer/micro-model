@@ -245,6 +245,13 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
 - `lm_eval_wrapper.py`: an `lm_eval` `LM` subclass implementing `loglikelihood` (context/continuation
   split that respects BPE merges), `loglikelihood_rolling` and greedy `generate_until`; run from the
   CLI with `--tasks` and `--limit`.
+- `quality_suite.py` / `quality.py`: judged quality over training. A versioned 35-prompt suite (facts, prose,
+  Python, bash, arithmetic, pattern continuation, definitions, narrative, why-questions), each prompt in a
+  completion form for base checkpoints and a chat form for SFT/RL ones, run greedily on every snapshot (CPU
+  beside a training job, ~1 min per 336M checkpoint) and scored blind by an LLM judge on correctness,
+  coherence and task (1-5). `pack` writes shuffled packets with opaque item ids and the rubric text; `ingest`
+  validates the judge's JSON and rebuilds `quality/summary.json`, which the run page charts. The three prompts
+  the trainer has always sampled are averaged separately (`legacy3`). Protocol and rubric: `docs/quality_eval.md`.
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
 

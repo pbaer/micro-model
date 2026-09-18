@@ -14,7 +14,7 @@ TRAIN_FIELDS = ["loss", "lr", "grad_norm", "tok_s", "tok_s_ema", "step_ms", "fwd
 RL_FIELDS = ["reward_mean", "success_rate", "group_std_mean", "groups_no_signal", "adv_abs_mean", "len_mean", "len_correct", "len_wrong", "malformed_rate", "length_term_rate", "kl", "entropy", "clip_frac", "ratio_mean", "tool_calls_mean", "tool_error_rate", "tool_use_rate", "answer_from_tool_rate"]
 EVAL_RL_FIELDS = ["heldout_acc", "train_acc", "heldout_malformed", "heldout_len"]
 EVAL_FIELDS = ["val_loss", "val_ppl", "val_pt_loss"]
-EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint", "warn")
+EVENT_KINDS = ("start", "resume", "stop", "finish", "checkpoint", "warn", "quality")
 
 
 class JsonlTail:

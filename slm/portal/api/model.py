@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from slm.utils.stage import run_stage  # noqa: F401 (re-exported; the portal and the quality eval share it)
 from slm.portal.api.system import gpu_info
 
 router = APIRouter(prefix="/api/model")
@@ -106,16 +107,6 @@ def worker_stop(request: Request) -> dict:
     return {"worker": False}
 
 
-def run_stage(meta: dict) -> str:
-    """base (pretraining / context extension) | sft | reasoning (SFT with think spans) | rl, from run.json."""
-    cfg = meta.get("config") or {}
-    if meta.get("stage") == "grpo" or cfg.get("group_size"):
-        return "rl"
-    data = cfg.get("data") or {}
-    if isinstance(data, dict) and data.get("kind") == "sft":
-        mix = " ".join((data.get("mixture") or {}).keys())
-        return "reasoning" if "reasoning" in mix or "tools" in mix or "gsm8k" in mix else "sft"
-    return "base"
 
 
 @router.get("/checkpoints")

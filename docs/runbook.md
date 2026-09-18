@@ -111,6 +111,7 @@ python -u -m slm.eval.lm_eval_wrapper --checkpoint <ckpt> --tasks hellaswag,arc_
 python -u scripts/diagnose.py <ckpt> --root C:/slm-data/tokenized/v1 --source fineweb-edu --seq 2048 --batches 8 --mb 4
 python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 16 --out runs/<run>/needle.json   # --batch-tokens 16384 caps the generation batch
 python -u -m slm.eval.reasoning --checkpoint <ckpt> --n 100 --gsm8k 200 --out runs/<run>/reasoning_eval.json   # post-M5/M6
+python -u -m slm.eval.quality generate --run <run> --device cpu --threads 8   # judged-quality suite on every snapshot; then pack / judge / ingest (docs/quality_eval.md)
 ```
 
 Evaluations use the GPU; run them between training runs, or accept sharing the GPU for short jobs.

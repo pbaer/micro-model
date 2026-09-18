@@ -67,6 +67,21 @@ class RunReader:
             raise FileNotFoundError(p)
         return M.parse_samples(p.read_text(encoding="utf-8"))
 
+    def quality(self) -> dict | None:
+        """runs/<run>/quality/summary.json (judged-quality means per checkpoint), or None."""
+        p = self.dir / "quality" / "summary.json"
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def quality_detail(self, tokens: int) -> dict:
+        from slm.eval.quality import checkpoint_detail  # torch-free at import
+
+        return checkpoint_detail(self.dir, tokens)
+
 
 class RunIndex:
     def __init__(self, runs_root: Path) -> None:

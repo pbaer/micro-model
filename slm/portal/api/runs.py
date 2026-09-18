@@ -63,6 +63,22 @@ async def get_sample(request: Request, run: str, tokens: int) -> dict:
         raise HTTPException(404, "no such sample") from None
 
 
+@router.get("/{run}/quality")
+async def get_quality(request: Request, run: str) -> dict:
+    r = _reader(request, run)
+    q = await anyio.to_thread.run_sync(r.quality)
+    return q or {"run": run, "checkpoints": []}
+
+
+@router.get("/{run}/quality/{tokens}")
+async def get_quality_detail(request: Request, run: str, tokens: int) -> dict:
+    r = _reader(request, run)
+    try:
+        return await anyio.to_thread.run_sync(lambda: r.quality_detail(tokens))
+    except FileNotFoundError:
+        raise HTTPException(404, "no quality outputs for that checkpoint") from None
+
+
 @router.get("/{run}/report")
 async def get_report(request: Request, run: str):
     r = _reader(request, run)

@@ -17,6 +17,9 @@ export function RunDetail({ run }) {
   const [series, setSeries] = useState(null);
   const [ckpts, setCkpts] = useState([]);
   const [samples, setSamples] = useState([]);
+  const [quality, setQuality] = useState(null);
+  const [qualityTok, setQualityTok] = useState(null);
+  const [qualityDetail, setQualityDetail] = useState(null);
   const [sample, setSample] = useState(null);
   const [sampleTok, setSampleTok] = useState(null);
   const [events, setEvents] = useState([]);
@@ -31,8 +34,14 @@ export function RunDetail({ run }) {
     api(`/api/runs/${encodeURIComponent(run)}/checkpoints`).then(setCkpts).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/events`).then(setEvents).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/samples`).then((s) => { setSamples(s); if (s.length && sampleTok == null) setSampleTok(s[s.length - 1].tokens); }).catch(() => {});
+    api(`/api/runs/${encodeURIComponent(run)}/quality`).then((q) => { setQuality(q); const c = q.checkpoints || []; if (c.length && qualityTok == null) setQualityTok(c[c.length - 1].tokens); }).catch(() => {});
   };
   useEffect(reload, [run]);
+  useEffect(() => {
+    if (qualityTok == null) return;
+    api(`/api/runs/${encodeURIComponent(run)}/quality/${qualityTok}`).then(setQualityDetail).catch(() => setQualityDetail(null));
+  }, [run, qualityTok, quality]);
+
   useEffect(() => {
     if (sampleTok == null) return;
     api(`/api/runs/${encodeURIComponent(run)}/samples/${sampleTok}`).then(setSample).catch(() => setSample(null));
@@ -75,6 +84,9 @@ export function RunDetail({ run }) {
   if (!info || !series || !xs) return html`<div>loading ${run}…</div>`;
   const s = info.summary, t = series.train, e = series.eval;
   const tokensX = xs.tx, evalX = xs.ex;
+  const qc = (quality && quality.checkpoints || []).filter((c) => c.overall != null);
+  const qualityX = qc.map((c) => xmode === "tokens" ? c.tokens : xmode === "update" ? nearestUpdate(t, c.tokens) : nearestTime(t, c.tokens));
+  const QPAL = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#4d7c0f", "#be185d", "#78716c"];
   const eta = s.status === "running" ? s.eta_s : null;
   return html`<div>
     <h1>${run} <span class=${"status " + s.status}>${s.status}</span> ${live && s.status === "running" ? html`<span class="muted" style="font-size:12px">● live</span>` : ""}</h1>
@@ -102,7 +114,7 @@ export function RunDetail({ run }) {
       <${Tile} k="step time" v=${fmtNum(s.step_ms, 0) + " ms"} s=${`fwd ${fmtNum(s.fwd_ms, 0)} · bwd ${fmtNum(s.bwd_ms, 0)} · opt ${fmtNum(s.opt_ms, 0)} · data ${fmtNum(s.data_ms, 0)}`} />
     </div>
     <div class="row" style="margin:8px 0">
-      ${["charts", "milestones", "samples", "checkpoints", "events", "config"].map((x) => html`<button class=${tab === x ? "active" : ""} onClick=${() => setTab(x)}>${x}</button>`)}
+      ${["charts", "milestones", "samples", "quality", "checkpoints", "events", "config"].map((x) => html`<button class=${tab === x ? "active" : ""} onClick=${() => setTab(x)}>${x}</button>`)}
       ${tab === "charts" && html`<span class="muted" style="margin-left:14px">x:</span>
         ${["tokens", "update", "time"].map((x) => html`<button class=${xmode === x ? "active" : ""} onClick=${() => setXmode(x)}>${x}</button>`)}
         <button class=${logy ? "active" : ""} onClick=${() => setLogy(!logy)}>log y</button>`}
@@ -111,6 +123,11 @@ export function RunDetail({ run }) {
       <${Chart} title=${series.is_rl ? "policy objective (≈0 by construction; advantages are zero-mean per group)" : "train / val loss"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
       ${!series.is_rl && html`<${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />`}
       ${series.needle_keys && series.needle_keys.length > 0 && html`<${Chart} title="needle retrieval accuracy by context length (solid = mean over depths, dashed = minimum over depths)" xmode=${xmode} ymin=${0} series=${(() => { const means = series.needle_keys.filter((k) => !k.startsWith("needle_min_")); const palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"]; return means.map((k, i) => ({ label: k.replace("needle_", "") + " mean", x: evalX, y: e[k], points: true, width: 2, color: palette[i % palette.length] })).concat(means.map((k, i) => ({ label: k.replace("needle_", "") + " min", x: evalX, y: e["needle_min_" + k.replace("needle_", "")], points: true, width: 1.5, dash: true, color: palette[i % palette.length] }))); })()} />`}
+      ${qc.length > 0 && html`<${Chart} title=${`judged quality, 1-5 (${quality.n_prompts}-prompt suite ${quality.suite}, judge ${(quality.judges || []).join("/")}; grey = the 3 prompts sampled since M1)`} xmode=${xmode} ymin=${1} series=${[
+        { label: "overall", x: qualityX, y: qc.map((c) => c.overall), points: true, width: 2.5, color: "#111827" },
+        ...quality.rubrics.map((r, i) => ({ label: r, x: qualityX, y: qc.map((c) => c[r]), points: true, width: 1.5, color: QPAL[i] })),
+        { label: "legacy 3", x: qualityX, y: qc.map((c) => c.legacy3), points: true, width: 1, dash: true, color: "#9ca3af" }]} />
+      <${Chart} title="judged quality by category (overall, 1-5)" xmode=${xmode} ymin=${1} series=${quality.categories.map((cat, i) => ({ label: cat, x: qualityX, y: qc.map((c) => (c.categories[cat] || {}).overall), points: true, width: 1.5, color: QPAL[i % QPAL.length] }))} />`}
       ${!series.is_rl && html`<${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />`}
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
@@ -138,6 +155,21 @@ export function RunDetail({ run }) {
           ${it.greedy != null && html`<div class="muted">greedy</div><pre>${it.greedy}</pre>`}
           <div class="muted">sampled</div><pre>${it.sampled}</pre></div>`)}</div>`}
     </div>`}
+    ${tab === "quality" && html`<div>
+      ${!(quality && quality.checkpoints && quality.checkpoints.length) ? html`<div class="empty-note">no judged-quality outputs for this run yet (python -m slm.eval.quality generate --run ${run}; see docs/quality_eval.md)</div>` : html`
+        <div class="row" style="margin-bottom:8px"><span class="muted">checkpoint:</span>
+          <select value=${qualityTok} onChange=${(ev) => setQualityTok(Number(ev.target.value))}>${quality.checkpoints.map((c) => html`<option value=${c.tokens}>${fmtTok(c.tokens)} tokens · ${c.checkpoint}${c.overall == null ? " (unjudged)" : ` · ${c.overall.toFixed(2)}`}</option>`)}</select>
+          ${quality.checkpoints.length > 1 && html`<input type="range" min="0" max=${quality.checkpoints.length - 1} value=${Math.max(0, quality.checkpoints.findIndex((c) => c.tokens === qualityTok))} onInput=${(ev) => setQualityTok(quality.checkpoints[Number(ev.target.value)].tokens)} style="width:300px" />`}
+          <span class="muted">suite ${quality.suite} · rubric ${quality.rubric} · judge ${(quality.judges || []).join(", ") || "-"}</span></div>
+        ${(() => { const c = quality.checkpoints.find((x) => x.tokens === qualityTok); return c && c.overall != null ? html`<table style="margin-bottom:10px"><tr><th>category</th><th>n</th><th>overall</th>${quality.rubrics.map((r) => html`<th>${r}</th>`)}</tr>
+          <tr><td><b>all</b></td><td>${c.n_scored}/${c.n_items}</td><td><b>${fmtNum(c.overall, 2)}</b></td>${quality.rubrics.map((r) => html`<td>${fmtNum(c[r], 2)}</td>`)}</tr>
+          ${quality.categories.map((cat) => { const k = c.categories[cat] || {}; return html`<tr><td>${cat}</td><td>${k.n || 0}</td><td>${fmtNum(k.overall, 2)}</td>${quality.rubrics.map((r) => html`<td>${fmtNum(k[r], 2)}</td>`)}</tr>`; })}</table>` : html`<div class="muted" style="margin-bottom:8px">outputs generated, not judged yet</div>`; })()}
+        ${!qualityDetail ? html`<div class="empty-note">…</div>` : html`<div class="muted" style="font-size:12px;margin-bottom:6px">${qualityDetail.header.checkpoint} · ${qualityDetail.header.stage} · generated ${qualityDetail.header.generated_at} on ${qualityDetail.header.device} in ${qualityDetail.header.seconds}s</div>
+          <table><tr><th>prompt</th><th>category</th><th class="l">output (greedy)</th><th>correct</th><th>coherent</th><th>task</th><th class="l">judge note</th></tr>
+          ${qualityDetail.items.map((it) => html`<tr><td class="l" title=${it.prompt}><b>${it.id}</b><div class="muted" style="white-space:pre-wrap;max-width:260px">${it.prompt}</div></td><td>${it.category}</td>
+            <td class="l"><pre style="margin:0;max-height:160px;max-width:520px;overflow:auto;white-space:pre-wrap">${it.think ? "[think] " + it.think + "\n" : ""}${it.output}</pre></td>
+            ${it.scores ? html`<td class=${scoreCls(it.scores.correctness)}>${it.scores.correctness}</td><td class=${scoreCls(it.scores.coherence)}>${it.scores.coherence}</td><td class=${scoreCls(it.scores.task)}>${it.scores.task}</td><td class="l">${it.note || ""}</td>` : html`<td colspan="4" class="l muted">not judged</td>`}</tr>`)}</table>`}`}
+    </div>`}
     ${tab === "checkpoints" && html`<table><tr><th>file</th><th>kind</th><th>tokens</th><th>val loss</th><th>size</th><th>modified</th></tr>
       ${ckpts.map((c) => html`<tr><td>${c.name}</td><td>${c.kind}</td><td>${fmtTok(c.tokens)}</td><td>${fmtNum(c.val_loss, 4)}</td><td>${fmtBytes(c.bytes)}</td><td>${fmtTime(c.mtime)}</td></tr>`)}
       ${ckpts.length === 0 && html`<tr><td colspan="6" class="l">no checkpoints yet</td></tr>`}</table>`}
@@ -146,6 +178,14 @@ export function RunDetail({ run }) {
     ${tab === "config" && html`<div><h2>train config</h2><pre>${JSON.stringify(info.config, null, 1)}</pre><h2>model config</h2><pre>${JSON.stringify(info.model_config, null, 1)}</pre><h2>meta</h2><pre>${JSON.stringify(info.meta, null, 1)}</pre></div>`}
   </div>`;
 }
+
+function nearestTime(t, tokens) {
+  let best = 0, bd = Infinity;
+  for (let i = 0; i < t.tokens.length; i++) { const d = Math.abs(t.tokens[i] - tokens); if (d < bd) { bd = d; best = t.time[i] - (t.time[0] || t.time[i]); } }
+  return best;
+}
+
+function scoreCls(v) { return v >= 4 ? "score-good" : v <= 2 ? "score-bad" : "score-mid"; }
 
 function nearestUpdate(t, tokens) {
   let best = t.update[0], bd = Infinity;

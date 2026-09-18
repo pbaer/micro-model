@@ -222,6 +222,27 @@ class Trainer:
         (self.run_dir / "samples" / f"{self.counters['tokens']:012d}.txt").write_text(text, encoding="utf-8")
         (self.run_dir / "samples" / "latest.txt").write_text(text, encoding="utf-8")
 
+    def quality_outputs(self, checkpoint_name: str) -> None:
+        """Run the judged-quality prompt suite on the live model and write quality/outputs/<tokens>.jsonl
+        (the same file `slm.eval.quality generate` writes from a saved checkpoint). A few seconds on the GPU."""
+        from slm.eval.quality import generate_suite, write_outputs
+        from slm.utils.stage import run_stage
+
+        t0 = time.time()
+        self.model.eval()
+        try:
+            stage = run_stage({"stage": "pretrain", "config": to_dict(self.cfg)})
+            with sdpa_context("decode"):
+                items = generate_suite(self.model, self.tok, stage, "cuda")
+            p = write_outputs(self.run_dir, self.cfg.run_name, self.counters["tokens"], checkpoint_name, stage, "cuda", items, time.time() - t0)
+            torch.cuda.empty_cache()
+            self.log.log("quality", tokens=self.counters["tokens"], update=self.counters["update"], msg=f"quality suite: {len(items)} prompts in {time.time() - t0:.1f}s -> {p.name}")
+        except Exception as e:  # noqa: BLE001 - an eval must never take the training run down
+            self.log.log("warn", tokens=self.counters["tokens"], msg=f"quality suite failed: {e!r}")
+            console(f"WARNING quality suite failed: {e!r}")
+        finally:
+            self.model.train()
+
     # ------------------------------------------------------------------ train
     def train(self) -> None:
         cfg, c = self.cfg, self.counters
@@ -343,6 +364,8 @@ class Trainer:
                     if cfg.ckpt.snapshot_at_milestones:
                         ckpt.save_snapshot(self.ckpt_dir / ckpt.snapshot_name(c["tokens"]), self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": c["last_val"], "tokenizer_sha256": self.tok.sha256})
                         ckpt.update_index(self.ckpt_dir, ckpt.snapshot_name(c["tokens"]), kind="snapshot", tokens=c["tokens"], update=c["update"], val_loss=c["last_val"] if c["last_val"] == c["last_val"] else None)
+                        if cfg.eval.quality_suite:
+                            self.quality_outputs(ckpt.snapshot_name(c["tokens"]))
                     self._save_latest()
                     t_last_ckpt = time.time()
                     write_report(self.run_dir, "running")

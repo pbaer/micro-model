@@ -190,6 +190,10 @@ loss so a regression would be visible.
 - `slm.eval.diagnostics`: per-layer residual norms, dead SwiGLU units, attention entropy and BOS-sink
   mass, head/layer ablations, weight spectra (writes `diagnostics.html` next to the checkpoint).
 - Fixed-prompt samples (greedy and sampled) during every run.
+- `slm.eval.quality`: a 35-prompt suite (facts, prose, Python, bash, arithmetic, patterns, definitions, narrative,
+  why-questions) run greedily on every checkpoint and scored blind by an LLM judge on correctness, coherence and
+  task (1-5), charted per checkpoint in the command center; the steady-improvement signal validation loss
+  cannot give. Protocol: `docs/quality_eval.md`.
 
 ## 9. Command center
 
@@ -247,7 +251,8 @@ slm/
   train/               config.py, schedule.py, pretrain.py (Trainer: pretrain + SFT), rl.py (RlTrainer: GRPO)
   rl/                  tasks.py (generators, disjoint splits), rewards.py (verifier), advantages.py, objectives.py,
                        rollout.py (groups, greedy eval), synth.py (correct-by-construction traces)
-  eval/                generation.py, sampling.py, diagnostics.py, reasoning.py, long_context.py, lm_eval_wrapper.py
+  eval/                generation.py, sampling.py, diagnostics.py, reasoning.py, long_context.py, lm_eval_wrapper.py,
+                       quality_suite.py + quality.py (judged-quality suite: generate / pack / ingest / summary)
   utils/               checkpoint.py, logging.py, metrics.py, report.py, sdpa.py, profiling.py, gpu.py
   portal/              app.py, settings.py, api/ (runs, data, tokenizer, model, arch, system), services/
                        (runs, datasets, tokenizer, hparams, worker, harness), static/ (Preact SPA)

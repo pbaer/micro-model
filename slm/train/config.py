@@ -92,6 +92,8 @@ class EvalConfig:
     needle_source: str = "fineweb-edu-b"  # tokenized source whose val split is the haystack ("filler" = repetitive control)
     needle_seed: int = 0  # fixed, so every eval scores the SAME haystacks and the curve tracks the model, not the
     # draw; -1 redraws each eval from the update counter (the old behaviour, which added draw-to-draw variance).
+    quality_suite: bool = False  # at every milestone snapshot, run the judged-quality prompt suite (slm.eval.quality) on the
+    # GPU and write runs/<run>/quality/outputs/<tokens>.jsonl, so only the judging step remains (docs/quality_eval.md).
 
 
 @dataclass

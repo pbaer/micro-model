@@ -51,6 +51,7 @@ eval:
   needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
   needle_n: 16
   needle_batch_tokens: 8192
+  quality_suite: true       # judged-quality prompt suite at every milestone snapshot (docs/quality_eval.md)
   needle_source: fineweb-edu-b
 milestone_tokens: 250000000
 notes: "Base checkpoint = final.pt of this run (natively 4K). Gate for any 8K step: <= 5% loss on short-context evals and needle min-depth >= 80% inside the window."
