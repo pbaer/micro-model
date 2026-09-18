@@ -262,3 +262,38 @@ Factual-recall probe (`slm.eval.facts`, 194 items, greedy, whole-word match):
 - Eager mode at 9.5K tok/s vs compiled 58K: `torch.compile` via `triton-windows` is mandatory.
 - cuDNN attention during generation: samples stalled a training run; decoding now uses the efficient
   backend.
+
+## 8. Judged quality (LLM-scored prompt suite; `docs/quality_eval.md`)
+
+35 prompts (facts, prose, Python, bash, arithmetic, pattern continuation, definitions, narrative, why-questions),
+greedy outputs from every milestone snapshot generated on CPU beside the live run, scored blind by Claude Sonnet
+on correctness / coherence / task (1-5 each; overall = mean). Suite v1, rubric v1. Numbers are means over 35
+items, so a single prompt moves the overall by about 0.03 and a category (2-8 prompts) by 0.1-0.5: read the
+trend, not the last digit.
+
+### Second base, phase 1 (`m8_base_stable_336m`, constant LR, 2K rows) — 2026-09-18, through 3.5B tokens
+
+| tokens | overall | correctness | coherence | task | facts | pattern | python | prose | arithmetic | bash |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 0.25B | 1.11 | 1.00 | 1.17 | 1.17 | 1.17 | 1.25 | 1.17 | 1.17 | 1.00 | 1.00 |
+| 0.50B | 1.39 | 1.11 | 1.63 | 1.43 | 1.38 | 1.42 | 1.39 | 1.42 | 1.33 | 1.33 |
+| 1.00B | 1.79 | 1.29 | 1.97 | 2.11 | 2.04 | 1.67 | 1.83 | 1.67 | 1.67 | 1.33 |
+| 1.50B | 2.07 | 1.77 | 2.00 | 2.43 | 2.67 | 2.25 | 2.00 | 2.00 | 1.42 | 1.33 |
+| 2.00B | 2.05 | 1.74 | 2.17 | 2.23 | 2.04 | 2.92 | 2.17 | 2.00 | 1.42 | 1.33 |
+| 2.50B | 2.02 | 1.86 | 2.00 | 2.20 | 2.67 | 1.75 | 2.78 | 1.75 | 1.42 | 1.44 |
+| 3.00B | 2.22 | 2.09 | 2.14 | 2.43 | 2.62 | 2.17 | 2.50 | 2.08 | 1.33 | 1.22 |
+| 3.25B | 2.33 | 2.11 | 2.31 | 2.57 | 2.58 | 3.33 | 2.94 | 1.83 | 1.67 | 1.33 |
+| 3.50B | 2.31 | 2.03 | 2.37 | 2.51 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
+
+What the judge sees at 3.5B (all 14 checkpoints judged, 490 items): the right first sentence arrives long before
+the model learns to stop. `The capital of France is` → "Paris, the capital of France is Paris. The capital of
+France is Paris…" scores 5 / 2 / 4. `def fibonacci(n):` is still syntactically broken (1 / 2 / 1). The days of
+the week come out in order and then repeat ("…Sunday, and Sunday", 3 / 2 / 3). `arithmetic` and `bash` have not
+moved off the floor in 3.5B tokens: a base model at this size does not answer "What is 17 + 25?" from a Q/A
+prompt (it restates the equation), and bash prompts drift into prose or number lists. Those two are the headroom
+the SFT / tool stages are for, and this table is the baseline they will be compared against.
+
+Reading the curve: overall rises 1.11 → 2.31, with a plateau at 1.75-2.5B (2.05-2.10) and a second rise after;
+`correctness` is the slowest rubric (1.0 → 2.0) and `task` the fastest (1.2 → 2.5), i.e. the model learns what
+kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
+40-item packet, zero measurable training-throughput impact.
