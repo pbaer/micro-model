@@ -263,3 +263,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   tracks the model rather than the draw, and each eval record now carries `retrieval_by_depth` plus
   `retrieval_worst` with failure examples. Both keys deliberately avoid the `needle_` prefix, which is what
   selects the chart series.
+
+## 2026-09-18
+- 00:30 judged-quality eval (Peter: score our periodic sample prompts with a cheaper judge model on a few rubrics,
+  broaden the prompt set to what a model this size should eventually do well, run it retroactively on every
+  stage with CPU inference, chart it). `slm/eval/quality_suite.py` (35 prompts, 9 categories, completion + chat
+  forms, expectations, rubric text) and `slm/eval/quality.py` (generate / pack / ingest / summary / status).
+  CPU generation beside the live run: 34 tok/s for 336M, 53 s per checkpoint, training throughput unchanged
+  (29.9K tok/s). Judge = a Claude subagent on Sonnet, blind to checkpoint identity (shuffled packets, opaque
+  ids), scores validated on ingest. Run page: two charts + a `quality` tab. Phase 2 config generates the suite
+  on the GPU at every milestone (`eval.quality_suite: true`). Protocol: docs/quality_eval.md.
