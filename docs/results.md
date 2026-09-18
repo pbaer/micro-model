@@ -312,6 +312,7 @@ stage's final checkpoint, which is what the next stage started from.
 | reasoning SFT (`m5_reasoning_149m`) | 3 | 2.45 → 2.29 | 2.45 @ 15M | 1.89 | 2.63 | 2.34 | 2.92 | 1.94 | 2.33 | 1.83 |
 | tool reasoning SFT (`m5_reasoning_tools_149m`) | 3 | 2.73 → 2.49 | 2.73 @ 5M | 2.23 | 2.60 | 2.63 | 3.25 | 1.78 | 1.33 | 2.17 |
 | 8K retrieval curriculum (`m7_ctx8k_retrieval_149m`) | 6 | 2.27 → 2.37 | 2.37 @ 600M | 2.26 | 2.29 | 2.57 | 1.58 | 2.56 | 2.92 | 2.83 |
+| GRPO on GSM8K with tools (`m6_rl_gsm_tools_149m`) | 9 | 2.47 → 2.54 | 2.57 @ step 200 | 2.26 | 2.69 | 2.69 | 4.08 | 2.06 | 1.33 | 1.83 |
 
 What the chain says, and what it changes for the 336M post-training:
 
@@ -325,6 +326,9 @@ What the chain says, and what it changes for the 336M post-training:
   variant regresses less and lifts `arithmetic` further (3.25) because the calls give real numbers. Both were
   trained before the 50/50 answer-style fix; the 336M chain uses the corrected sets, and this suite will show
   whether that closes the gap.
+- **RL moves exactly one category.** From the tool-SFT final (2.49, arithmetic 3.25) GRPO takes `arithmetic`
+  to 4.08 and leaves everything else within noise (215 of 315 RL items were byte-identical to another step's
+  output, so most of the suite never changed under RL). Overall 2.49 → 2.54: the reward did what it rewarded.
 - **Context work was cheap on this axis**: the 8K phase ends 0.09 below the 2K stable end, the retrieval
   curriculum ends 0.09 above where it started. Consistent with the ≤5% rule.
 - **Per token, the 336M base is ahead from ~1B on**: 2.31 at 3.5B vs the 149M chain's 2.2 at the same
