@@ -90,6 +90,8 @@ class EvalConfig:
     # Bigger is faster but reserves more VRAM, and on WDDM the reservation (not the peak) is what pushes the
     # device over its limit; the trainer calls empty_cache() after the needle run to give it back.
     needle_source: str = "fineweb-edu-b"  # tokenized source whose val split is the haystack ("filler" = repetitive control)
+    needle_seed: int = 0  # fixed, so every eval scores the SAME haystacks and the curve tracks the model, not the
+    # draw; -1 redraws each eval from the update counter (the old behaviour, which added draw-to-draw variance).
 
 
 @dataclass

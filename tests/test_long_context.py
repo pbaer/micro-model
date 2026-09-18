@@ -103,6 +103,26 @@ def test_trainer_tracks_needle(tmp_path):
     assert "c_needle" in (cfg.run_dir / "report.html").read_text(encoding="utf-8")
 
 
+def test_per_depth_detail_stays_out_of_the_needle_charts():
+    """Per-cell detail must not use a "needle_" key: those drive the chart series, and one line per depth
+    would bury the two lines that matter."""
+    import time
+
+    from slm.utils import metrics as M
+
+    now = time.time()
+    rec = {"kind": "eval", "time": now, "tokens": 100, "val_loss": 3.0, "val_ppl": 20.0, "needle_2048": 0.875,
+           "needle_min_2048": 0.375, "needle_effective": 1024,
+           "retrieval_by_depth": {"2048": {"0.0": 0.375, "0.5": 1.0, "1.0": 1.0}},
+           "retrieval_worst": {"length": 2048, "depth": 0.0, "accuracy": 0.375, "examples": ["123456 -> 654321"]}}
+    recs = [{"kind": "train", "time": now, "tokens": 100, "update": 1, "loss": 3.0}, rec]
+    ser = M.series(recs)
+    assert ser["needle_keys"] == ["needle_2048", "needle_min_2048"], ser["needle_keys"]
+    assert "retrieval_by_depth" not in ser["eval"] and ser["eval"]["needle_2048"] == [0.875]
+    summ = M.summary(recs, {"config": {"schedule": {"total_tokens": 1000}}})
+    assert summ["needle"]["2048"] == 0.875 and summ["needle"]["effective"] == 1024
+
+
 def test_facts_probe_items_and_matching():
     from slm.eval.facts import _hit, items
 

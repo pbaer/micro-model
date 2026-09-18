@@ -188,7 +188,8 @@ class Trainer:
 
             e = self.cfg.eval
             lengths = [L for L in e.needle_lengths if L <= self.mcfg.max_seq_len]
-            res = run_needle(self.model, self.tok, lengths, e.needle_depths, e.needle_n, seed=self.counters["update"], haystack=self._needle_haystack,
+            seed = self.counters["update"] if e.needle_seed < 0 else e.needle_seed
+            res = run_needle(self.model, self.tok, lengths, e.needle_depths, e.needle_n, seed=seed, haystack=self._needle_haystack,
                              max_batch_tokens=e.needle_batch_tokens)
             # The generation KV cache needs large contiguous segments that the training blocks cannot supply, so
             # the allocator reserves new ones and keeps them. On WDDM that extra reservation is enough to push the
@@ -200,6 +201,14 @@ class Trainer:
                 self.last_needle[f"needle_{L}"] = sm["mean"]
                 self.last_needle[f"needle_min_{L}"] = sm["min"]
             self.last_needle["needle_effective"] = res["effective_context"]
+            # Per-cell detail under keys that do NOT start with "needle_", which is what drives the charts: a dip in
+            # the worst-depth line is otherwise indistinguishable between "one depth broke" and "everything slipped".
+            cells = [r for r in res["results"] if "accuracy" in r]
+            self.last_needle["retrieval_by_depth"] = {str(L): {str(r["depth"]): r["accuracy"] for r in cells if r["length"] == L} for L in sorted({c["length"] for c in cells})}
+            worst = min(cells, key=lambda r: r["accuracy"], default=None)
+            if worst is not None and worst["accuracy"] < 1.0:
+                self.last_needle["retrieval_worst"] = {"length": worst["length"], "depth": worst["depth"], "accuracy": worst["accuracy"],
+                                                       "examples": [f"{f['gold']} -> {f['out']}" for f in worst.get("failures", [])]}
         self.model.train()
         return loss, math.exp(min(loss, 20))
 

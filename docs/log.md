@@ -255,3 +255,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   `peak/reserved`). Restarted at 1.92B tokens, 22 s downtime, back to 30,035 tok/s at 13.9 GiB reserved.
   Verified at the 2.00B eval: 30,035 tok/s before, 51 s eval, 30,009 tok/s after, reserved 13.9 -> 14.0 GiB
   (the residue is 0.1 GiB, not the ~1 GiB that was being kept). Needle 99% at both 1024 and 2048.
+- 22:10 needle worst-depth at 2048 dipped to 37.5% at 3.30B tokens (mean 87.5%), recovered to 87.5%/95% at
+  3.40B while val loss improved monotonically through it (2.7536 -> 2.7477 -> 2.7389). Not a model problem:
+  2048 is the trained window edge (1024 has been a flat 100% throughout) and each eval drew a *different*
+  random haystack, so cell-to-cell variance rode on top of the length effect. Two changes, which land at the
+  phase 1 -> phase 2 handover with no restart: `eval.needle_seed` (default 0) fixes the haystacks so the curve
+  tracks the model rather than the draw, and each eval record now carries `retrieval_by_depth` plus
+  `retrieval_worst` with failure examples. Both keys deliberately avoid the `needle_` prefix, which is what
+  selects the chart series.
