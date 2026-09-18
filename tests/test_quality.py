@@ -143,9 +143,9 @@ def test_generate_suite_on_tiny_model_both_modes(tmp_path):
     assert len(base) == len(SUITE) and all(i["mode"] == "completion" and 0 < i["n_new"] <= 8 and "output" in i for i in base)
     assert base[0]["prompt"] == SUITE[0]["completion"] and "think" not in base[0]
     sft = Q.generate_suite(model, tok, "sft", "cpu", max_new_cap=8)
-    assert all(i["mode"] == "chat" and i["prompt"] == p["chat"] and "malformed" in i for i, p in zip(sft, SUITE))
+    assert all(i["mode"] == "chat" and i["prompt"] == p["chat"] and "malformed" in i and i["max_new"] == 8 + 32 for i, p in zip(sft, SUITE))
     rl = Q.generate_suite(model, tok, "rl", "cpu", max_new_cap=8)
-    assert all(i["n_new"] <= 8 + 64 for i in rl)  # room for the think span
+    assert all(i["n_new"] <= 8 + 32 + 64 and i["max_new"] == 8 + 32 + 64 for i in rl)  # preamble + think span
     p = Q.write_outputs(tmp_path, "tiny", 123, "snap_123.pt", "base", "cpu", base, 0.5)
     h, items = Q.read_outputs(p)
     assert h["tokens"] == 123 and h["n_items"] == len(SUITE) and len(items) == len(SUITE)

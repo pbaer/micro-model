@@ -158,6 +158,8 @@ def _generate_suite(torch, model, tok, stage: str, device: str, max_new_cap, for
             ids = [tok.bos_id, *tok.encode(p["completion"])]
             shown = p["completion"]
         max_new = min(p["max_new_tokens"], max_new_cap) if max_new_cap else p["max_new_tokens"]
+        if chat:
+            max_new += 32  # an assistant answer carries a preamble and code fences the completion form does not
         if chat and think_required:
             max_new += 64  # room for a think span before the answer
         x = torch.tensor([ids], device=device)
