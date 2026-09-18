@@ -225,6 +225,13 @@ def test_data_page(server, browser):
     body = p.page.inner_text("main")
     assert "<|bos|>/<|eos|> mark boundaries" in body
     assert p.page.locator(".chip.boundary").count() >= 1
+    # the text/tokens/ids toggle applies to the window view too, not just to single documents
+    p.page.get_by_role("button", name="text", exact=True).click()
+    p.settle(400)
+    assert p.page.locator("main pre").count() >= 1 and p.page.locator(".chip").count() == 0, "window text view must decode, not chip"
+    p.page.get_by_role("button", name="tokens", exact=True).click()
+    p.settle(400)
+    assert p.page.locator(".chip").count() > 3
     p.cycle_selects()
     assert not p.errors, p.errors
 

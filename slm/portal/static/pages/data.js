@@ -158,8 +158,10 @@ function Documents() {
             <span class="muted">length</span><select value=${winLen} onChange=${(e) => setWinLen(Number(e.target.value))}>${[256, 1024, 2048, 4096, 8192].map((n) => html`<option value=${n}>${n}</option>`)}</select>
             <button onClick=${() => setWinStart(Math.max(0, winStart - winLen))}>‹ prev</button><button onClick=${() => setWinStart(winStart + winLen)}>next ›</button>
             ${win && html`<span class="muted">${win.doc_starts.length} document boundaries (red) · shard has ${fmtTok(win.shard_tokens)} tokens</span>`}</div>
-          ${win ? html`<${TokenChips} pieces=${win.pieces} boundaries=${win.doc_starts} showIds=${mode === "ids"} />` : html`<div class="empty-note">…</div>`}
-          <div class="legend" style="margin-top:6px">This is exactly what one training row of this length looks like: a contiguous slice of the token stream, which may start mid-document; ${"<|bos|>"}/${"<|eos|>"} mark boundaries.</div></div>`}
+          ${win ? (mode === "text"
+              ? html`<pre class="grow">${win.pieces.map((p) => (p.special ? html`<b class="boundary-mark">${p.piece}</b>` : p.piece))}</pre>`
+              : html`<${TokenChips} pieces=${win.pieces} boundaries=${win.doc_starts} showIds=${mode === "ids"} />`) : html`<div class="empty-note">…</div>`}
+          <div class="legend" style="margin-top:6px">This is exactly what one training row of this length looks like: a contiguous slice of the token stream, which may start mid-document; ${"<|bos|>"}/${"<|eos|>"} mark boundaries (red in both views).</div></div>`}
         ${view === "stats" && (stats ? html`<div>
           <div class="tiles">
             <div class="tile"><div class="k">docs</div><div class="v">${fmtInt(stats.docs)}</div></div>
