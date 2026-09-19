@@ -326,6 +326,33 @@ Reading the curve: overall (ex-bash) rises 1.12 → 3.07 at 7.5B, holding above 
 kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
 40-item packet, zero measurable training-throughput impact.
 
+### Second base, phase 1: needle sweep at n=64 (`slm.eval.needle_sweep`, 2026-09-19)
+
+Every one of the 30 milestone snapshots re-measured with one fixed haystack draw, 64 samples per cell, five depths,
+real-text haystack (48 s per snapshot on the free GPU). Selected rows (mean / worst depth):
+
+| tokens | 1024 | 2048 | 4096 (untrained) | effective |
+|---|---|---|---|---|
+| 0.50B | 98% / 91% | 79% / 14% | 25% / 0% | 1024 |
+| 1.00B | 99% / 98% | 96% / 81% | 44% / 0% | 2048 |
+| 2.00B | 99% / 98% | 98% / 92% | 24% / 0% | 2048 |
+| 2.25B | 99% / 97% | 83% / 28% | 20% / 0% | 1024 |
+| 3.00B | 100% / 98% | 98% / 95% | 22% / 0% | 2048 |
+| 4.00B | 100% / 98% | 91% / 66% | 20% / 0% | 1024 |
+| 4.50B | 100% / 100% | 100% / 100% | 28% / 0% | 2048 |
+| 6.00B | 100% / 98% | 98% / 91% | 21% / 0% | 2048 |
+| 6.75B | 97% / 94% | 76% / 38% | 19% / 0% | 1024 |
+| 7.00B | 100% / 100% | 95% / 86% | 27% / 0% | 2048 |
+| 7.25B | 100% / 98% | 89% / 58% | 21% / 0% | 1024 |
+| 7.50B | 99% / 98% | 96% / 83% | 26% / 0% | 2048 |
+
+1K is solid from 500M on. 2K, the trained window edge, reaches 96% at 1B and then fluctuates from snapshot to
+snapshot: 83% / 28% at 2.25B, 76% / 38% at 6.75B, 89% / 58% at 7.25B, 96% / 83% at the final. With 64 samples per
+cell those dips are not draw noise (the in-run n=16 tracker's dips at 3.3B were: the sweep reads 92% / 86% there);
+retrieval at the last trained position moves with the constant-LR weight noise the way the judged scores do. 4K,
+never trained, sits at 20-44% mean with a 0% worst depth throughout (RoPE extrapolation retrieves shallow needles
+only); this is the baseline phase 2's 4K training starts from.
+
 ### The 149M chain, stage by stage (retroactive, 2026-09-18; overall excludes bash from 2026-09-19)
 
 Every stage's snapshots were generated on CPU and judged the same way (M3a every third snapshot). "last" is the
