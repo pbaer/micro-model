@@ -119,6 +119,11 @@ class Sandbox:
     out: list[str] = field(default_factory=list)
     out_len: int = 0
     t0: float = field(default_factory=time.time)
+    functions: dict = field(default_factory=dict)  # declared functions (name -> callable); see slm/tools/functions.py
+
+    def __post_init__(self) -> None:
+        for name in self.functions:
+            _check_function_name(name)
 
     # ----------------------------------------------------------------- guards
     def tick(self, n: int = 1) -> None:
@@ -174,6 +179,7 @@ class Sandbox:
             "bool": bool, "divmod": divmod, "sorted": sorted, "reversed": lambda x: list(reversed(x)), "enumerate": lambda x, s=0: list(enumerate(x, s)),
             "zip": lambda *a: list(zip(*a)), "list": list, "tuple": tuple, "dict": dict, "print": _PRINT, "pow": _pow, "math": _SAFE_MATH,
             "True": True, "False": False, "None": None,
+            **self.functions,  # declared functions are part of the namespace, so a def in the sandbox can call them too
         }
 
     # ----------------------------------------------------------------- statements
@@ -480,6 +486,8 @@ class Sandbox:
             raise
         except (TypeError, ValueError, ZeroDivisionError, OverflowError, KeyError, IndexError, AttributeError) as ex:
             raise ToolError(_friendly(ex)) from ex
+        except Exception as ex:  # noqa: BLE001 - a declared function raised: report it like any other tool error
+            raise ToolError(f"{type(ex).__name__}: {str(ex)[:200]}") from ex
 
 
 _BLOCKED = {"exec", "eval", "compile", "open", "__import__", "globals", "locals", "getattr", "setattr", "delattr", "vars", "dir", "type", "object", "input", "breakpoint", "exit", "quit"}
@@ -497,14 +505,28 @@ _PRINT = _Print()
 
 class PySession:
     """A REPL-like session: variables and functions persist across calls (and across turns of one
-    conversation). Each call gets fresh budgets; the namespace is capped at MAX_NAMES entries."""
+    conversation). Each call gets fresh budgets; the namespace is capped at MAX_NAMES entries.
 
-    def __init__(self) -> None:
+    `functions` are declared functions (name -> callable) provided by us and part of the namespace from
+    the start, like a builtin; see slm/tools/functions.py."""
+
+    def __init__(self, functions: dict | None = None) -> None:
         self.env: dict | None = None
         self.n_calls = 0
+        self.functions: dict = {}
+        if functions:
+            self.register(functions)
+
+    def register(self, functions: dict) -> None:
+        """Add declared functions (name -> callable); an already running session picks them up too."""
+        for name in functions:
+            _check_function_name(name)
+        self.functions.update(functions)
+        if self.env is not None:
+            self.env.update(functions)
 
     def run(self, code: str) -> str:
-        sb = Sandbox()
+        sb = Sandbox(functions=self.functions)
         if self.env is None:
             self.env = sb.builtins()
         self.n_calls += 1
@@ -517,6 +539,17 @@ class PySession:
 
     def reset(self) -> None:
         self.env = None
+
+
+_BUILTIN_KEYS = frozenset(Sandbox().builtins())
+
+
+def _check_function_name(name: str) -> None:
+    """A declared function's name must be a plain identifier that shadows nothing in the namespace."""
+    if not name.isidentifier() or name.startswith("_"):
+        raise ToolError(f"declared function name must be a plain identifier not starting with _ ({name})")
+    if name in _BLOCKED or name in _BUILTIN_KEYS:
+        raise ToolError(f"declared function name {name} shadows a builtin")
 
 
 def _check_name(name: str) -> None:

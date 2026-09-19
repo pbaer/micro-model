@@ -7,7 +7,7 @@ import pytest
 import torch
 
 from slm.data.loader import MixtureSpec, PretrainLoader, TokenStream, ValLoader
-from slm.data.tokenizer import BPE_VOCAB, N_SPECIAL, SPECIAL_TOKENS, SlmTokenizer, train_bpe
+from slm.data.tokenizer import BPE_VOCAB, N_SPECIAL, NAMED_SPECIALS, SPECIAL_TOKENS, SlmTokenizer, train_bpe
 from slm.train.config import ScheduleConfig
 from slm.train.schedule import lr_at
 from slm.utils.logging import MetricsLogger
@@ -52,6 +52,32 @@ def test_tokenizer_save_load(tok, tmp_path):
     t2 = SlmTokenizer.load(tmp_path / "tk")
     assert t2.sha256 == tok.sha256 and t2.vocab_size == tok.vocab_size
     assert t2.encode("hello world 42") == tok.encode("hello world 42")
+
+
+def test_specials_added_later_name_reserved_slots(tok, tmp_path):
+    """Naming a reserved slot must reach tokenizers saved before it existed: same ids, same sha256."""
+    d = tmp_path / "old"
+    tok.save(d)
+    meta = json.loads((d / "meta.json").read_text(encoding="utf-8"))
+    meta["specials"] = NAMED_SPECIALS[:13] + [f"<|reserved_{i}|>" for i in range(N_SPECIAL - 13)]
+    (d / "meta.json").write_text(json.dumps(meta))  # a v1-era specials list: the three def names are still reserved there
+    t2 = SlmTokenizer.load(d)
+    assert t2.sha256 == tok.sha256 and t2.vocab_size == tok.vocab_size
+    assert [t2.special(s) for s in ("<|python_def|>", "<|python_comment|>", "<|/python_def|>")] == [t2.base_vocab + 13, t2.base_vocab + 14, t2.base_vocab + 15]
+    assert t2.special("<|bos|>") == t2.base_vocab and t2.specials == SPECIAL_TOKENS  # the unused tail is renumbered too
+
+
+V1_TOKENIZER = Path("C:/slm-data/tokenizer/v1")  # the frozen tokenizer every checkpoint records
+
+
+@pytest.mark.skipif(not V1_TOKENIZER.exists(), reason="the v1 tokenizer is not on this machine")
+def test_v1_tokenizer_has_the_declared_function_specials():
+    """The frozen v1 tokenizer gains the new names by position, without being retrained or re-saved."""
+    v1 = SlmTokenizer.load(V1_TOKENIZER)
+    assert v1.vocab_size == 32768 and v1.base_vocab == 32704 and len(v1.specials) == N_SPECIAL
+    assert v1.special("<|python_def|>") == 32717 and v1.special("<|python_comment|>") == 32718 and v1.special("<|/python_def|>") == 32719
+    assert v1.decode([v1.special("<|python_def|>")]) == "<|python_def|>" and v1.special("<|bos|>") == 32704
+    assert v1.sha256 == json.loads((V1_TOKENIZER / "meta.json").read_text(encoding="utf-8"))["sha256"]  # checkpoints' tokenizer_sha256 keeps matching
 
 
 def _make_shards(root, name, split, n_shards, shard_len, seed):

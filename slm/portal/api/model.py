@@ -41,6 +41,7 @@ class GenerateRequest(BaseModel):
     tools: bool = False  # Python tool available (chat mode): calls run in the conversation's session
     session_id: str | None = None  # conversation id for REPL state; reset via /sessions/{id}/reset
     max_tool_calls: int = 8
+    functions: list[dict] | None = None  # declared functions (chat mode): {name, signature, comment} per entry
 
 
 class ScoreRequest(BaseModel):

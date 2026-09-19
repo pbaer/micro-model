@@ -88,7 +88,9 @@ pretraining mix. Special tokens are not part of the HF tokenizer: raw text can n
 the chat formatter inserts them. The tokenizer is frozen and every checkpoint records its sha256.
 
 Named specials: `<|bos|> <|eos|> <|pad|> <|system|> <|user|> <|assistant|> <|end|> <|think|> <|/think|>
-<|python_call|> <|/python_call|> <|python_result|> <|/python_result|>` plus 51 `<|reserved_N|>`.
+<|python_call|> <|/python_call|> <|python_result|> <|/python_result|> <|python_def|> <|python_comment|>
+<|/python_def|>` plus 48 `<|reserved_N|>`. Naming a reserved slot changes no id and no sha256, so a
+tokenizer saved earlier picks the new names up by position when it is loaded.
 
 Chat format (one example, reasoning stage):
 

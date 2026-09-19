@@ -170,3 +170,80 @@ def test_multiturn_tool_conversations_are_consistent(tok):
             spans = [s for s in split_markup(m["think"], sess) if s.kind == "tool"]
             gold = m["content"].split("#### ")[1] if m["content"].startswith("#### ") else m["content"].rstrip(".").split()[-1]
             assert len(spans) == 1 and spans[0].result == gold, (msgs, spans)
+
+
+def test_declared_functions_roundtrip(tok):
+    """Declared functions: masked def blocks after <|bos|>, calls that resolve at conversion time,
+    parse_defs as the inverse, and the plain NameError hint for a name that was never declared."""
+    from slm.tools.functions import FunctionDecl, as_decls, functions_env, parse_defs, render_defs
+
+    def unit_price(item):
+        return {"pen": 2.5, "book": 12.0}[item]
+
+    decl = FunctionDecl("unit_price", "def unit_price(item: str) -> float:", "Catalogue price of an item in dollars. Use it instead of guessing.", unit_price)
+    assert decl.signature == "def unit_price(item: str) -> float"  # the body-less def line is normalized (no trailing colon)
+    with pytest.raises(ValueError):
+        FunctionDecl("unit_price", "unit_price(item)", "not a def line")
+    msgs = [{"role": "user", "content": "two pens?"}, {"role": "assistant", "think": "a pen costs <<unit_price('pen')=2.5>>2.5 so <<2*2.5=5>>", "content": "#### 5"}]
+    enc = format_chat(tok, msgs, think_required=True, tools=True, functions=[decl])
+    d_open, d_close = tok.special("<|python_def|>"), tok.special("<|/python_def|>")
+    j = enc.ids.index(d_close)
+    assert enc.ids[0] == tok.bos_id and enc.ids[1] == d_open and tok.special("<|python_comment|>") in enc.ids
+    assert all(m == 0 for m in enc.loss_mask[1 : j + 1]), "the whole declaration block is environment-written"
+    assert [s for s in enc.segments if s[2] == "python_def"] == [(1, j + 1, "python_def")]
+    k = enc.ids.index(tok.special("<|python_call|>"))
+    assert k > j and enc.loss_mask[k] == 1  # the call is still a target
+    a = enc.ids.index(tok.special("<|assistant|>")) + 1
+    parsed = parse_assistant(tok, enc.ids[a:])
+    assert parsed["think"] == "a pen costs <<unit_price('pen')=2.5>> so <<2*2.5=5>>" and not parsed["malformed"]
+    # the declarations can travel with the conversation instead, as a leading message (dicts, no impl)
+    enc2 = format_chat(tok, [{"role": "functions", "decls": [decl.as_dict()]}, *msgs], think_required=True)
+    assert enc2.ids[: j + 1] == enc.ids[: j + 1] and as_decls([decl.as_dict()])[0].impl is None
+    # parse_defs is the inverse (impl is not recoverable); it ignores everything outside the blocks
+    back = parse_defs(tok, enc.ids)
+    assert [(f.name, f.signature, f.comment) for f in back] == [(decl.name, decl.signature, decl.comment)]
+    assert render_defs(tok, back) == render_defs(tok, [decl])
+    assert parse_defs(tok, [d_open, *tok.encode("def f()")]) == []  # unterminated block
+    # calls go through the normal path: same result rendering, same hints; an undeclared name is a NameError
+    sess = PySession(functions=functions_env([decl]))
+    assert run_tool("unit_price('book')", sess) == ("12", True)
+    assert run_tool("total = unit_price('pen') * 4\nprint(total)", sess) == ("10", True)
+    out, ok = run_tool("unit_cost('pen')", sess)
+    assert not ok and "NameError" in out and "not defined" in out
+    out, ok = run_tool("unit_price('hat')", sess)  # the function itself raised
+    assert not ok and "KeyError" in out
+    # declared but not implemented (the portal sends dicts): the error says so instead of looking like a typo
+    out, ok = run_tool("unit_price('pen')", PySession(functions=functions_env([decl.as_dict()])))
+    assert not ok and "declared but has no implementation" in out
+
+
+def test_tool_loop_with_declared_function(tok, monkeypatch):
+    """sample_with_tools registers the declared functions in every row's session."""
+    from slm.tools.functions import FunctionDecl
+
+    t = {s: tok.special(s) for s in ("<|python_call|>", "<|/python_call|>")}
+    call = [t["<|python_call|>"], *tok.encode("unit_price('pen')*2"), t["<|/python_call|>"]]
+    script = {0: [call, tok.encode(" so 5") + [tok.end_id]]}
+    state = {"round": {}}
+
+    def fake_sample(model, tk, prompts, n, temperature, top_p=1.0, top_k=0, generator=None, stop=None):
+        out = []
+        for p in prompts:
+            row = p[0]
+            k = state["round"].get(row, 0)
+            state["round"][row] = k + 1
+            out.append(script[row][k][:n])
+        return out
+
+    monkeypatch.setattr("slm.rl.rollout.sample_completions", fake_sample)
+
+    class M:
+        class cfg:
+            max_seq_len = 512
+
+    decl = FunctionDecl("unit_price", "def unit_price(item: str) -> float", "Catalogue price in dollars.", lambda item: 2.5)
+    outs = sample_with_tools(M(), tok, [[0, 5, 6]], max_new_tokens=64, temperature=0.0, functions=[decl])
+    assert outs[0].calls == [("unit_price('pen')*2", "5")] and outs[0].n_errors == 0
+    state["round"].clear()
+    outs = sample_with_tools(M(), tok, [[0, 5, 6]], max_new_tokens=64, temperature=0.0)  # without the declaration the name is unknown
+    assert outs[0].n_errors == 1 and "NameError" in outs[0].calls[0][1]

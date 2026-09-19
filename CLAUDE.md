@@ -36,6 +36,13 @@ placeholder and may change, so don't bake it into code.
 - Python tool: `<|python_call|>code<|/python_call|><|python_result|>out<|/python_result|>` inside the think span;
   the result span is never a loss/policy target; one `PySession` per conversation (state persists across calls and
   turns); code runs only in the sandboxed subset interpreter `slm/tools/pysandbox.py` (never exec/eval).
+- Declared functions: a conversation may declare callables the model can then use, one block per function right
+  after `<|bos|>` and before the first turn, every token of it masked (environment-written):
+  `<|python_def|>def unit_price(item: str) -> float<|python_comment|>what it does and when to use it<|/python_def|>`.
+  The signature is a body-less `def` line, the comment is natural language. Registry `slm/tools/functions.py`
+  (`FunctionDecl`, `render_defs`/`parse_defs`); `format_chat(functions=...)` emits the blocks and registers the
+  impls in the conversation's `PySession`, so calls go through the normal `<|python_call|>` path. Declare only
+  capabilities the model cannot write itself.
 
 ## Engineering rules
 - Loss functions return `(loss_sum, n_valid_tokens)`; the trainer divides by the global token count

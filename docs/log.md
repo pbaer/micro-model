@@ -308,3 +308,12 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   one update (55 s); that stub run dir is set aside as `runs/m8_base_4k_336m_stub` so the real phase 2 starts
   fresh from phase 1's final.pt with the shell-free mixture (a resumed loader state would still carry the shell
   stream). The n=64 needle sweep of phase 1's 30 snapshots is running on the freed GPU.
+- Declared functions landed (plumbing half of the 13:00 decision): three reserved slots named
+  `<|python_def|>` / `<|python_comment|>` / `<|/python_def|>` (ids 32717-32719; naming a reserved slot changes no id
+  and not the tokenizer sha256, and `SlmTokenizer` re-applies NAMED_SPECIALS by position at load time, so the frozen
+  v1 tokenizer gains them without being retrained and every checkpoint's `tokenizer_sha256` still matches). Registry
+  `slm/tools/functions.py` (`FunctionDecl`, `render_defs`/`parse_defs`, `functions_env`), `PySession(functions=...)` /
+  `register()`, `format_chat(functions=...)` (masked blocks after `<|bos|>`, segment label `python_def`, impls
+  registered so `<<code=result>>` markup calling them resolves at conversion time), `sample_with_tools(functions=...)`,
+  and the portal's `POST /api/model/generate` `functions` field with the def blocks highlighted in the token view.
+  The data generator builds on this API next.

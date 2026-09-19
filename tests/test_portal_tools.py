@@ -11,6 +11,7 @@ from slm.data.chat import format_chat
 from slm.data.tokenizer import SlmTokenizer, train_bpe
 from slm.model import Transformer
 from slm.portal.services import harness as H
+from slm.tools.functions import parse_defs
 from slm.utils.checkpoint import save_snapshot
 
 
@@ -92,3 +93,28 @@ def test_format_chat_uses_generated_ids_verbatim():
     assert enc_f.ids[i : i + len(gen)] == gen
     assert tok.encode("IGNORED")[0] not in enc.ids[i:]
     assert json.dumps(enc.ids)  # serializable
+
+
+def test_harness_chat_accepts_declared_functions(tmp_path, monkeypatch):
+    """The chat request's `functions` list becomes masked def blocks in the prompt, and the prompt event
+    carries the segments that mark them; the portal has no impls, so a call says so."""
+    tok, ck = _world(tmp_path)
+    h = H.Harness(tmp_path / "tokenizer")
+    h.load("A", str(ck), device="cpu", dtype="fp32")
+    sp = {s: tok.special(s) for s in ("<|python_call|>", "<|/python_call|>", "<|/think|>", "<|python_def|>", "<|/python_def|>")}
+    fns = [{"name": "unit_price", "signature": "def unit_price(item: str) -> float", "comment": "Catalogue price in dollars."}]
+    _scripted(monkeypatch, tok, [sp["<|python_call|>"], *tok.encode("unit_price('pen')"), sp["<|/python_call|>"], sp["<|/think|>"], *tok.encode("#### 2"), tok.end_id])
+    evs = list(h.generate("A", mode="chat", messages=[{"role": "user", "content": "q"}], temperature=0.0, max_new_tokens=64,
+                          think_required=True, tools=True, session_id="conv_fn", functions=fns))
+    prompt = evs[0]
+    assert prompt["ids"][1] == sp["<|python_def|>"] and sp["<|/python_def|>"] in prompt["ids"]
+    end = prompt["ids"].index(sp["<|/python_def|>"])
+    assert [tuple(s) for s in prompt["segments"] if s[2] == "python_def"] == [(1, end + 1, "python_def")]
+    assert json.dumps(prompt["segments"])  # the SSE event must stay serializable
+    assert parse_defs(tok, prompt["ids"])[0].name == "unit_price"
+    call = [e for e in evs if e["event"] == "tool"][0]
+    assert not call["ok"] and "declared but has no implementation" in call["result"]
+    # without functions the prompt is unchanged (backward compatible)
+    _scripted(monkeypatch, tok, [sp["<|/think|>"], *tok.encode("#### 2"), tok.end_id])
+    plain = list(h.generate("A", mode="chat", messages=[{"role": "user", "content": "q"}], temperature=0.0, max_new_tokens=8, think_required=True, tools=True, session_id="conv_no_fn"))[0]
+    assert sp["<|python_def|>"] not in plain["ids"] and plain["segments"][0][2] == "bos"

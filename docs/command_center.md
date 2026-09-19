@@ -81,4 +81,10 @@ runs in the conversation's `PySession` (variables persist across calls and turns
 code and results, and the inserted result tokens are shown in blue with no log-prob (they were not sampled).
 `new conversation` resets the session on the worker and clears the messages. The worker keeps up to 32
 sessions keyed by conversation id; the API is `POST /api/model/generate` with `tools`, `session_id`,
-`max_tool_calls`, and `POST /api/model/sessions/{id}/reset`.
+`max_tool_calls`, `functions`, and `POST /api/model/sessions/{id}/reset`.
+
+*declared functions* (a JSON list of `{name, signature, comment}`, collapsed under the message list) prepends one
+masked `<|python_def|>signature<|python_comment|>comment<|/python_def|>` block per function to the prompt; the
+`prompt` event carries the chat segments, so those tokens are highlighted in amber in both views. The portal holds
+no implementations, so a call to a declared function reports that it is declared but not available here — the point
+of the control is to see the blocks the model reads and how it reacts to them.

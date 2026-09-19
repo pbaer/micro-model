@@ -17,6 +17,7 @@ import torch
 
 from slm.data.tokenizer import SlmTokenizer
 from slm.model import Transformer
+from slm.tools.functions import functions_env
 from slm.tools.protocol import run_tool, tool_ids
 from slm.tools.pysandbox import PySession
 
@@ -44,12 +45,19 @@ def sample_with_tools(
     max_calls: int = 8,
     tools: bool = True,
     sessions: list[PySession] | None = None,
+    functions: list | None = None,
 ) -> list[ToolCompletion]:
+    """`functions` (FunctionDecls or their dicts) are registered in every row's session, so a row can call
+    them; the declaration blocks themselves belong to the prompt (format_chat(functions=...))."""
     from slm.rl.rollout import sample_completions  # local import: rollout imports this module
 
     t = tool_ids(tok)
     think_close = tok.special("<|/think|>")
     sessions = sessions or [PySession() for _ in prompts]
+    if functions:
+        env = functions_env(functions)
+        for s in sessions:
+            s.register(env)
     stop = {tok.end_id, tok.eos_id} | ({t["call_close"]} if tools else set())
     outs = [ToolCompletion() for _ in prompts]
     seqs = [list(p) for p in prompts]

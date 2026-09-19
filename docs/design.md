@@ -304,10 +304,32 @@ repeat tool output (only the final `#### N` is repeated, for the verifier).
 The model generates through `<|/python_call|>`; the harness runs the code and appends the result span; generation
 resumes. Result tokens are environment-written: loss mask 0 in SFT (`format_chat(tools=True)`), `gen_mask` 0 in RL
 so they are excluded from the policy gradient and the KL term. One `PySession` per conversation keeps variables and
-functions across calls and across turns (REPL semantics); future tools are Python functions exposed in that
-namespace, not new token types. Text form for datasets and display: GSM8K's own `<<expr=result>>` for one expression
+functions across calls and across turns (REPL semantics); further tools are Python functions exposed in that
+namespace (see declared functions below), not new token types. Text form for datasets and display: GSM8K's own `<<expr=result>>` for one expression
 and `<<<code>>>` for a short program; `split_markup` runs the code while converting so the recorded result is exactly
 what inference would insert, and `render_tools` turns generated ids back into the same markup.
+
+Declared functions (`slm/tools/functions.py`): a conversation can hand the model capabilities it could not write
+itself — a price list, a lookup, a measurement. Each is declared once, right after `<|bos|>` and before the first
+turn, as one block per function:
+
+    <|python_def|>def unit_price(item: str) -> float<|python_comment|>Catalogue price of an item in dollars. Use it instead of guessing.<|/python_def|>
+
+The signature is a real Python `def` line without a body; the comment is natural language (what it does, when to
+use it). Every token of every block is loss-masked, like a tool result: the environment wrote it, the model only
+reads it. `FunctionDecl(name, signature, comment, impl)` is the registry entry, `render_defs` / `parse_defs` are the
+id<->declaration pair (the portal parses a prompt back). `format_chat(functions=[...])` emits the blocks (segment
+label `python_def`) and, with `tools=True`, registers the impls in the conversation's `PySession`, so `<<code=result>>`
+markup that calls them resolves at conversion time exactly as inference would; `sample_with_tools(functions=[...])`
+does the same for every row's session. A conversation stored as data can carry its declarations instead as a leading
+`{"role": "functions", "decls": [...]}` message, so one serialized conversation stays self-contained; the parameter
+wins if both are given. The functions are ordinary Python callables we provide, registered in the session namespace
+under a name that may shadow nothing: a call goes through the normal call path (same result rendering, same error
+hints, reachable from a `def` written in the sandbox), an exception it raises comes back as `error: ...` like any
+other failure, and a name that was never declared still gets the plain NameError hint. A declaration without an impl
+(the portal sends `{name, signature, comment}` only) is still registered, so calling it says it has no implementation
+here instead of looking like a name the model invented. Nothing else changes: no new call syntax, no new tokens
+beyond the three, and a conversation without declarations is byte-identical to before.
 
 Generation with tools (`slm/tools/loop.py`): batched rows diverge in length after a result is inserted, so decoding
 runs in rounds, grouping active rows by current length; each returned token carries a gen_mask bit and each row keeps

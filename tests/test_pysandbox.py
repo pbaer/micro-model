@@ -147,3 +147,29 @@ def test_run_tool_wraps_errors_for_the_model():
     assert run_tool("import os")[0].startswith("error: line 1: imports are not available")
     assert run_tool("x = 1")[0].startswith("(no output")
     assert run_tool("6*7") == ("42", True)
+
+
+def test_declared_functions_in_the_session():
+    """Declared functions are part of the namespace: callable from top level and from a sandbox def,
+    persistent across calls, and their exceptions come back as ordinary tool errors."""
+    from slm.tools.pysandbox import PySession
+
+    def unit_price(item):
+        if item not in ("pen", "book"):
+            raise LookupError(f"no such item: {item}")
+        return {"pen": 2.5, "book": 12.0}[item]
+
+    s = PySession(functions={"unit_price": unit_price})
+    assert s.run("unit_price('pen')") == "2.5"
+    assert s.run("n = 4") == "" and s.run("print(unit_price('book') * n)") == "48"
+    assert s.run("def total(a, b):\n    return unit_price(a) * b\nprint(total('pen', 2))") == "5"  # reachable inside a sandbox def
+    with pytest.raises(ToolError, match="LookupError"):
+        s.run("unit_price('hat')")
+    s.reset()
+    assert s.run("unit_price('pen')") == "2.5"  # a reset keeps the declared functions, not the variables
+    s2 = PySession()
+    s2.register({"unit_price": unit_price})  # registering into a live session works too
+    assert s2.run("unit_price('pen')") == "2.5"
+    for bad in ("print", "math", "__x", "not an identifier", "eval"):
+        with pytest.raises(ToolError):
+            PySession(functions={bad: unit_price})

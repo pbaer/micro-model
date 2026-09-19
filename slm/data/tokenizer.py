@@ -38,9 +38,31 @@ NAMED_SPECIALS = [
     "<|/python_call|>",
     "<|python_result|>",  # environment-written result; never a loss target
     "<|/python_result|>",
+    "<|python_def|>",  # declared function: signature block before the first turn; never a loss target
+    "<|python_comment|>",  # natural-language description of the declared function
+    "<|/python_def|>",
 ]
 SPECIAL_TOKENS = NAMED_SPECIALS + [f"<|reserved_{i}|>" for i in range(N_SPECIAL - len(NAMED_SPECIALS))]
 assert len(SPECIAL_TOKENS) == N_SPECIAL
+
+
+def apply_named(specials: list[str]) -> list[str]:
+    """Give the reserved slots their current names.
+
+    A saved tokenizer stores the specials list of the day it was trained, so names appended to
+    NAMED_SPECIALS later would stay `<|reserved_i|>` on a loaded tokenizer. Naming a reserved slot
+    changes no id and no vocab size (and not the sha256, which covers tokenizer.json only), so the
+    names are re-applied by position at load time instead of retraining or re-saving.
+    """
+    out = list(specials)
+    for i, name in enumerate(NAMED_SPECIALS):
+        if i < len(out) and out[i] != name:
+            assert out[i].startswith("<|reserved_"), f"slot {i} is {out[i]}, cannot be renamed to {name}"
+            out[i] = name
+    for i in range(len(NAMED_SPECIALS), len(out)):  # the unused tail keeps counting from 0, as SPECIAL_TOKENS does
+        if out[i].startswith("<|reserved_"):
+            out[i] = f"<|reserved_{i - len(NAMED_SPECIALS)}|>"
+    return out
 
 
 def build_untrained() -> Tokenizer:
@@ -77,7 +99,7 @@ class SlmTokenizer:
     def __init__(self, tok: Tokenizer, specials: list[str] = SPECIAL_TOKENS, sha256: str = "") -> None:
         self.tok = tok
         self.base_vocab = tok.get_vocab_size()
-        self.specials = list(specials)
+        self.specials = apply_named(specials)
         self.vocab_size = self.base_vocab + len(self.specials)
         self.special_to_id = {s: self.base_vocab + i for i, s in enumerate(self.specials)}
         self.id_to_special = {v: k for k, v in self.special_to_id.items()}

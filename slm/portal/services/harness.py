@@ -108,24 +108,29 @@ class Harness:
 
     # --------------------------------------------------------------- prompts
     def _prompt_ids(self, s: Slot, mode: str, text: str = "", messages: list[dict] | None = None, think_required: bool = False,
-                    tools: bool = False, session: PySession | None = None) -> list[int]:
+                    tools: bool = False, session: PySession | None = None, functions: list | None = None) -> tuple[list[int], list]:
+        """(prompt ids, segments); the segments let the UI colour the declared-function blocks."""
         tok = s.tok
         if mode == "chat":
-            return format_chat(tok, messages or [], add_generation_prompt=True, think_required=think_required, tools=tools, session=session).ids
-        return [tok.bos_id, *tok.encode(text)]
+            enc = format_chat(tok, messages or [], add_generation_prompt=True, think_required=think_required, tools=tools, session=session, functions=functions)
+            return enc.ids, enc.segments
+        return [tok.bos_id, *tok.encode(text)], []
 
     # ------------------------------------------------------------ generation
     @torch.no_grad()
     def generate(self, slot: str, mode: str = "completion", text: str = "", messages: list[dict] | None = None, temperature: float = 0.8, top_p: float = 0.95,
                  top_k: int = 0, max_new_tokens: int = 128, seed: int | None = 1234, logprobs_topk: int = 5, think_required: bool = False,
-                 tools: bool = False, session_id: str | None = None, max_tool_calls: int = 8, should_stop=None):
+                 tools: bool = False, session_id: str | None = None, max_tool_calls: int = 8, functions: list | None = None, should_stop=None):
         """Yields {'event': 'prompt'|'token'|'tool'|'done', ...}.
 
         With tools (chat mode) generation pauses at <|/python_call|>: the code runs in the conversation's
         session, a 'tool' event reports it, the result tokens are fed through the model (marked inserted:
         true, no log-prob) and sampling resumes. A call after <|/think|> ends the turn as malformed. The
         'done' event carries the parsed assistant turn (think, answer, ids, well_formed) so a UI can append
-        it to the conversation verbatim."""
+        it to the conversation verbatim.
+
+        `functions` (chat mode) are declared functions as dicts ({name, signature, comment}): their masked
+        <|python_def|> blocks open the prompt and the 'prompt' event carries the segments that mark them."""
         s = self.slots[slot]
         if s.model is None:
             raise RuntimeError(f"slot {slot} is empty")
@@ -133,7 +138,7 @@ class Harness:
         device = next(model.parameters()).device
         tools = bool(tools) and mode == "chat"
         sess = self.session(session_id) if tools else None
-        ids = self._prompt_ids(s, mode, text, messages, think_required, tools, sess)
+        ids, segments = self._prompt_ids(s, mode, text, messages, think_required, tools, sess, functions if mode == "chat" else None)
         if len(ids) + max_new_tokens > model.cfg.max_seq_len:
             max_new_tokens = max(1, model.cfg.max_seq_len - len(ids))
         stop = {tok.eos_id, tok.end_id} if mode == "chat" else {tok.eos_id}
@@ -141,7 +146,7 @@ class Harness:
         think_close = tok.special("<|/think|>")
         if tools:
             stop = stop | {t["call_close"]}
-        yield {"event": "prompt", "ids": ids, "pieces": [tok.token_str(i) for i in ids], "n": len(ids)}
+        yield {"event": "prompt", "ids": ids, "pieces": [tok.token_str(i) for i in ids], "n": len(ids), "segments": segments}
         gen = torch.Generator(device=device)
         gen.manual_seed(seed if seed is not None else int(time.time() * 1000) % 2**31)
         capacity = min(model.cfg.max_seq_len, len(ids) + max_new_tokens + (max_tool_calls * TOOL_RESULT_ROOM if tools else 0))

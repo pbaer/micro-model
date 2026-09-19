@@ -2,6 +2,7 @@ import { h } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtNum } from "../components/util.js";
+import { segmentLabels } from "../components/tokens.js";
 
 const html = htm.bind(h);
 
@@ -42,16 +43,18 @@ const isSpecial = (p) => p.startsWith("<|") && p.endsWith("|>");
  *  raw decoded text, with reserved tokens (<|bos|>, <|end|>, ...) still shown as highlighted markers. */
 const tip = (t) => (t.inserted ? "inserted by the Python tool (no log-prob)" : `logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`);
 
-function Stream({ tokens, prompt, mode, setHover }) {
+function Stream({ tokens, prompt, segments, mode, setHover }) {
+  const isDef = segmentLabels(segments, prompt ? prompt.length : 0).map((l) => l === "python_def");  // declared-function blocks in the prompt
   if (mode === "text") {
     return html`<div class="rawout">
-      ${prompt && prompt.map((p, i) => isSpecial(p) ? html`<span class="chip special" key=${"p" + i}>${p}</span>` : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
+      ${prompt && prompt.map((p, i) => isDef[i] ? html`<span class="chip def" title="declared function (masked)" key=${"p" + i}>${p}</span>`
+        : isSpecial(p) ? html`<span class="chip special" key=${"p" + i}>${p}</span>` : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
       ${tokens.map((t, i) => t.special ? html`<span class=${"chip special" + (t.inserted ? " inserted" : "")} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`
         : html`<span class=${t.inserted ? "inserted-text" : ""} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`)}
     </div>`;
   }
   return html`<div class="chips" style="min-height:60px">
-    ${prompt && prompt.map((p, i) => html`<span class="chip" style="background:#e5e7eb;color:#374151" key=${"p" + i}>${showPiece(p)}</span>`)}
+    ${prompt && prompt.map((p, i) => html`<span class=${"chip" + (isDef[i] ? " def" : "")} style=${isDef[i] ? "" : "background:#e5e7eb;color:#374151"} title=${isDef[i] ? "declared function (masked)" : ""} key=${"p" + i}>${showPiece(p)}</span>`)}
     ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "") + (t.inserted ? " inserted" : "")} style=${t.special || t.inserted ? "" : `background:${lpColor(t.logprob)}`} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${showPiece(t.piece)}</span>`)}
   </div>`;
 }
@@ -71,6 +74,7 @@ export function ModelPage() {
   const [thinkReq, setThinkReq] = useState(true);
   const [tools, setTools] = useState(true);
   const [sessionId, setSessionId] = useState(newSessionId);
+  const [funcs, setFuncs] = useState("");  // declared functions, JSON: [{name, signature, comment}]
   const [calls, setCalls] = useState([]);
   const [view, setView] = useState("text");
   const [out, setOut] = useState({ A: { prompt: null, tokens: [], done: null }, B: { prompt: null, tokens: [], done: null } });
@@ -106,7 +110,11 @@ export function ModelPage() {
     setBusy(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
     try {
-      const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq, tools: mode === "chat" && tools, session_id: sessionId, max_tool_calls: 8 };
+      let decls = null;
+      if (mode === "chat" && funcs.trim()) {
+        try { decls = JSON.parse(funcs); } catch (e) { setErr(`declared functions: not valid JSON (${e.message})`); setBusy(false); return; }
+      }
+      const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq, tools: mode === "chat" && tools, session_id: sessionId, max_tool_calls: 8, functions: decls };
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
       while (true) {
@@ -118,7 +126,7 @@ export function ModelPage() {
           const ev = /event: (\w+)/.exec(chunk)?.[1]; const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
           if (!dataLine) continue; const data = JSON.parse(dataLine.slice(5));
           if (ev === "start") setStreamId(data.stream_id);
-          else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces } }));
+          else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, segments: data.segments } }));
           else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
           else if (ev === "tool") setCalls((c) => [...c, data]);
           else if (ev === "done") {
@@ -187,6 +195,11 @@ export function ModelPage() {
         </div>
         <button onClick=${() => setMessages(messages.filter((_, j) => j !== i))}>✕</button></div>`)}
       <button onClick=${() => setMessages([...messages, { role: "user", content: "" }])}>+ message</button>
+      <details style="margin-top:6px"><summary class="muted">declared functions (${funcs.trim() ? "set" : "none"})</summary>
+        <textarea style="min-height:60px;width:100%;font-family:var(--mono)" placeholder=${'[{"name": "unit_price", "signature": "def unit_price(item: str) -> float", "comment": "Catalogue price of an item in dollars."}]'}
+          value=${funcs} onInput=${(e) => setFuncs(e.target.value)}></textarea>
+        <div class="legend">JSON list. Each declaration is emitted as a masked ${"<|python_def|>"}signature${"<|python_comment|>"}comment${"<|/python_def|>"} block right after ${"<|bos|>"} (highlighted in the views below). The portal has no implementations, so calling one reports that it is declared but not available here.</div>
+      </details>
       <div class="legend" style="margin-top:4px">Multi-turn: a well-formed assistant reply is appended here automatically with an empty user turn after it. Python calls inside the think span run in this conversation's session, so variables persist across turns. A base checkpoint has never seen the chat tokens; expect noise until SFT.</div></div>`}
     <div class="row" style="margin:8px 0">
       <button class="active" onClick=${generate} disabled=${busy || !slots.A || !slots.A.checkpoint}>generate</button>
@@ -199,7 +212,7 @@ export function ModelPage() {
     <div class=${useBoth ? "two" : ""}>
       ${(useBoth ? ["A", "B"] : ["A"]).map((s) => html`<div key=${s}>
         <div class="muted" style="margin-bottom:4px"><b>${s}</b> ${stat(s)}${useBoth && divergence >= 0 && s === "A" ? ` · diverges at token ${divergence + 1}` : ""}</div>
-        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} mode=${view} setHover=${setHover} />
+        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} segments=${out[s].segments} mode=${view} setHover=${setHover} />
       </div>`)}
     </div>
     ${calls.length > 0 && html`<div class="panel" style="margin-top:6px"><b>python calls</b>

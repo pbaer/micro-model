@@ -36,14 +36,25 @@ def format_chat(
     think_required: bool = False,
     tools: bool = False,
     session=None,
+    functions: list | None = None,
 ) -> ChatEncoding:
     """tools=True: <<expr=result>> markup inside assistant think text becomes a tool call (loss target) followed
     by the tool's result (masked), run in `session` (a PySession; one is created if None). Without it the markup
     is encoded literally. An assistant message may carry "ids": the exact tokens of a generated turn (think,
-    tool spans, answer, <|end|>), which are used verbatim so a live conversation never re-runs its tool calls."""
+    tool spans, answer, <|end|>), which are used verbatim so a live conversation never re-runs its tool calls.
+
+    `functions` are FunctionDecls (or their dicts) declared to the model: one masked
+    <|python_def|>signature<|python_comment|>comment<|/python_def|> block per function right after <|bos|>,
+    before the first turn. With tools=True their impls are registered in the conversation's session, so
+    markup that calls them resolves here exactly as it would at inference. A conversation stored as plain
+    data can carry them instead as a leading {"role": "functions", "decls": [...]} message (the parameter
+    wins if both are given); that keeps one serialized conversation self-contained."""
     ids: list[int] = []
     mask: list[int] = []
     segs: list[tuple[int, int, str]] = []
+    if messages and messages[0].get("role") == "functions":
+        functions = functions or messages[0].get("decls")
+        messages = messages[1:]
 
     def push(seq: list[int], m: int, label: str) -> None:
         segs.append((len(ids), len(ids) + len(seq), label))
@@ -72,6 +83,16 @@ def format_chat(
 
     if bos:
         push([tok.bos_id], 0, "bos")
+    if functions:
+        from slm.tools.functions import as_decls, functions_env, render_defs
+        from slm.tools.pysandbox import PySession
+
+        decls = as_decls(functions)
+        for f in decls:  # environment-written, like a tool result: every token of the block is masked
+            push(render_defs(tok, [f]), 0, "python_def")
+        if tools:
+            session = session or PySession()
+            session.register(functions_env(decls))
     for msg in messages:
         role = msg["role"]
         assert role in ROLES, f"unknown role {role}"
