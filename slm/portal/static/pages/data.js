@@ -359,7 +359,7 @@ function ChainView({ id }) {
         </div></div>`)}
       <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${c.sources.map((n) => html`<span class="legend"><span style=${"display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;background:" + color(n)}></span>${n}</span>`)}</div>
     </div>
-    <table><tr><th class="l">run</th><th>stage</th><th>seq</th><th>tokens used</th><th>source</th>${c.sources.map((n) => html`<th>${n}</th>`)}</tr>
+    <div style="overflow-x:auto"><table><tr><th class="l">run</th><th>stage</th><th>seq</th><th>tokens used</th><th>source</th>${c.sources.map((n) => html`<th>${n}</th>`)}</tr>
       ${c.runs.map((r) => html`<tr><td class="l"><a href=${dataHref("recipes", "run:" + r.run)}>${r.run}</a>${r.checkpoint ? html` <span class="muted">→ ${r.checkpoint}</span>` : ""}</td>
         <td><span class=${"stage-badge " + (r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : "")}>${r.stage}</span></td>
         <td>${r.seq_len || "-"}</td><td>${fmtTok(r.tokens_used)}</td>
@@ -367,7 +367,7 @@ function ChainView({ id }) {
         ${c.sources.map((n) => html`<td>${r.per_source[n] ? fmtTok(r.per_source[n]) : html`<span class="muted">-</span>`}</td>`)}</tr>`)}
       <tr style="font-weight:600;border-top:2px solid #94a3b8"><td class="l">total</td><td></td><td></td><td>${fmtTok(c.cumulative_tokens)}</td><td></td>
         ${c.sources.map((n) => html`<td>${fmtTok(c.totals[n])}</td>`)}</tr>
-    </table>
+    </table></div>
     <div class="legend" style="margin-top:6px">"actual" rows come from the loader's own per-source counters in the last <code>checkpoint</code> record of that run (scaled when the child loaded a mid-run checkpoint); "expected" rows are tokens used x normalized mixture weight, because runs started before the trainers logged that block carry no counters.${c.any_expected ? "" : " Every row here is actual."} RL stages train on the model's own samples, so they have no source mixture.</div>
   </div>`;
 }
