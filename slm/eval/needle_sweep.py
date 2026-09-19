@@ -8,6 +8,7 @@ writes runs/<run>/needle_sweep.json, which the run page overlays on the needle c
 
 Resumable: snapshots already in the file are skipped unless --force. About 35 s per 336M snapshot on the GPU at
 n=64 with 32K-token batches (640 prompts for two lengths); do not run it beside a training job on the same GPU.
+On CPU (--device cpu --threads 24) it runs beside training; see docs/results.md for the measured rate.
 """
 
 from __future__ import annotations
@@ -109,7 +110,15 @@ def main() -> None:
     ap.add_argument("--checkpoints", nargs="*", default=None)
     ap.add_argument("--every", type=int, default=1)
     ap.add_argument("--force", action="store_true")
+    ap.add_argument("--threads", type=int, default=0, help="CPU threads (0 = torch default); also drops the process to below-normal priority")
     a = ap.parse_args()
+    if a.device == "cpu" and a.threads:
+        import torch
+
+        from slm.eval.quality import _lower_priority
+
+        torch.set_num_threads(a.threads)
+        _lower_priority()
     sweep(Path(a.runs_root) / a.run, a.lengths, a.depths, a.n, a.seed, a.source, a.tokenized_root, a.batch_tokens, a.device, a.checkpoints, a.every, a.force)
 
 
