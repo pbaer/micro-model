@@ -48,6 +48,29 @@ async def get_checkpoints(request: Request, run: str) -> list[dict]:
     return await anyio.to_thread.run_sync(r.checkpoints)
 
 
+@router.get("/{run}/rollouts")
+async def get_rollouts(request: Request, run: str, step: int | None = None, offset: int = 0, limit: int = 20) -> dict:
+    """RL rollouts of one step: prompt, completion, reward, parsed answer, malformed flag.
+
+    `pieces` is prompt + completion in one strip with `prompt_len` marking where the model's own
+    tokens (the only policy targets) begin; the per-token logprob arrays are dropped by the reader.
+    """
+    from pathlib import Path
+
+    r = _reader(request, run)
+    d = await anyio.to_thread.run_sync(lambda: r.rollouts(step, offset, min(limit, 100)))
+    tag = Path((r.meta().get("config") or {}).get("tokenizer_dir") or "").name
+    reg = request.app.state.tokenizers
+    for x in d["rollouts"]:
+        ids = list(x.get("prompt_ids") or []) + list(x.get("completion_ids") or [])
+        try:
+            x["pieces"] = reg.pieces(tag, ids)
+        except (KeyError, FileNotFoundError):
+            x["pieces"] = None
+        x["prompt_len"] = len(x.get("prompt_ids") or [])
+    return d
+
+
 @router.get("/{run}/samples")
 async def get_samples(request: Request, run: str) -> list[dict]:
     r = _reader(request, run)

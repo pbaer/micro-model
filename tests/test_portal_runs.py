@@ -139,6 +139,16 @@ def _world(root):
     return root
 
 
+def _tokenizer(root):
+    """A real 400-piece tokenizer under <data_root>/tokenizer/v1, which the registry discovers by tag."""
+    from slm.data.tokenizer import SlmTokenizer, train_bpe
+
+    d = root / "tokenizer" / "v1"
+    if not (d / "tokenizer.json").exists():
+        SlmTokenizer(train_bpe(["the cat sat on the mat " * 80, "1 + 2 = 3 " * 80], vocab_size=400)).save(d)
+    return d
+
+
 def test_manifest_normalizer_and_recipe(tmp_path):
     from slm.portal.services.datasets import DataCatalog, normalize_manifest
 
@@ -243,3 +253,52 @@ def test_chain_walks_init_from_back_to_the_root(tmp_path):
     assert ch[1]["tokens_used"] == 1000 and ch[2]["tokens_used"] == 500  # mid has no index entry -> its own total
     assert sum(c["tokens_used"] for c in ch) == next(s["cumulative_tokens"] for s in idx.summaries() if s["run_name"] == "leaf")
     assert idx.chain("root") == [c for c in idx.chain("root")] and len(idx.chain("root")) == 1
+
+
+def test_rollouts_reader_drops_logprobs_and_lists_steps(tmp_path):
+    """The RL "training row" is the model's own sample; the per-token logprob arrays never reach the page."""
+    d = tmp_path / "runs" / "rl"
+    (d / "rollouts").mkdir(parents=True)
+    (d / "run.json").write_text(json.dumps({"run_name": "rl", "stage": "grpo", "config": {"tokenizer_dir": "nope"}}))
+    for step, n in ((1, 2), (7, 3)):
+        (d / "rollouts" / f"step_{step:05d}.jsonl").write_text("\n".join(
+            json.dumps({"prompt_id": f"p{i}", "task": "gsm8k", "prompt": "q", "gold": "1", "prompt_ids": [1, 2], "completion_ids": [3],
+                        "text": "a", "parsed": "1", "reward": 1.0, "malformed": False, "n_tokens": 1,
+                        "old_logprobs": [0.1] * 3, "ref_logprobs": [0.2] * 3}) for i in range(n)) + "\n")
+    from slm.portal.services.runs import RunReader
+
+    r = RunReader(d)
+    assert r.rollout_steps() == [1, 7]
+    out = r.rollouts()  # no step -> the latest
+    assert out["step"] == 7 and out["n"] == 3 and len(out["rollouts"]) == 3
+    assert all("old_logprobs" not in x and "ref_logprobs" not in x for x in out["rollouts"])
+    assert r.rollouts(step=1, offset=1, limit=5)["rollouts"][0]["prompt_id"] == "p1"
+    assert RunReader(tmp_path / "runs" / "none").rollouts()["rollouts"] == []
+
+
+def test_rl_prompts_endpoint_renders_the_generation_prompt(tmp_path):
+    """make_tasks + format_chat(add_generation_prompt=True) is what the rollouts start from, torch-free."""
+    make_run(tmp_path / "runs", "alpha", finished=True)
+    root = _world(tmp_path / "data")
+    tok_dir = _tokenizer(root)
+    cfgs = tmp_path / "configs" / "train"
+    cfgs.mkdir(parents=True)
+    (cfgs / "rl_y.yaml").write_text("\n".join([
+        "run_name: rl_y", "tasks: [arith1, arith2]", "n_train_prompts: 12", "n_heldout_prompts: 4",
+        "think_required: true", f"tokenizer_dir: '{str(tok_dir).replace(chr(92), '/')}'"]))
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=root, configs_root=tmp_path / "configs", cache_dir=tmp_path / "cache", open_browser=False))
+    c = TestClient(app)
+    rid = "config:%s" % (cfgs / "rl_y.yaml")
+    d = c.get("/api/data/rl/prompts", params={"id": rid, "split": "train", "limit": 3}).json()
+    assert d["n"] == 12 and len(d["prompts"]) == 3
+    p = d["prompts"][0]
+    text = "".join(x["piece"] for x in p["pieces"])
+    assert text.startswith("<|bos|><|user|>") and text.endswith("<|assistant|><|think|>"), text[-60:]
+    assert p["gold"] and p["task"] in ("arith1", "arith2")
+    assert c.get("/api/data/rl/prompts", params={"id": rid, "split": "heldout"}).json()["n"] == 4
+    # the prompt list is seeded, so two calls agree; train and held-out never share a prompt
+    again = c.get("/api/data/rl/prompts", params={"id": rid, "split": "train", "limit": 3}).json()
+    assert [x["prompt_id"] for x in again["prompts"]] == [x["prompt_id"] for x in d["prompts"]]
+    held = {x["prompt_id"] for x in c.get("/api/data/rl/prompts", params={"id": rid, "split": "heldout", "limit": 4}).json()["prompts"]}
+    assert not held & {x["prompt_id"] for x in d["prompts"]}
+    assert c.get("/api/data/rl/prompts", params={"id": "config:%s" % (cfgs / "nope.yaml")}).status_code == 404

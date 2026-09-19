@@ -78,6 +78,36 @@ class RunReader:
                 return r["sources"]
         return None
 
+    def rollout_steps(self) -> list[int]:
+        d = self.dir / "rollouts"
+        return sorted(int(p.stem.split("_")[1]) for p in d.glob("step_*.jsonl")) if d.is_dir() else []
+
+    def rollouts(self, step: int | None = None, offset: int = 0, limit: int = 20) -> dict:
+        """One RL step's samples: what the model produced and what it was rewarded for.
+
+        `old_logprobs` / `ref_logprobs` are one float per token and never displayed, so they are dropped
+        before the payload is built. The file is opened read-only per request and closed immediately.
+        """
+        steps = self.rollout_steps()
+        if not steps:
+            return {"steps": [], "step": None, "n": 0, "offset": offset, "rollouts": []}
+        step = steps[-1] if step is None or step not in steps else step
+        drop = ("old_logprobs", "ref_logprobs")
+        rows = []
+        with (self.dir / "rollouts" / f"step_{step:05d}.jsonl").open(encoding="utf-8") as f:
+            for i, line in enumerate(f):
+                if i < offset:
+                    continue
+                if len(rows) >= limit:
+                    break
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rows.append({k: v for k, v in r.items() if k not in drop})
+        n = sum(1 for _ in (self.dir / "rollouts" / f"step_{step:05d}.jsonl").open(encoding="utf-8"))
+        return {"steps": steps, "step": step, "n": n, "offset": offset, "rollouts": rows}
+
     def events(self, limit: int = 50) -> list[dict]:
         self.refresh()
         return [r for r in self.records if r["kind"] in M.EVENT_KINDS][-limit:]

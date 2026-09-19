@@ -124,6 +124,47 @@ async def recipe(request: Request, id: str) -> dict:
     return {**r, **extra, "id": id}
 
 
+@router.get("/rl/prompts")
+async def rl_prompts(request: Request, id: str, split: str = "train", offset: int = 0, limit: int = 20) -> dict:
+    """The deterministic prompt list of an RL recipe, rendered as the exact generation prompt.
+
+    `make_tasks` is seeded, so this is the same list the trainer builds; slm.rl.tasks, slm.data.answers
+    and slm.data.chat import no torch, so it runs in the portal process.
+    """
+    kind, _, ref = id.partition(":")
+    if kind == "run":
+        cfg, stage, _ = _run_cfg(request, ref)
+    elif kind == "config":
+        if not Path(ref).exists():
+            raise HTTPException(404, "config not found")
+        cfg, stage = _config_dict(Path(ref))
+    else:
+        raise HTTPException(400, "id must be run:<name> or config:<path>")
+    if stage != "rl":
+        raise HTTPException(400, "not an RL recipe")
+
+    def work() -> dict:
+        from slm.data.chat import format_chat
+        from slm.rl.tasks import make_tasks, prompt_messages
+
+        names = list(cfg.get("tasks") or [])
+        n = int(cfg.get("n_train_prompts" if split == "train" else "n_heldout_prompts") or 0)
+        tasks = make_tasks(names, n, split, seed=int(cfg.get("seed") or 0))
+        tag = Path(cfg.get("tokenizer_dir") or "").name
+        tok = request.app.state.tokenizers.get(tag)
+        out = []
+        for t in tasks[offset : offset + min(limit, 100)]:
+            enc = format_chat(tok, prompt_messages(t), add_generation_prompt=True, think_required=bool(cfg.get("think_required")))
+            out.append({"prompt_id": t.id, "task": t.task, "prompt": t.prompt, "gold": t.answer,
+                        "ids": enc.ids, "n_tokens": len(enc.ids), "pieces": request.app.state.tokenizers.pieces(tag, enc.ids)})
+        return {"split": split, "n": len(tasks), "offset": offset, "tag": tag, "prompts": out}
+
+    try:
+        return await anyio.to_thread.run_sync(work)
+    except KeyError as e:
+        raise HTTPException(404, f"tokenizer or task not found: {e}") from None
+
+
 @router.get("/chain")
 async def chain(request: Request, run: str) -> dict:
     """Cumulative data exposure along the init_from chain ending at `run`, one row per stage.

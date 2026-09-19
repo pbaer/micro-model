@@ -175,7 +175,69 @@ function Inspector({ row, tag, seqLen }) {
   </div>`;
 }
 
-function RlPanel({ rl }) {
+/** The deterministic prompt list, rendered as the exact generation prompt the trainer builds. */
+function RlPrompts({ id, thinkRequired }) {
+  const [split, setSplit] = useState("train");
+  const [p, setP] = useState(null);
+  const [offset, setOffset] = useState(0);
+  const [sel, setSel] = useState(0);
+  const [mode, setMode] = useState("tokens");
+  useEffect(() => { setP(null); setSel(0); api(`/api/data/rl/prompts?id=${encodeURIComponent(id)}&split=${split}&offset=${offset}&limit=20`).then(setP).catch(() => setP({ prompts: [], n: 0 })); }, [id, split, offset]);
+  const cur = p && p.prompts[sel];
+  return html`<div><h2>Prompt sample</h2>
+    <div class="row" style="margin-bottom:6px">
+      ${["train", "heldout"].map((s) => html`<button class=${split === s ? "active" : ""} onClick=${() => { setSplit(s); setOffset(0); }}>${s}</button>`)}
+      <button onClick=${() => setOffset(Math.max(0, offset - 20))}>‹</button><button onClick=${() => setOffset(offset + 20)}>›</button>
+      ${p && html`<span class="muted">${fmtInt(p.n)} ${split} prompts; showing ${offset}–${Math.min(offset + 20, p.n)}</span>`}
+      <span class="muted" style="margin-left:8px">show as</span>
+      ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
+    </div>
+    ${!p ? html`<div class="empty-note">…</div>` : !p.prompts.length ? html`<div class="empty-note">no prompts for this split</div>` : html`<div class="two fill" style="height:420px">
+      <div class="col"><table><tr><th>task</th><th class="l">prompt</th><th>gold</th></tr>
+        ${p.prompts.map((x, i) => html`<tr class=${"click" + (i === sel ? " sel" : "")} onClick=${() => setSel(i)}><td>${x.task}</td><td class="l">${x.prompt.slice(0, 110)}</td><td>${x.gold}</td></tr>`)}</table></div>
+      <div class="col">${cur && html`<div class="grow">
+        <div class="sub">${cur.prompt_id} · ${cur.task} · ${fmtInt(cur.n_tokens)} tokens · gold <b>${cur.gold}</b></div>
+        ${mode === "text" ? html`<pre class="grow">${cur.prompt}</pre>` : html`<div class="grow"><${TokenChips} pieces=${cur.pieces} showIds=${mode === "ids"} /></div>`}
+        <div class="legend" style="margin-top:6px">Exactly the generation prompt the rollouts start from: <code>${"<|bos|><|user|>"}</code>question + answer-format suffix<code>${"<|end|><|assistant|>"}</code>${thinkRequired ? html`<code>${"<|think|>"}</code>` : ""}. The list is deterministic (seeded <code>make_tasks</code>), so these are the trainer's own prompts; the held-out split is a hash partition of the prompt text.</div>
+      </div>`}</div>
+    </div>`}
+  </div>`;
+}
+
+/** What the model actually saw during RL: its own samples, with the reward each earned. */
+function Rollouts({ run }) {
+  const [d, setD] = useState(null);
+  const [step, setStep] = useState(null);
+  const [sel, setSel] = useState(0);
+  const [mode, setMode] = useState("text");
+  useEffect(() => { setSel(0); api(`/api/runs/${encodeURIComponent(run)}/rollouts?limit=40${step == null ? "" : "&step=" + step}`).then((x) => { setD(x); if (step == null) setStep(x.step); }).catch(() => setD(null)); }, [run, step]);
+  if (!d) return html`<div><h2>Rollouts</h2><div class="empty-note">no rollouts stored for this run</div></div>`;
+  const cur = d.rollouts[sel];
+  return html`<div><h2>Rollouts</h2>
+    <div class="row" style="margin-bottom:6px"><span class="muted">step</span>
+      <select value=${d.step} onChange=${(e) => setStep(Number(e.target.value))}>${d.steps.map((s) => html`<option value=${s}>${s}</option>`)}</select>
+      <span class="muted">${fmtInt(d.n)} rollouts in this step</span>
+      <span class="muted" style="margin-left:8px">show as</span>
+      ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}</div>
+    <div class="two fill" style="height:460px">
+      <div class="col"><table><tr><th>task</th><th class="l">prompt</th><th>reward</th><th>parsed</th><th>len</th></tr>
+        ${d.rollouts.map((r, i) => html`<tr class=${"click" + (i === sel ? " sel" : "")} onClick=${() => setSel(i)}>
+          <td>${r.task}</td><td class="l">${String(r.prompt).slice(0, 80)}</td>
+          <td style=${"font-weight:600;color:" + (r.reward > 0 ? "#15803d" : "#b91c1c")}>${fmtNum(r.reward, 2)}</td>
+          <td>${r.malformed ? html`<b style="color:#b45309">malformed</b>` : r.parsed == null ? html`<span class="muted">-</span>` : String(r.parsed).slice(0, 12)}</td>
+          <td>${fmtInt(r.n_tokens)}</td></tr>`)}</table></div>
+      <div class="col">${cur && html`<div class="grow">
+        <div class="sub">${cur.prompt_id} · ${cur.task} · gold <b>${cur.gold}</b> · parsed <b>${cur.parsed == null ? "-" : String(cur.parsed)}</b> · reward <b>${fmtNum(cur.reward, 3)}</b> · ${cur.verifier || "?"} · ${cur.termination}${cur.malformed ? " · malformed" : ""}</div>
+        ${mode === "text" || !cur.pieces
+          ? html`<pre class="grow">${cur.prompt + "\n\n--- completion ---\n" + cur.text}</pre>`
+          : html`<div class="grow"><${TokenChips} pieces=${cur.pieces.map((p, i) => ({ ...p, loss: i >= cur.prompt_len }))} boundaries=${[cur.prompt_len]} showIds=${mode === "ids"} lossMask=${true} /></div>`}
+        <div class="legend" style="margin-top:6px">The prompt plus the model's own completion. Only completion tokens are policy targets; a tool result inside the think span is never one. The reward is what the verifier returned for this sample.</div>
+      </div>`}</div>
+    </div>
+  </div>`;
+}
+
+function RlPanel({ rl, id, runName }) {
   const rows = [["tasks", rl.tasks.map((t) => `${t} ${(rl.task_weights[t] * 100).toFixed(0)}%`).join(" · ")],
     ["prompts", `${fmtInt(rl.n_train_prompts)} train / ${fmtInt(rl.n_heldout_prompts)} held out (split by prompt-text hash, 10% held out)`],
     ["rollouts", `${rl.prompts_per_step} prompts/step x ${rl.group_size} samples, max ${rl.max_new_tokens} new tokens, T=${rl.temperature} top_p=${rl.top_p}`],
@@ -185,7 +247,9 @@ function RlPanel({ rl }) {
     ["collapse guards", `entropy_stop ${rl.entropy_stop || "off"} · kl_stop ${rl.kl_stop || "off"}`]];
   return html`<div><h2>Prompts and reward</h2>
     <table>${rows.map(([k, v]) => html`<tr><td>${k}</td><td class="l">${v}</td></tr>`)}</table>
-    <div class="legend" style="margin-top:6px">RL has no token mixture: the model trains on its own samples. Prompts are generated deterministically from the task list and the seed.</div></div>`;
+    <div class="legend" style="margin-top:6px">RL has no token mixture: the model trains on its own samples. Prompts are generated deterministically from the task list and the seed.</div>
+    <${RlPrompts} id=${id} thinkRequired=${rl.think_required} />
+    ${runName && html`<${Rollouts} run=${runName} key=${runName} />`}</div>`;
 }
 
 function Recipe({ id }) {
@@ -209,7 +273,7 @@ function Recipe({ id }) {
     <div class="sub">tokenizer ${r.tokenizer_tag} · ${r.seq_len ? `seq_len ${r.seq_len} · ` : ""}${r.total_tokens ? fmtTok(r.total_tokens) + " tokens" : ""}${r.total_note ? ` (${r.total_note})` : ""}
       ${r.init_from ? ` · init_from ${r.init_from}` : " · random init"}${r.root ? ` · ${r.root}` : ""}</div>
     ${r.plan_differs === true && html`<div class="panel" style="border-color:#fcd34d">The yaml <code>${r.config_path}</code> no longer matches what this run started with (configs get edited between phases). This page shows the run.</div>`}
-    ${r.rl ? html`<${RlPanel} rl=${r.rl} />` : html`<div>
+    ${r.rl ? html`<${RlPanel} rl=${r.rl} id=${r.id} runName=${r.kind === "run" ? r.run_name : null} />` : html`<div>
       <${MixTable} rows=${r.rows} showPlanned=${true} streams=${r.stream_sources} sel=${pick} onPick=${(s) => setPick(s === pick ? null : s)} />
       <div class="legend" style="margin-top:6px">epochs = planned tokens / available tokens; above 1.5 (red) the source is repeated.${r.stream_sources ? " 'consumed' is the loader's own per-source count at the last checkpoint." : ""} Click a row to inspect what the model sees from it.</div>
       ${picked && html`<${Inspector} row=${picked} tag=${picked.kind === "sft" ? r.tag : r.tokenizer_tag} seqLen=${r.seq_len} key=${picked.source + r.id} />`}
