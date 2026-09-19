@@ -23,7 +23,11 @@ export function Chart({ title, series, xmode = "tokens", logy = false, height = 
       width: el.clientWidth || 480,
       height,
       title,
-      cursor: { sync: { key: "runs" } },
+      // Hovering a legend entry focuses that series and fades the rest to `focus.alpha`. uPlot only wires the legend
+      // hover when cursor.focus.prox >= 0; prox 0 keeps plot-area hovering from stealing focus, and setSeries:false
+      // keeps the fade from propagating to the other synced charts (they share only the cursor position).
+      cursor: { sync: { key: "runs", setSeries: false }, focus: { prox: 0 } },
+      focus: { alpha: 0.12 },
       scales: {
         x: { time: false },
         y: { distr: logy ? 3 : 1, range: ymin === undefined ? undefined : (u, min, max) => [Math.min(ymin, min), max] },
