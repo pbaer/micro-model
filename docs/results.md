@@ -326,21 +326,21 @@ Reading the curve: overall (ex-bash) rises 1.12 → 3.07 at 7.5B, holding above 
 kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
 40-item packet, zero measurable training-throughput impact.
 
-### The 149M chain, stage by stage (retroactive, 2026-09-18)
+### The 149M chain, stage by stage (retroactive, 2026-09-18; overall excludes bash from 2026-09-19)
 
 Every stage's snapshots were generated on CPU and judged the same way (M3a every third snapshot). "last" is the
 stage's final checkpoint, which is what the next stage started from.
 
 | stage (run) | ckpts | first → last | best | correct | coherent | task | arithmetic | python | pattern | narrative |
 |---|---|---|---|---|---|---|---|---|---|---|
-| base 2K, cosine (`m2_base_149m`) | 10 | 1.18 → 1.80 | 1.80 @ 1.0B | 1.40 | 1.94 | 2.06 | 1.42 | 2.39 | 1.50 | 2.17 |
-| base 2K stable (`m3_base_stable_149m`) | 12 | 1.57 → 2.37 | 2.37 @ 3.4B | 2.06 | 2.29 | 2.77 | 1.17 | 2.44 | 2.75 | 2.83 |
-| base 8K + decay (`m3_base_8k_149m`) | 5 | 2.43 → 2.28 | 2.43 @ 100M | 2.14 | 2.11 | 2.57 | 1.50 | 2.61 | 3.17 | 2.67 |
-| chat SFT (`m4_sft_149m`) | 2 | 3.03 → 2.61 | 3.03 @ 225M | 2.06 | 2.83 | 2.94 | 2.25 | 2.83 | 2.00 | 2.83 |
-| reasoning SFT (`m5_reasoning_149m`) | 3 | 2.45 → 2.29 | 2.45 @ 15M | 1.89 | 2.63 | 2.34 | 2.92 | 1.94 | 2.33 | 1.83 |
-| tool reasoning SFT (`m5_reasoning_tools_149m`) | 3 | 2.73 → 2.49 | 2.73 @ 5M | 2.23 | 2.60 | 2.63 | 3.25 | 1.78 | 1.33 | 2.17 |
-| 8K retrieval curriculum (`m7_ctx8k_retrieval_149m`) | 6 | 2.27 → 2.37 | 2.37 @ 600M | 2.26 | 2.29 | 2.57 | 1.58 | 2.56 | 2.92 | 2.83 |
-| GRPO on GSM8K with tools (`m6_rl_gsm_tools_149m`) | 9 | 2.47 → 2.54 | 2.57 @ step 200 | 2.26 | 2.69 | 2.69 | 4.08 | 2.06 | 1.33 | 1.83 |
+| base 2K, cosine (`m2_base_149m`) | 10 | 1.20 → 1.86 | 1.86 @ 1.0B | 1.44 | 2.00 | 2.16 | 1.42 | 2.39 | 1.50 | 2.00 |
+| base 2K stable (`m3_base_stable_149m`) | 12 | 1.61 → 2.48 | 2.48 @ 3.4B | 2.16 | 2.34 | 2.94 | 1.17 | 2.44 | 2.75 | 3.67 |
+| base 8K + decay (`m3_base_8k_149m`) | 5 | 2.55 → 2.40 | 2.56 @ 700M | 2.25 | 2.22 | 2.72 | 1.50 | 2.61 | 3.17 | 2.67 |
+| chat SFT (`m4_sft_149m`) | 2 | 3.17 → 2.70 | 3.17 @ 225M | 2.12 | 2.91 | 3.06 | 2.25 | 2.83 | 2.00 | 2.83 |
+| reasoning SFT (`m5_reasoning_149m`) | 3 | 2.50 → 2.40 | 2.50 @ 15M | 1.97 | 2.75 | 2.47 | 2.92 | 1.94 | 2.33 | 1.83 |
+| tool reasoning SFT (`m5_reasoning_tools_149m`) | 3 | 2.88 → 2.59 | 2.88 @ 5M | 2.34 | 2.69 | 2.75 | 3.25 | 1.78 | 1.33 | 2.17 |
+| 8K retrieval curriculum (`m7_ctx8k_retrieval_149m`) | 6 | 2.37 → 2.49 | 2.49 @ 600M | 2.38 | 2.38 | 2.72 | 1.42 | 2.44 | 2.50 | 3.17 |
+| GRPO on GSM8K with tools (`m6_rl_gsm_tools_149m`) | 9 | 2.59 → 2.67 | 2.70 @ step 200 | 2.38 | 2.78 | 2.84 | 4.08 | 2.06 | 1.33 | 1.83 |
 
 What the chain says, and what it changes for the 336M post-training:
 
