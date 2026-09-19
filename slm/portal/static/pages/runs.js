@@ -84,6 +84,8 @@ export function RunDetail({ run }) {
   if (!info || !series || !xs) return html`<div>loading ${run}…</div>`;
   const s = info.summary, t = series.train, e = series.eval;
   const tokensX = xs.tx, evalX = xs.ex;
+  const sw = series.needle_sweep;
+  const sweepX = sw ? sw.tokens.map((tok) => xmode === "tokens" ? tok : xmode === "update" ? nearestUpdate(t, tok) : nearestTime(t, tok)) : [];
   const qc = (quality && quality.checkpoints || []).filter((c) => c.overall != null);
   const qualityX = qc.map((c) => xmode === "tokens" ? c.tokens : xmode === "update" ? nearestUpdate(t, c.tokens) : nearestTime(t, c.tokens));
   const QPAL = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#4d7c0f", "#be185d", "#78716c"];
@@ -122,7 +124,17 @@ export function RunDetail({ run }) {
     ${tab === "charts" && html`<div class="charts">
       <${Chart} title=${series.is_rl ? "policy objective (≈0 by construction; advantages are zero-mean per group)" : "train / val loss"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
       ${!series.is_rl && html`<${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />`}
-      ${series.needle_keys && series.needle_keys.length > 0 && html`<${Chart} title="needle retrieval accuracy by context length (solid = mean over depths, dashed = minimum over depths)" xmode=${xmode} ymin=${0} series=${(() => { const means = series.needle_keys.filter((k) => !k.startsWith("needle_min_")); const palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"]; return means.map((k, i) => ({ label: k.replace("needle_", "") + " mean", x: evalX, y: e[k], points: true, width: 2, color: palette[i % palette.length] })).concat(means.map((k, i) => ({ label: k.replace("needle_", "") + " min", x: evalX, y: e["needle_min_" + k.replace("needle_", "")], points: true, width: 1.5, dash: true, color: palette[i % palette.length] }))); })()} />`}
+      ${((series.needle_keys && series.needle_keys.length > 0) || sw) && html`<${Chart} title=${"needle retrieval accuracy by context length (solid = mean over depths, dashed = minimum over depths" + (sw ? `; heavy lines = sweep of every snapshot at n=${sw.n}` : "") + ")"} xmode=${xmode} ymin=${0} series=${(() => {
+        const palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
+        const means = (series.needle_keys || []).filter((k) => !k.startsWith("needle_min_"));
+        const inrun = means.map((k, i) => ({ label: k.replace("needle_", "") + " mean", x: evalX, y: e[k], points: true, width: sw ? 1 : 2, color: palette[i % palette.length] }))
+          .concat(means.map((k, i) => ({ label: k.replace("needle_", "") + " min", x: evalX, y: e["needle_min_" + k.replace("needle_", "")], points: true, width: 1, dash: true, color: palette[i % palette.length] })));
+        if (!sw) return inrun;
+        const colorOf = (L) => { const i = means.findIndex((k) => k === "needle_" + L); return palette[(i >= 0 ? i : means.length + sw.lengths.indexOf(L)) % palette.length]; };
+        const heavy = sw.lengths.map((L) => ({ label: `${L} mean (n=${sw.n})`, x: sweepX, y: sw.mean[L], points: true, width: 3, color: colorOf(L) }))
+          .concat(sw.lengths.map((L) => ({ label: `${L} min (n=${sw.n})`, x: sweepX, y: sw.min[L], points: true, width: 2.5, dash: true, color: colorOf(L) })));
+        return inrun.concat(heavy);
+      })()} />`}
       ${qc.length > 0 && html`<${Chart} title=${`judged quality, 1-5 (${quality.n_prompts}-prompt suite ${quality.suite}, judge ${(quality.judges || []).join("/")}; grey = the 3 prompts sampled since M1)`} xmode=${xmode} ymin=${1} series=${[
         { label: "overall", x: qualityX, y: qc.map((c) => c.overall), points: true, width: 2.5, color: "#111827" },
         ...quality.rubrics.map((r, i) => ({ label: r, x: qualityX, y: qc.map((c) => c[r]), points: true, width: 1.5, color: QPAL[i] })),

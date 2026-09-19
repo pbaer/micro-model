@@ -51,7 +51,23 @@ class RunReader:
 
     def series(self, max_points: int = 1500) -> dict:
         self.refresh()
-        return M.series(self.records, max_points)
+        out = M.series(self.records, max_points)
+        sw = self.needle_sweep()
+        if sw and sw.get("checkpoints"):
+            from slm.eval.needle_sweep import series as sweep_series  # torch-free at import
+
+            out["needle_sweep"] = sweep_series(sw)
+        return out
+
+    def needle_sweep(self) -> dict | None:
+        """runs/<run>/needle_sweep.json (slm.eval.needle_sweep: every snapshot at one n and one haystack draw)."""
+        p = self.dir / "needle_sweep.json"
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
 
     def events(self, limit: int = 50) -> list[dict]:
         self.refresh()

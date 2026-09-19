@@ -227,6 +227,12 @@ affordable inside a training run. A batch that runs out of memory is retried row
 still fail are dropped from that cell rather than counted as misses. The batched path is asserted to
 return exactly the row-at-a-time answers (`tests/test_long_context.py`).
 
+`slm/eval/needle_sweep.py` re-measures every milestone snapshot of a finished run at one sample count and one
+fixed haystack draw (`runs/<run>/needle_sweep.json`, resumable, ~35 s per 336M snapshot on the GPU at n=64), and
+the run page overlays it on the needle chart as heavy lines. Use it when a run's in-run settings changed
+mid-way, or when the in-run n was too small for the gate to be trustworthy: at n=16 a true 90% cell reads below
+the 80% gate 21% of the time, at n=64 1.4%.
+
 In-run sample size matters more than it looks: at `needle_n: 4` over three depths a cell is 4 samples
 and the logged worst-depth line is the minimum of three 4-sample estimates, which swings by 25 points
 for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per length), matching the
