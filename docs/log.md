@@ -332,3 +332,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   generalisation to unseen program shapes. `tool-chat-v2` rebuilt from the four old tool sets plus this one:
   36.1M train / 2.9M val tokens, 225K docs (the existing `tool-chat` dir is untouched; the swap is a rename at
   launch time). At 1.5% of phase 2's 2.5B that is ~0.96 epochs.
+- 14:05 `tool-chat` swapped: the 7.6M-token calculator-only set is now `tool-chat-v1`; `tool-chat` is the rebuilt
+  36.1M-token source (the four old sets + `synthetic-python-tools`, 30.8M: 170K grammar-generated conversations,
+  9 families, 77% of calls with loops, 11% with `def`, 11% calling declared functions, 13 real error hints;
+  hold-outs `pipeline.dict` and `declared.distance` in val only). At 1.5% of phase 2's 2.5B that is 0.96 epochs.
+  Phase 2 is ready to launch on Peter's go (STOP file removed, stub run set aside, config shell-free).
