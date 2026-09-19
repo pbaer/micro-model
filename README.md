@@ -200,8 +200,9 @@ loss so a regression would be visible.
 `python -m slm.portal` serves a local web UI at http://127.0.0.1:8765 (FastAPI, torch-free server;
 vendored Preact + uPlot, no build step). Pages: **Overview** (pipeline table, live runs, GPU state, data
 readiness), run detail (live charts including GPU temperature/power, milestones, samples timeline,
-checkpoints, events, config), **Data** (sources, mixture, a Documents browser over tokenized shards and
-raw parquet with text/tokens/ids views and SFT loss masks), **Tokenizer** playground, **Inference**
+checkpoints, events, config), **Data** (a recipe per training config or run: its mixture with
+epochs and drift set, and per source an inspector from raw parquet row to prepared document or SFT
+example to the exact training row the loader cuts, with loss masks; plus the source catalog and browser), **Tokenizer** playground, **Inference**
 (checkpoint slots A/B in a torch worker subprocess with a GPU guard, streaming generation with per-token
 log-probs, scoring), and **Architecture** (interactive module graph, FLOPs/memory, LR/RoPE
 illustrations computed by the real functions). It is a supplement to working in the repo, not the
