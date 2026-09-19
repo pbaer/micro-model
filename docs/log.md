@@ -282,3 +282,14 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 ## 2026-09-19
 - 00:05 CPU needle backfill stopped after two snapshots (Peter: too slow at 29.5 min each). Both M8 runs get swept
   on the GPU at 1K/2K/4K, n=64, when the pipeline reports done (~25 min per run); a watcher is armed for it.
+- 12:10 Data page refactored around the mixture as the spine (docs/proposals/data_tab_refactor.md, approved with all
+  four open questions answered yes). Two Opus 5 agents, ~40 min of wall-clock: recipes (config = plan, run = what ran,
+  `plan_differs` flag), truthful mixtures for all three stages (the old page showed 0 available for every SFT set and
+  for smoltalk-chat / tool-chat, and 500'd on RL configs), the raw / prepared / training-row inspector with the packed
+  SFT window and mask, compare (default = init_from parent), chain (actual per-source exposure from the new
+  `sources` checkpoint field where present), RL prompt sample + rollouts viewer, a catalog page replacing the
+  sources / mixture / documents tabs, run-page data link, portal main process now torch-free at import (asserted).
+  Training side: `PretrainLoader.consumed()` logged as `sources` in checkpoint/finish records; `prepare.py` writes a
+  `shard_NNNNN.src.npy` raw-row sidecar for new shards.
+- 11:30 phase 2 fenced off with a pre-placed STOP file (the pipeline chains it automatically; Peter wants to inspect
+  the mid-training data first). The needle sweep of phase 1's snapshots runs on the GPU in that gap.
