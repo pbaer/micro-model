@@ -278,3 +278,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (29.5 min) on CPU with 24 threads at 1K+2K, with training throughput unaffected (29.9K tok/s). Phase 1's 30
   snapshots are backfilling on the idle CPU (~14 h); phase 2 gets swept on the GPU at 1K/2K/4K once the pipeline
   finishes. The in-run tracker moved from n=4 to n=16 mid-run, which is why one consistent curve is wanted.
+
+## 2026-09-19
+- 00:05 CPU needle backfill stopped after two snapshots (Peter: too slow at 29.5 min each). Both M8 runs get swept
+  on the GPU at 1K/2K/4K, n=64, when the pipeline reports done (~25 min per run); a watcher is armed for it.
