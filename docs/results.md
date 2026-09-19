@@ -388,3 +388,27 @@ What the chain says, and what it changes for the 336M post-training:
   curriculum ends 0.09 above where it started. Consistent with the ≤5% rule.
 - **Per token, the 336M base is ahead from ~1B on**: 2.31 at 3.5B vs the 149M chain's 2.2 at the same
   cumulative count and 2.37 at 4.2B.
+
+## 9. Packing diagnostic: does a row that starts mid-document hurt? (`slm.eval.row_positions`, 2026-09-19)
+
+Phase-1 final checkpoint, 256 validation rows of 2048 tokens from `fineweb-edu-10bt`, packed exactly as training
+packs them (every row started mid-document; 49% of tokens sit before the row's first `<|bos|>`), plus a control
+pass of 256 rows each aligned to start at a document boundary. Per-token loss in nats.
+
+| position in row (tail) / distance into document (in-doc) | tail: truncated prefix | in-doc: full prefix | doc after other text (packed) | doc at row start (aligned control) |
+|---|---|---|---|---|
+| 0 | 6.26 | | | |
+| 1-3 | 4.95 | 5.02 | 5.02 | 5.05 |
+| 4-15 | 3.74 | 3.45 | 3.45 | 3.51 |
+| 16-63 | 3.17 | 2.97 | 2.97 | 3.03 |
+| 64-255 | 2.91 | 2.86 | 2.86 | 2.90 |
+| 256-1023 | 2.81 | 2.82 | 2.82 | 2.86 |
+
+- **Truncated prefix**: costs ~0.3 nats in the first 16 positions of a row, ~0.2 through 64, ~0.05 through 256, nothing
+  beyond; the curves are smooth and converge. Tail tokens average 2.82 vs 2.84 for all tokens (mid-document text is
+  easier than document openings). The penalty lives in ~3% of tokens and is the short-context task itself.
+- **Cross-document attention**: a document that starts after other text in the row scores 0.03-0.06 nats *lower*
+  at every distance to 1023 than one that starts at the top of a row with nothing before it. Preceding text from an
+  unrelated document does not hurt at this scale; the small positive delta is within what two 256-row samples can
+  resolve. No case for boundary-aligned rows; document masking remains a next-base benchmark, not a fix for a
+  measured problem.
