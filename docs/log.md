@@ -293,3 +293,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   `shard_NNNNN.src.npy` raw-row sidecar for new shards.
 - 11:30 phase 2 fenced off with a pre-placed STOP file (the pipeline chains it automatically; Peter wants to inspect
   the mid-training data first). The needle sweep of phase 1's snapshots runs on the GPU in that gap.
+- 13:10 Peter: the model only needs to write Python; bash is out of scope from here and may fade. `stack-edu-shell`
+  removed from the phase-2 mixture and from its drift-tracking `extra_val_mixture` (its 1.5% moved to python-edu,
+  which is now 6.5%); scope lines in CLAUDE.md / README updated. The judged-quality `overall` now excludes the
+  bash category for every run (the 3 bash prompts stay in the suite and are still scored, `overall_all` keeps the
+  old definition); every summary.json regenerated. Phase 1 of the second base keeps its 1.5% shell to the end.
+- 13:00 Peter: the tool datasets teach `<|python_call|>` as a calculator (measured: 0 of 87,593 spans contain a
+  loop, def, list, string method, `if` or `math.`). Decision: before phase 2, build a grammar-generated,
+  sandbox-verified Python-tool set covering the whole supported subset (plus a sandbox-filtered public source),
+  and add declared functions (`<|python_def|>sig<|python_comment|>text<|/python_def|>`, masked, registered into the
+  session) to the vocabulary and the data. Two Opus agents in sequence: plumbing, then the generator.

@@ -30,7 +30,7 @@ import sys
 import time
 from pathlib import Path
 
-from slm.eval.quality_suite import CATEGORIES, JUDGE_INSTRUCTIONS, RUBRIC_VERSION, RUBRICS, SUITE, SUITE_VERSION
+from slm.eval.quality_suite import CATEGORIES, EXCLUDED_FROM_OVERALL, JUDGE_INSTRUCTIONS, RUBRIC_VERSION, RUBRICS, SUITE, SUITE_VERSION
 from slm.utils.stage import run_meta, run_stage, run_tools
 
 LEGACY3 = ("rome", "fib", "cap_france")  # the three prompts the trainer has sampled since M1: the long-history subset
@@ -371,17 +371,19 @@ def summarize(run_dir: Path) -> dict:
             if s:
                 sc = s["scores"]
                 rows.append((it, sc, sum(sc[r] for r in RUBRICS) / len(RUBRICS)))
+        scored = [(it, sc, o) for it, sc, o in rows if it["category"] not in EXCLUDED_FROM_OVERALL]  # overall = the categories we still train for
         entry = {"tokens": h["tokens"], "checkpoint": h["checkpoint"], "stage": h["stage"], "n_items": len(items), "n_scored": len(rows),
-                 "overall": _mean([o for _, _, o in rows]), "legacy3": _mean([o for it, _, o in rows if it["id"] in LEGACY3]),
+                 "overall": _mean([o for _, _, o in scored]), "overall_all": _mean([o for _, _, o in rows]), "legacy3": _mean([o for it, _, o in rows if it["id"] in LEGACY3]),
                  "legacy3_n": sum(1 for it, _, _ in rows if it["id"] in LEGACY3), "stopped_frac": round(sum(1 for it in items if it.get("stopped")) / max(1, len(items)), 3)}
         for r in RUBRICS:
-            entry[r] = _mean([sc[r] for _, sc, _ in rows])
+            entry[r] = _mean([sc[r] for _, sc, _ in scored])
         entry["categories"] = {c: {"overall": _mean([o for it, _, o in rows if it["category"] == c]), "n": sum(1 for it, _, _ in rows if it["category"] == c),
                                    **{r: _mean([sc[r] for it, sc, _ in rows if it["category"] == c]) for r in RUBRICS}} for c in CATEGORIES}
         ckpts.append(entry)
     ckpts.sort(key=lambda e: e["tokens"])
     judges = sorted({s.get("judge", "?") for s in scores.values()})
     return {"run": Path(run_dir).name, "suite": SUITE_VERSION, "rubric": RUBRIC_VERSION, "rubrics": list(RUBRICS), "categories": CATEGORIES, "n_prompts": len(SUITE),
+            "excluded_from_overall": sorted(EXCLUDED_FROM_OVERALL),
             "judges": judges, "checkpoints": ckpts, "updated_at": time.strftime("%Y-%m-%d %H:%M:%S")}
 
 

@@ -42,7 +42,7 @@ Three integers, 1-5 each, from `JUDGE_INSTRUCTIONS` in `quality_suite.py` (the p
 | coherence | fluent, on topic, no repetition | readable but drifts or repeats | word salad or an immediate loop |
 | task | does exactly what the prompt implies, natural format | related but incomplete or wrong format | ignores the task |
 
-`overall` is the mean of the three. Rules the judge is given: for short-answer completions the first sentence
+`overall` is the mean of the three, averaged over every category except those in `EXCLUDED_FROM_OVERALL` (`bash` since 2026-09-19, when shell was dropped from every mixture after the first base and allowed to fade); `overall_all` keeps the unfiltered mean and the bash category is still scored and charted per category. Rules the judge is given: for short-answer completions the first sentence
 decides correctness and the rest only affects coherence/task (a right answer followed by a loop is 5 / 1-2 / 3-4);
 code is mentally executed; length is not rewarded; the judge does not know which checkpoint an item comes from.
 

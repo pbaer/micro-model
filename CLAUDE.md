@@ -23,7 +23,8 @@ placeholder and may change, so don't bake it into code.
   Both roots are config values, never hard-coded.
 
 ## Scope decisions (from Peter)
-- Data: English prose, Python, Linux bash only. Filter out other languages.
+- Data: English prose and Python only (bash dropped 2026-09-19: Python is the only code the model should write; the
+  first base saw 1.5% shell and that knowledge is allowed to fade). Filter out other languages.
 - No teacher models for our own data generation. Public datasets that were model-written (SmolTalk, MetaMathQA) are
   allowed, and chat/tool conversations may be mixed into pretraining (decided 2026-09-16).
 - Own 32K BPE tokenizer with a reserved block of 64 special tokens (chat roles, think, tools).

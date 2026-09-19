@@ -16,6 +16,9 @@ SUITE_VERSION = "v1"
 RUBRIC_VERSION = "v1"
 
 RUBRICS = ("correctness", "coherence", "task")
+# Categories that stay in the suite (so old and new checkpoints are scored on the same items) but are excluded from
+# `overall`: bash was dropped from every mixture after the first base on 2026-09-19 and is allowed to fade.
+EXCLUDED_FROM_OVERALL = frozenset({"bash"})
 
 # id, category, completion prompt, chat prompt, expectation, max_new_tokens
 _P = [

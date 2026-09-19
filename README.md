@@ -15,7 +15,7 @@ not baked into the code.
 **Hardware and constraints.** One RTX 4080 SUPER (16 GB), native Windows 11, Python 3.13, PyTorch
 2.14 + CUDA 13 with `triton-windows` so `torch.compile` works. Training data lives on `C:\slm-data`;
 code, configs, checkpoints and reports live in this repo. Data policy: English prose, Python and Linux
-shell only. No teacher models and no model-generated training data (synthetic reasoning traces are
+shell only in the first base; from 2026-09-19 prose and Python only, and shell knowledge is allowed to fade. No teacher models and no model-generated training data (synthetic reasoning traces are
 templated and correct by construction). No paid APIs.
 
 **Where things stand** is deliberately kept out of this file. Current numbers live in
@@ -111,7 +111,7 @@ volumes are on the Data page of the command center and in [docs/results.md](docs
 | cosmopedia v2 | synthetic textbooks | ~10% |
 | finemath 4+ | math web text with LaTeX | ~5% |
 | python-edu (file contents fetched from Software Heritage S3) | Python | ~3% |
-| stack-edu Shell (Software Heritage S3) | bash/sh | ~2% |
+| stack-edu Shell (Software Heritage S3) | bash/sh | ~2% of the first base and of M8 phase 1; dropped from every later mixture (2026-09-19) |
 | tinystories | children's stories | M1 only |
 | SmolTalk subsets (magpie-ultra, openhermes, systemchats, constraints, everyday) | chat | instruction SFT; also mixed into the second base's decay phase as `smoltalk-chat` (4.5%) |
 | GSM8K / MetaMathQA / templated traces with Python tool calls (`gsm8k-tools`, `synthetic-reasoning-tools`) | tool-use reasoning | tool SFT; also mixed into the decay phase as `tool-chat` (1.5%) |
@@ -190,7 +190,7 @@ loss so a regression would be visible.
 - `slm.eval.diagnostics`: per-layer residual norms, dead SwiGLU units, attention entropy and BOS-sink
   mass, head/layer ablations, weight spectra (writes `diagnostics.html` next to the checkpoint).
 - Fixed-prompt samples (greedy and sampled) during every run.
-- `slm.eval.quality`: a 35-prompt suite (facts, prose, Python, bash, arithmetic, patterns, definitions, narrative,
+- `slm.eval.quality`: a 35-prompt suite (facts, prose, Python, bash [tracked, excluded from the overall], arithmetic, patterns, definitions, narrative,
   why-questions) run greedily on every checkpoint and scored blind by an LLM judge on correctness, coherence and
   task (1-5), charted per checkpoint in the command center; the steady-improvement signal validation loss
   cannot give. Protocol: `docs/quality_eval.md`.

@@ -10,10 +10,10 @@ model:
 init_from: runs/m8_base_stable_336m/checkpoints/final.pt
 data:
   tokenized_root: C:\slm-data\tokenized\v1
-  mixture: {fineweb-edu-10bt: 0.66, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, stack-edu-shell: 0.015, synth-retrieval: 0.035, smoltalk-chat: 0.045, tool-chat: 0.015}
+  mixture: {fineweb-edu-10bt: 0.66, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035, smoltalk-chat: 0.045, tool-chat: 0.015}  # no shell from 2026-09-19 (Python is the only code we want); its 1.5% went to python-edu
   seq_len: 4096
   val_tokens: 4000000
-  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, stack-edu-shell: 0.015, synth-retrieval: 0.035}  # phase-1 mixture: comparable to the stable-phase val
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}  # phase-1 mixture minus shell (dropped on purpose, so its forgetting is not counted as drift); python-edu takes its 1.5%
 optim:
   lr: 4.0e-4
   betas: [0.9, 0.95]
