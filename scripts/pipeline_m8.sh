@@ -14,7 +14,7 @@ CK=runs/m8_base_4k_336m/checkpoints/final.pt
 [ -f "$CK" ] || { log "phase 2 produced no final.pt; aborting"; exit 1; }
 R=runs/m8_base_4k_336m
 log "measuring the base"
-$P -u -m slm.eval.long_context --checkpoint "$CK" --lengths 1024 2048 3072 4096 --n 16 --out $R/needle_v2.json > $R/needle_v2.log 2>&1
+$P -u -m slm.eval.long_context --checkpoint "$CK" --lengths 1024 2048 3072 4096 --n 64 --batch-tokens 32768 --out $R/needle_v2.json > $R/needle_v2.log 2>&1
 $P -u -m slm.eval.lm_eval_wrapper --checkpoint "$CK" --tasks hellaswag,arc_easy,piqa --batch-size 8 --out $R/lm_eval.json > $R/lm_eval.log 2>&1
 $P -u -m slm.eval.lm_eval_wrapper --checkpoint "$CK" --tasks hellaswag,arc_easy,piqa --batch-size 8 --limit 2000 --out $R/lm_eval_limit2000.json > $R/lm_eval_limit2000.log 2>&1
 $P -u scripts/diagnose.py "$CK" --root C:/slm-data/tokenized/v1 --source fineweb-edu-b --seq 2048 --batches 8 --mb 4 > $R/diagnostics.log 2>&1
