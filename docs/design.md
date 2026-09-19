@@ -75,8 +75,13 @@ tokens, and writes:
 
     tokenized/<tag>/<name>/train/shard_00000.bin      uint16 tokens, 100M per shard, docs = <|bos|> … <|eos|>
     tokenized/<tag>/<name>/train/shard_00000.idx.npy  int64 document start offsets within the shard
+    tokenized/<tag>/<name>/train/shard_00000.src.npy  int32 [n_docs, 3] raw-row sidecar, aligned with .idx.npy
     tokenized/<tag>/<name>/val/…                       10 ‰ of documents by sha1(text[:2048]); never trained on
     tokenized/<tag>/<name>/manifest.json               counts, tokenizer sha256, min_doc_tokens
+
+The sidecar names the raw row every kept document came from — `(file_index, row_group, row)`, where
+`file_index` indexes `manifest["files"]` — so a shard offset can be traced back to its source text;
+`manifest["sidecar"] == "src"` marks the shards that have it (older shards do not, and no reader requires it).
 
 `--name` creates derived sources from the same raw files (e.g. `fineweb-edu-long` with
 `--min-doc-tokens 4096`).
@@ -144,12 +149,15 @@ One JSON object per line, always with `kind`, `time` (epoch seconds), and usuall
 
 | kind | fields |
 |---|---|
-| `start`, `resume`, `stop`, `finish` | `msg`; `finish`/`stop` carry `elapsed_s` |
-| `checkpoint` | `msg` (file, seconds) |
+| `start`, `resume`, `stop`, `finish` | `msg`; `finish`/`stop` carry `elapsed_s` and `sources` |
+| `checkpoint` | `msg` (file, seconds), `sources` |
 | `train` | `update, loss, lr, grad_norm, tok_s, tok_s_ema, step_ms, fwd_ms, bwd_ms, opt_ms, data_ms, vram_gib, gpu_temp_c, gpu_power_w, gpu_util, elapsed_s, eta_s` (+ RL fields below) |
 | `eval` | `val_loss, val_ppl, best, eval_s, val_pt_loss` (extra validation), RL: `heldout_acc, train_acc, heldout_malformed, heldout_len` |
 | `milestone` | `tokens, segment_s, elapsed_s, tok_s, loss, val_loss` |
 | `warn` | `msg` (GPU temperature) |
+
+`sources` is `PretrainLoader.consumed()`: per mixture source `{tokens, epoch, shard, offset}`, the tokens
+taken from that source's stream since the run started (`epoch` fractional); `null` for loaders without it.
 
 RL `train` records add `reward_mean, success_rate, group_std_mean, groups_no_signal, adv_abs_mean,
 len_mean, len_correct, len_wrong, malformed_rate, length_term_rate, kl, entropy, clip_frac, ratio_mean`.

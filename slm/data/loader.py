@@ -118,6 +118,22 @@ class PretrainLoader:
         self.tokens_served = d["tokens_served"]
         self._state_after_last = None
 
+    def consumed(self) -> dict[str, dict]:
+        """Per source: tokens taken from its stream since the run started (torch-free, for metrics).
+
+        Read from the post-batch snapshot, so it matches the cursor a checkpoint would store rather
+        than the prefetch thread's read-ahead. `epoch` is fractional (tokens / stream total); skipped
+        shard tails count as consumed, because the cursor has passed them.
+        """
+        s = self._state_after_last or self._snapshot()
+        out: dict[str, dict] = {}
+        for name, st in s.streams.items():
+            stream = self.streams[name]
+            tokens = int(st["epoch"]) * stream.total + sum(stream.sizes[: st["shard"]]) + int(st["offset"])
+            out[name] = {"tokens": int(tokens), "epoch": tokens / stream.total if stream.total else 0.0,
+                         "shard": int(st["shard"]), "offset": int(st["offset"])}
+        return out
+
     def _snapshot(self) -> LoaderState:
         return LoaderState(
             {n: s.state_dict() for n, s in self.streams.items()},

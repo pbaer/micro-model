@@ -1,5 +1,6 @@
 import json
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -95,12 +96,81 @@ def test_loader_resume_reproduces_batches(tmp_path):
     assert x.shape == (4, 16) and torch.equal(x[:, 1:], y[:, :-1])
 
 
+def test_loader_consumed_tracks_windows(tmp_path):
+    _make_shards(tmp_path, "a", "train", 2, 5000, 1)
+    _make_shards(tmp_path, "b", "train", 1, 5000, 2)
+    spec = MixtureSpec(tmp_path, {"a": 0.7, "b": 0.3})
+    ld = PretrainLoader(spec, seq_len=15, microbatch=4, seed=0, device="cpu", prefetch=2)
+    for _ in range(12):
+        ld.next()
+    got = ld.consumed()
+    ld.close()
+    # every window is seq_len + 1 tokens and no shard tail is skipped yet (12*4*16 = 768 < 5000)
+    assert sum(v["tokens"] for v in got.values()) == 12 * 4 * 16
+    for name, v in got.items():
+        stream = ld.streams[name]
+        assert v["epoch"] == pytest.approx(v["tokens"] / stream.total)
+        assert v["shard"] == 0 and v["offset"] == v["tokens"] and v["tokens"] % 16 == 0
+    assert got["a"]["tokens"] > got["b"]["tokens"]  # 0.7 / 0.3 mixture
+
+
+def test_loader_consumed_counts_epochs_and_skipped_tails(tmp_path):
+    _make_shards(tmp_path, "a", "train", 2, 100, 3)
+    spec = MixtureSpec(tmp_path, {"a": 1.0})
+    ld = PretrainLoader(spec, seq_len=39, microbatch=1, seed=0, device="cpu", prefetch=1)
+    for _ in range(5):  # 40 tokens each: 2 per shard (tail of 20 skipped), so the 5th wraps
+        ld.next()
+    got = ld.consumed()["a"]
+    ld.close()
+    assert got["shard"] == 0 and got["offset"] == 40
+    assert got["tokens"] == 1 * 200 + 0 + 40 and got["epoch"] == pytest.approx(240 / 200)
+
+
 def test_val_loader_fixed(tmp_path):
     _make_shards(tmp_path, "a", "val", 1, 2000, 3)
     spec = MixtureSpec(tmp_path, {"a": 1.0}, "val")
     v1 = list(ValLoader(spec, 16, 2, 160, device="cpu"))
     v2 = list(ValLoader(spec, 16, 2, 160, device="cpu"))
     assert len(v1) == 5 and all(torch.equal(a[0], b[0]) for a, b in zip(v1, v2))
+
+
+def test_prepare_writes_row_sidecar(tmp_path, tok, monkeypatch):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from slm.data import prepare as prep
+    from slm.data import sources as sources_mod
+
+    monkeypatch.setattr(sources_mod, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(prep, "SHARD_TOKENS", 512)  # several shards from a handful of tiny docs
+    src = sources_mod.Source("tiny", "local/tiny", "*.parquet", text_col="text", kind="prose")
+    src.local_dir.mkdir(parents=True)
+    # two files x two row groups x four rows; unique, English-looking, >= 64 chars so keep_doc passes
+    texts = [[[f"Document {fi}-{rg}-{r} about the quick brown fox and the lazy dog in the garden. " * 2
+               for r in range(4)] for rg in range(2)] for fi in range(2)]
+    for fi in range(2):
+        with pq.ParquetWriter(src.local_dir / f"part_{fi:03d}.parquet", pa.schema([("text", pa.string())])) as w:
+            for rg in range(2):
+                w.write_table(pa.table({"text": texts[fi][rg]}))
+
+    out_root = tmp_path / "tokenized"
+    manifest = prep.prepare(src, tok, out_root, max_tokens=float("inf"), val_permille=0, batch_docs=3, min_doc_tokens=1)
+    assert manifest["sidecar"] == "src" and manifest["train_docs"] == 16
+
+    files = [Path(p) for p in manifest["files"]]
+    train_dir = out_root / "tiny" / "train"
+    n_docs = 0
+    for shard in sorted(train_dir.glob("shard_*.bin")):
+        starts = np.load(shard.with_name(shard.name.replace(".bin", ".idx.npy")))
+        rowrefs = np.load(shard.with_name(shard.name.replace(".bin", ".src.npy")))
+        toks = np.fromfile(shard, dtype=np.uint16)
+        assert rowrefs.shape == (len(starts), 3) and rowrefs.dtype == np.int32
+        n_docs += len(starts)
+        ends = list(starts[1:]) + [len(toks)]
+        for (fi, rg, r), a, b in zip(rowrefs, starts, ends):
+            want = pq.ParquetFile(files[fi]).read_row_group(rg, columns=["text"]).to_pylist()[r]["text"]
+            assert tok.decode(toks[a:b].tolist(), skip_special=True) == want
+    assert n_docs == manifest["train_docs"]
 
 
 def test_schedules():

@@ -6,6 +6,7 @@
 Output layout (per tokenizer version, per source):
     C:/slm-data/tokenized/<tok_tag>/<source>/train/shard_00000.bin   uint16 tokens, docs = <|bos|> ... <|eos|>
     C:/slm-data/tokenized/<tok_tag>/<source>/train/shard_00000.idx   int64 doc start offsets (npy)
+    C:/slm-data/tokenized/<tok_tag>/<source>/train/shard_00000.src   int32 [n_docs, 3] = (file_index, row_group, row) (npy)
     C:/slm-data/tokenized/<tok_tag>/<source>/val/...                 held-out docs (never trained on)
     C:/slm-data/tokenized/<tok_tag>/<source>/manifest.json
 
@@ -77,14 +78,16 @@ class ShardWriter:
         self.buf = np.empty(shard_tokens, dtype=np.uint16)
         self.n = 0
         self.doc_starts: list[int] = []
+        self.doc_srcs: list[tuple[int, int, int]] = []  # (file_index into manifest["files"], row_group, row)
         self.shard_idx = 0
         self.total_tokens = 0
         self.total_docs = 0
 
-    def add(self, ids: list[int]) -> None:
+    def add(self, ids: list[int], src_row: tuple[int, int, int] = (-1, -1, -1)) -> None:
         if self.n + len(ids) > self.shard_tokens:
             self.flush()
         self.doc_starts.append(self.n)
+        self.doc_srcs.append(src_row)
         self.buf[self.n : self.n + len(ids)] = ids
         self.n += len(ids)
         self.total_tokens += len(ids)
@@ -95,9 +98,12 @@ class ShardWriter:
             return
         self.buf[: self.n].tofile(self.out_dir / f"shard_{self.shard_idx:05d}.bin")
         np.save(self.out_dir / f"shard_{self.shard_idx:05d}.idx.npy", np.array(self.doc_starts, dtype=np.int64))
+        np.save(self.out_dir / f"shard_{self.shard_idx:05d}.src.npy",
+                np.array(self.doc_srcs, dtype=np.int32).reshape(len(self.doc_srcs), 3))
         self.shard_idx += 1
         self.n = 0
         self.doc_starts = []
+        self.doc_srcs = []
 
 
 def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, val_permille: int, batch_docs: int = 512, min_doc_tokens: int = MIN_DOC_TOKENS, name: str | None = None) -> dict:
@@ -110,7 +116,7 @@ def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, v
     t0 = time.time()
     n_seen = n_dropped = 0
     stop = False
-    for f in files:
+    for fi, f in enumerate(files):
         pf = pq.ParquetFile(f)
         avail = [c for c in cols if c in pf.schema_arrow.names]
         for rg in range(pf.num_row_groups):
@@ -118,15 +124,15 @@ def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, v
             for i in range(0, len(rows), batch_docs):
                 batch = rows[i : i + batch_docs]
                 n_seen += len(batch)
-                kept = [r for r in batch if keep_doc(src, r)]
+                kept = [(i + j, r) for j, r in enumerate(batch) if keep_doc(src, r)]
                 n_dropped += len(batch) - len(kept)
-                texts = [r[src.text_col] for r in kept]
-                for text, ids in zip(texts, tok.encode_batch(texts)):
+                texts = [r[src.text_col] for _, r in kept]
+                for (row_i, _), text, ids in zip(kept, texts, tok.encode_batch(texts)):
                     if not (min_doc_tokens <= len(ids) <= MAX_DOC_TOKENS):
                         n_dropped += 1
                         continue
                     doc = [tok.bos_id, *ids, tok.eos_id]
-                    (val if is_val(text, val_permille) else train).add(doc)
+                    (val if is_val(text, val_permille) else train).add(doc, (fi, rg, row_i))
                 if train.total_tokens >= max_tokens:
                     stop = True
                     break
@@ -147,7 +153,7 @@ def prepare(src: Source, tok: SlmTokenizer, out_root: Path, max_tokens: float, v
         "train_tokens": train.total_tokens, "train_docs": train.total_docs, "train_shards": train.shard_idx,
         "val_tokens": val.total_tokens, "val_docs": val.total_docs, "val_shards": val.shard_idx,
         "docs_seen": n_seen, "docs_dropped": n_dropped, "val_permille": val_permille,
-        "files": [str(p) for p in files], "seconds": time.time() - t0,
+        "files": [str(p) for p in files], "sidecar": "src", "seconds": time.time() - t0,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=1), encoding="utf-8")
     print(f"[{src.name}] done: {manifest['train_tokens'] / 1e6:.1f}M train / {manifest['val_tokens'] / 1e6:.1f}M val tokens in {manifest['seconds'] / 60:.1f} min")

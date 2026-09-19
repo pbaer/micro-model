@@ -165,7 +165,11 @@ class Trainer:
                        to_dict(self.cfg), {"tokenizer_sha256": self.tok.sha256, "git_commit": ckpt.git_commit(), "model_config": to_dict(self.mcfg)},
                        keep_prev=self.cfg.ckpt.keep_prev_latest)
         ckpt.update_index(self.ckpt_dir, "latest.pt", kind="latest", tokens=self.counters["tokens"], update=self.counters["update"], val_loss=self.counters["last_val"] if self.counters["last_val"] == self.counters["last_val"] else None)
-        self.log.log("checkpoint", tokens=self.counters["tokens"], msg=f"latest.pt saved at {fmt_tokens(self.counters['tokens'])} tokens ({time.time() - t0:.1f}s)")
+        self.log.log("checkpoint", tokens=self.counters["tokens"], sources=self._consumed(), msg=f"latest.pt saved at {fmt_tokens(self.counters['tokens'])} tokens ({time.time() - t0:.1f}s)")
+
+    def _consumed(self) -> dict | None:
+        """Per-source stream position for the metrics log; None for loaders without `consumed`."""
+        return self.loader.consumed() if hasattr(self.loader, "consumed") else None
 
     @torch.no_grad()
     def _eval_loader(self, loader) -> float:
@@ -397,7 +401,7 @@ class Trainer:
                 ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
         gpu.stop()
         self._save_latest()
-        self.log.log("finish" if finished else "stop", tokens=c["tokens"], elapsed_s=self.elapsed, msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
+        self.log.log("finish" if finished else "stop", tokens=c["tokens"], elapsed_s=self.elapsed, sources=self._consumed(), msg=f"{'finished' if finished else 'stopped'} at {fmt_tokens(c['tokens'])} tokens after {fmt_duration(self.elapsed)}")
         write_report(self.run_dir, "finished" if finished else "stopped")
         self.loader.close()
         console(f"{'FINISHED' if finished else 'STOPPED'} at {fmt_tokens(c['tokens'])} tokens, elapsed {fmt_duration(self.elapsed)}, best val {c['best_val']:.4f}. Report: {self.run_dir / 'report.html'}")
