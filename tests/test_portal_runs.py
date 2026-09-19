@@ -186,3 +186,24 @@ def test_recipe_api_handles_rl_yaml(tmp_path):
     assert c.get("/api/data/recipe", params={"id": "run:nope"}).status_code == 404
     assert c.get("/api/data/recipe", params={"id": "bogus"}).status_code == 400
 
+
+
+def test_sft_split_window_carries_mask_and_example_bounds(tmp_path):
+    """The packed SFT training row (tokens + mask + example starts) has no reader outside the trainer."""
+    import numpy as np
+
+    from slm.portal.services.datasets import SftSplit
+
+    d = tmp_path / "set" / "train"
+    d.mkdir(parents=True)
+    np.arange(300, dtype=np.uint16).tofile(d / "tokens_00000.bin")
+    np.concatenate([np.zeros(50, np.uint8), np.ones(50, np.uint8), np.zeros(200, np.uint8)]).tofile(d / "mask_00000.bin")
+    np.save(d / "idx_00000.npy", np.array([0, 100, 220], dtype=np.int64))
+    s = SftSplit(d)
+    assert s.shards() == [{"shard": 0, "name": "tokens_00000.bin", "tokens": 300, "examples": 3}]  # tokens, not bytes
+    ex = s.example(0, 1)
+    assert ex["start"] == 100 and ex["length"] == 120 and ex["n_target"] == 0
+    assert s.example(0, 0)["n_target"] == 50 and s.example(0, 2)["length"] == 80  # last example runs to the end of the shard
+    w = s.window(0, 80, 160)
+    assert w["example_starts"] == [20, 140] and w["n_target"] == 20 and w["shard_tokens"] == 300
+    assert s.stats()["targets"] == 50 and abs(s.stats()["target_share"] - 50 / 300) < 1e-9

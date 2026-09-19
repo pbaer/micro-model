@@ -239,6 +239,113 @@ class TokenizedSplit:
         return res
 
 
+# ------------------------------------------------------------------------- SFT shards
+class SftSplit:
+    """Reader for one SFT set/split (tokens_*.bin + mask_*.bin + idx_*.npy, see slm/data/sft.py).
+
+    Deliberately not `SftStream`: that module imports torch and keeps its memmaps open, which on
+    Windows blocks re-preparation of the very files the portal is showing.
+    """
+
+    def __init__(self, split_dir: Path) -> None:
+        self.dir = Path(split_dir)
+        self.paths = sorted(self.dir.glob("tokens_*.bin"))
+        self._idx: dict[int, np.ndarray] = {}
+        self._idx_sig: dict[int, tuple] = {}
+        self._dir_sig = self._dir_signature()
+        self.lock = threading.Lock()
+
+    def _dir_signature(self) -> tuple:
+        try:
+            return (self.dir.stat().st_mtime, len(list(self.dir.glob("tokens_*.bin"))))
+        except OSError:
+            return ()
+
+    def refresh(self) -> None:
+        sig = self._dir_signature()
+        if sig != self._dir_sig:
+            with self.lock:
+                self.paths = sorted(self.dir.glob("tokens_*.bin"))
+                self._idx.clear()
+                self._idx_sig.clear()
+                self._dir_sig = sig
+
+    def mm(self, i: int, mask: bool = False) -> np.memmap:  # opened per request, never cached (Windows locks)
+        p = self.paths[i].with_name(self.paths[i].name.replace("tokens_", "mask_")) if mask else self.paths[i]
+        return np.memmap(p, dtype=np.uint8 if mask else np.uint16, mode="r")
+
+    def idx(self, i: int) -> np.ndarray:
+        self.refresh()
+        with self.lock:
+            ip = self.paths[i].with_name(self.paths[i].name.replace("tokens_", "idx_").replace(".bin", ".npy"))
+            st = ip.stat()
+            sig = (st.st_mtime, st.st_size)
+            if self._idx_sig.get(i) != sig:
+                self._idx[i] = np.load(ip)
+                self._idx_sig[i] = sig
+            return self._idx[i]
+
+    def shards(self) -> list[dict]:
+        self.refresh()
+        return [{"shard": i, "name": p.name, "tokens": p.stat().st_size // 2, "examples": int(len(self.idx(i)))} for i, p in enumerate(self.paths)]
+
+    def bounds(self, shard: int, ex: int) -> tuple[int, int]:
+        idx = self.idx(shard)
+        start = int(idx[ex])
+        end = int(idx[ex + 1]) if ex + 1 < len(idx) else self.paths[shard].stat().st_size // 2
+        return start, end
+
+    def examples(self, shard: int, offset: int = 0, limit: int = 100) -> dict:
+        idx = self.idx(shard)
+        n = self.paths[shard].stat().st_size // 2
+        out = []
+        for e in range(offset, min(offset + limit, len(idx))):
+            s = int(idx[e])
+            t = int(idx[e + 1]) if e + 1 < len(idx) else n
+            out.append({"ex": e, "start": s, "length": t - s})
+        return {"shard": shard, "n_examples": int(len(idx)), "examples": out}
+
+    def example(self, shard: int, ex: int) -> dict:
+        s, e = self.bounds(shard, ex)
+        ids = self.mm(shard)[s:e].astype(int).tolist()
+        mask = self.mm(shard, mask=True)[s:e].astype(int).tolist()
+        return {"shard": shard, "ex": ex, "start": s, "length": e - s, "ids": ids, "mask": mask, "n_target": int(sum(mask))}
+
+    def window(self, shard: int, start: int, length: int) -> dict:
+        """A packed training row: `length` consecutive tokens with the mask, plus where examples begin."""
+        mm = self.mm(shard)
+        start = max(0, min(start, max(0, len(mm) - 1)))
+        ids = mm[start : start + length].astype(int).tolist()
+        mask = self.mm(shard, mask=True)[start : start + length].astype(int).tolist()
+        idx = self.idx(shard)
+        lo = int(np.searchsorted(idx, start, side="left"))
+        hi = int(np.searchsorted(idx, start + length, side="left"))
+        return {"shard": shard, "start": start, "ids": ids, "mask": mask, "example_starts": [int(x) - start for x in idx[lo:hi]],
+                "first_example": max(0, lo - 1 if lo > 0 and int(idx[lo - 1]) < start else lo), "n_target": int(sum(mask)), "shard_tokens": int(len(mm))}
+
+    def stats(self, cache: "DiskCache | None" = None) -> dict:
+        key = cache.key("sftstats", self.dir, [(p.stat().st_mtime, p.stat().st_size) for p in self.paths]) if cache else None
+        if cache and (c := cache.get(key)):
+            return c
+        lengths, total, targets = [], 0, 0
+        for i, p in enumerate(self.paths):
+            idx = self.idx(i)
+            n = p.stat().st_size // 2
+            total += n
+            targets += int(self.mm(i, mask=True).sum())
+            lengths.append(np.append(idx[1:], n) - idx)
+        L = np.concatenate(lengths) if lengths else np.zeros(0, dtype=np.int64)
+        edges = [0, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 16384, 10**9]
+        q = np.percentile(L, [10, 50, 90, 99]).tolist() if len(L) else [0, 0, 0, 0]
+        res = {"docs": int(len(L)), "tokens": int(total), "targets": targets, "target_share": targets / total if total else 0.0,
+               "mean_len": float(L.mean()) if len(L) else 0.0, "p10": q[0], "p50": q[1], "p90": q[2], "p99": q[3],
+               "max_len": int(L.max()) if len(L) else 0, "hist_edges": edges[:-1],
+               "hist": np.histogram(L, bins=edges)[0].tolist() if len(L) else [0] * (len(edges) - 1)}
+        if cache:
+            cache.put(key, res)
+        return res
+
+
 # ------------------------------------------------------------------- manifest dialects
 def normalize_manifest(name: str, m: dict) -> dict:
     """One shape for the four manifest writers, so every consumer reads the same keys.
@@ -379,6 +486,16 @@ class DataCatalog:
                 if not d.is_dir():
                     raise KeyError(key)
                 self._splits[key] = TokenizedSplit(d)
+            return self._splits[key]
+
+    def sft_split(self, tag: str, name: str, split: str) -> SftSplit:
+        key = ("sft", tag, name, split)
+        with self.lock:
+            if key not in self._splits:
+                d = self.data_root / "sft" / tag / name / split
+                if not d.is_dir():
+                    raise KeyError(key)
+                self._splits[key] = SftSplit(d)
             return self._splits[key]
 
     # ------------------------------------------------------------------- recipes

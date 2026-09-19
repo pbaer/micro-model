@@ -207,6 +207,109 @@ async def window(request: Request, tag: str, source: str, split: str, shard: int
     return d
 
 
+# --------------------------------------------------------------------------- SFT shards
+def _sft(request: Request, tag: str, name: str, split: str):
+    try:
+        return request.app.state.data.sft_split(tag, name, split)
+    except KeyError:
+        raise HTTPException(404, "no such sft split") from None
+
+
+@router.get("/sft/{tag}/{name}/{split}/shards")
+async def sft_shards(request: Request, tag: str, name: str, split: str) -> list[dict]:
+    return await anyio.to_thread.run_sync(_sft(request, tag, name, split).shards)
+
+
+@router.get("/sft/{tag}/{name}/{split}/examples")
+async def sft_examples(request: Request, tag: str, name: str, split: str, shard: int = 0, offset: int = 0, limit: int = 100) -> dict:
+    s = _sft(request, tag, name, split)
+    return await anyio.to_thread.run_sync(lambda: s.examples(shard, offset, min(limit, 1000)))
+
+
+@router.get("/sft/{tag}/{name}/{split}/example")
+async def sft_example(request: Request, tag: str, name: str, split: str, shard: int, ex: int) -> dict:
+    s = _sft(request, tag, name, split)
+    d = await anyio.to_thread.run_sync(lambda: s.example(shard, ex))
+    reg = request.app.state.tokenizers
+    d["pieces"] = [{**p, "loss": m} for p, m in zip(reg.pieces(tag, d["ids"]), d["mask"])]
+    d["text"] = reg.get(tag).decode(d["ids"], skip_special=True)
+    return d
+
+
+@router.get("/sft/{tag}/{name}/{split}/window")
+async def sft_window(request: Request, tag: str, name: str, split: str, shard: int, start: int, length: int = 1024) -> dict:
+    """One packed SFT training row: seq_len consecutive tokens, the loss mask, and example boundaries."""
+    s = _sft(request, tag, name, split)
+    d = await anyio.to_thread.run_sync(lambda: s.window(shard, start, min(length, 16384)))
+    d["pieces"] = [{**p, "loss": m} for p, m in zip(request.app.state.tokenizers.pieces(tag, d["ids"]), d["mask"])]
+    return d
+
+
+@router.get("/sft/{tag}/{name}/{split}/stats")
+async def sft_stats(request: Request, tag: str, name: str, split: str) -> dict:
+    s = _sft(request, tag, name, split)
+    return await anyio.to_thread.run_sync(lambda: s.stats(request.app.state.data.cache))
+
+
+@router.post("/raw/{source}/trace")
+async def raw_trace(request: Request, source: str, body: dict) -> dict:
+    """Run one raw parquet row through the preparation it would get, and say what happened to it.
+
+    There is no stored row -> document mapping for pretraining shards (prepare.py records none), so
+    this re-derives the result: same tokenizer, same filters, exact by construction. For SFT sets the
+    stored example in the shard is the ground truth and this is explanatory only (the marker/natural
+    style is drawn from a per-set RNG that cannot be replayed for a single row).
+    """
+    from slm.data.prepare import MAX_DOC_TOKENS, is_val, keep_doc
+
+    cat, reg = request.app.state.data, request.app.state.tokenizers
+    tag = body.get("tag") or ""
+    raw = cat.raw(source)
+    file, rg, row = int(body.get("file", 0)), int(body.get("rg", 0)), int(body.get("row", 0))
+
+    def work() -> dict:
+        from slm.data.chat import format_chat, rows_to_messages
+        from slm.data.sources import SOURCES
+
+        import pyarrow.parquet as pq
+
+        p = Path(raw.files()[file]["path"])
+        pf = pq.ParquetFile(p)
+        cols = [c for c in pf.schema_arrow.names if c != "prompt"]
+        r = pf.read_row_group(rg, columns=cols).slice(row, 1).to_pylist()[0]
+        tok = reg.get(tag)
+        src = SOURCES[source]
+        if body.get("sft_set"):
+            m = cat.sft_manifests().get(tag, {}).get(body["sft_set"], {})
+            msgs = rows_to_messages(src, r)
+            if msgs is None:
+                return {"kept": False, "reason": "rows_to_messages dropped the row (unsupported roles, empty content, or no numeric answer)", "pipeline": "sft"}
+            enc = format_chat(tok, msgs, think_required=bool(m.get("think_required")), tools=bool(m.get("tools")))
+            too_long = len(enc.ids) > int(m.get("max_len") or 10**9)
+            return {"kept": not too_long, "pipeline": "sft", "split": None,
+                    "reason": f"longer than max_len {m.get('max_len')} ({len(enc.ids)} tokens): dropped, never truncated" if too_long else f"kept: {len(enc.ids)} tokens, {sum(enc.loss_mask)} loss targets",
+                    "ids": enc.ids, "n_tokens": len(enc.ids), "n_target": sum(enc.loss_mask),
+                    "pieces": [{"id": i, "piece": tok.token_str(i), "special": i >= tok.base_vocab, "loss": lm} for i, lm in zip(enc.ids, enc.loss_mask)]}
+        text = r.get(src.text_col) or ""
+        if not keep_doc(src, r):
+            lang = r.get("language")
+            why = "shorter than 64 characters" if len(text) < 64 else (f"language {lang!r} != en" if lang is not None and lang != "en" else "too few ASCII letters for English prose")
+            return {"kept": False, "reason": f"dropped by keep_doc: {why}", "pipeline": "pretrain"}
+        ids = tok.encode_document(text)
+        min_tok = int(body.get("min_doc_tokens") or 16)
+        if not (min_tok <= len(ids) <= MAX_DOC_TOKENS):
+            return {"kept": False, "reason": f"dropped: {len(ids)} tokens outside [{min_tok}, {MAX_DOC_TOKENS}]", "pipeline": "pretrain", "n_tokens": len(ids)}
+        split = "val" if is_val(text, int(body.get("val_permille") or 5)) else "train"
+        return {"kept": True, "pipeline": "pretrain", "split": split, "n_tokens": len(ids), "ids": ids,
+                "reason": f"kept -> {split} ({len(ids)} tokens incl. bos/eos; the split is a hash of the first 2048 characters)",
+                "pieces": reg.pieces(tag, ids)}
+
+    try:
+        return await anyio.to_thread.run_sync(work)
+    except KeyError:
+        raise HTTPException(404, "unknown source or tokenizer") from None
+
+
 @router.get("/tokenized/{tag}/{source}/{split}/stats")
 async def stats(request: Request, tag: str, source: str, split: str) -> dict:
     s = _split(request, tag, source, split)

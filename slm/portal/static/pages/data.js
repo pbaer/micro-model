@@ -48,9 +48,9 @@ function RecipeList() {
 }
 
 /** weight / planned / available / epochs table shared by the mixture and the extra_val block */
-function MixTable({ rows, showPlanned, streams }) {
+function MixTable({ rows, showPlanned, streams, sel, onPick }) {
   return html`<table><tr><th class="l">source</th><th>weight</th>${showPlanned ? html`<th>planned</th>` : ""}<th>available (train)</th><th>epochs</th>${streams ? html`<th>consumed</th>` : ""}<th>val tokens</th><th class="l">prepared from</th></tr>
-    ${rows.map((r) => { const st = streams && streams[r.source]; return html`<tr>
+    ${rows.map((r) => { const st = streams && streams[r.source]; return html`<tr class=${(onPick && !r.missing ? "click" : "") + (sel === r.source ? " sel" : "")} onClick=${onPick && !r.missing ? () => onPick(r.source) : null}>
       <td class="l">${r.source}${r.missing ? html` <b style="color:#b91c1c">not on disk</b>` : ""}</td>
       <td>${(r.weight * 100).toFixed(1)}%</td>
       ${showPlanned ? html`<td>${fmtTok(r.planned_tokens)}</td>` : ""}
@@ -60,6 +60,109 @@ function MixTable({ rows, showPlanned, streams }) {
       <td>${fmtTok(r.val_tokens)}</td>
       <td class="l"><span class="legend">${r.provenance || "-"}</span></td></tr>`; })}
   </table>`;
+}
+
+/** Sizes a .two.fill pair to the space left below it, and keeps it sized as the window changes. */
+function useFill() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const fit = () => { const top = el.getBoundingClientRect().top + window.scrollY; el.style.height = Math.max(360, window.innerHeight - top - 26) + "px"; };
+    fit();
+    addEventListener("resize", fit);
+    return () => removeEventListener("resize", fit);
+  });
+  return ref;
+}
+
+/** raw record -> prepared record -> training row, for one source of one recipe. */
+function Inspector({ row, tag, seqLen }) {
+  const isSft = row.kind === "sft";
+  const [split, setSplit] = useState("train");
+  const [shards, setShards] = useState([]);
+  const [shard, setShard] = useState(0);
+  const [list, setList] = useState(null);
+  const [offset, setOffset] = useState(0);
+  const [item, setItem] = useState(null);
+  const [sub, setSub] = useState("prepared");
+  const [mode, setMode] = useState("tokens");
+  const [win, setWin] = useState(null);
+  const [winStart, setWinStart] = useState(0);
+  const [raw, setRaw] = useState(null);
+  const [trace, setTrace] = useState(null);
+  const base = `/api/data/${isSft ? "sft" : "tokenized"}/${tag}/${row.source}/${split}`;
+  const len = seqLen || 2048;
+  useEffect(() => { setShard(0); setOffset(0); setItem(null); setWin(null); setWinStart(0); setTrace(null); api(`${base}/shards`).then(setShards).catch(() => setShards([])); }, [base]);
+  useEffect(() => { api(`${base}/${isSft ? "examples" : "docs"}?shard=${shard}&offset=${offset}&limit=200`).then(setList).catch(() => setList(null)); }, [base, shard, offset]);
+  useEffect(() => { if (sub === "row") api(`${base}/window?shard=${shard}&start=${winStart}&length=${len + 1}`).then(setWin).catch(() => setWin(null)); }, [base, shard, winStart, sub, len]);
+  useEffect(() => {  // the raw column needs a parquet row; sample one from the source this set was prepared from
+    if (sub !== "raw" || !row.raw) { return; }
+    if (raw) return;
+    api(`/api/data/raw/${row.raw.source}/sample?n=1&seed=${Math.floor(Math.random() * 1e6)}`).then((s) => s.length && api(`/api/data/raw/${row.raw.source}/doc?file=${s[0].file}&rg=${s[0].rg}&row=${s[0].row}`).then(setRaw)).catch(() => {});
+  }, [sub, row.raw, raw]);
+  const open = (i) => api(`${base}/${isSft ? "example" : "doc"}?shard=${shard}&${isSft ? "ex" : "doc"}=${i}`).then((x) => { setItem(x); setSub("prepared"); });
+  const doTrace = () => {
+    if (!raw) return;
+    setTrace("…");
+    api(`/api/data/raw/${row.raw.source}/trace`, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ file: raw.file, rg: raw.rg, row: raw.row, tag, sft_set: isSft ? row.source : null }) }).then(setTrace).catch((e) => setTrace({ reason: String(e) }));
+  };
+  const fillRef = useFill();
+  const items = list ? (isSft ? list.examples : list.docs) : [];
+  const n = list ? (isSft ? list.n_examples : list.n_docs) : 0;
+  const pieces = item && item.pieces;
+  return html`<div>
+    <div class="row" style="margin:8px 0 6px">
+      <b>${row.source}</b>
+      <select value=${split} onChange=${(e) => setSplit(e.target.value)}><option>train</option><option>val</option></select>
+      <select value=${shard} onChange=${(e) => { setShard(Number(e.target.value)); setOffset(0); setItem(null); }}>
+        ${shards.map((s) => html`<option value=${s.shard}>shard ${s.shard} · ${fmtTok(s.tokens)} tok · ${fmtInt(isSft ? s.examples : s.docs)} ${isSft ? "examples" : "docs"}</option>`)}</select>
+      ${["raw", "prepared", "row"].map((v) => html`<button class=${sub === v ? "active" : ""} onClick=${() => setSub(v)}>${v}</button>`)}
+      <span class="muted" style="margin-left:8px">show as</span>
+      ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
+    </div>
+    <div class="two fill" ref=${fillRef}>
+      <div class="col">
+        ${list && html`<div class="row" style="margin-bottom:4px"><span class="muted">${fmtInt(n)} ${isSft ? "examples" : "docs"}; showing ${offset}–${Math.min(offset + 200, n)}</span>
+          <button onClick=${() => { setOffset(Math.max(0, offset - 200)); }}>‹</button><button onClick=${() => { setOffset(Math.min(Math.max(0, n - 1), offset + 200)); }}>›</button>
+          <button onClick=${() => n && open(Math.floor(Math.random() * n))}>random</button></div>
+          <table><tr><th>${isSft ? "example" : "doc"}</th><th>start</th><th>tokens</th></tr>
+          ${items.map((d) => { const i = isSft ? d.ex : d.doc; return html`<tr class=${"click" + (item && (isSft ? item.ex : item.doc) === i ? " sel" : "")} onClick=${() => open(i)}><td>${i}</td><td>${fmtInt(d.start)}</td><td>${fmtInt(d.length)}</td></tr>`; })}</table>`}
+      </div>
+      <div class="col">
+        ${sub === "prepared" && (!item ? html`<div class="empty-note">pick ${isSft ? "an example" : "a document"} on the left (or "random")</div>` : html`<div class="grow">
+          <div class="sub">${isSft ? `example ${item.ex}` : `doc ${item.doc}`} · starts at token ${fmtInt(item.start)} · ${fmtInt(item.length)} tokens${isSft ? ` · ${fmtInt(item.n_target)} loss targets (${(item.n_target / Math.max(1, item.length) * 100).toFixed(0)}%)` : " incl. bos/eos"}</div>
+          ${mode === "text" ? html`<pre class="grow">${item.text}</pre>` : html`<div class="grow"><${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${isSft} /></div>`}
+          <div class="legend" style="margin-top:6px">${isSft
+            ? html`The stored SFT example, exactly as the trainer reads it: <b style="color:#15803d">green</b> = loss target (assistant content and ${"<|end|>"}), grey = masked.`
+            : "The stored pretraining document, bos/eos included."}</div></div>`)}
+        ${sub === "row" && html`<div class="grow">
+          <div class="row" style="margin-bottom:6px"><span class="muted">window start</span>
+            <input type="number" value=${winStart} step=${len} min="0" onChange=${(e) => setWinStart(Math.max(0, Number(e.target.value)))} style="width:140px" />
+            <button onClick=${() => setWinStart(Math.max(0, winStart - len))}>‹ prev</button><button onClick=${() => setWinStart(winStart + len)}>next ›</button>
+            <button onClick=${() => win && setWinStart(Math.floor(Math.random() * Math.max(1, win.shard_tokens - len)))}>random</button>
+            ${win && html`<span class="muted">${(isSft ? win.example_starts : win.doc_starts).length} ${isSft ? "example" : "document"} boundaries (red)${isSft ? ` · ${fmtInt(win.n_target)} loss targets` : ""} · shard has ${fmtTok(win.shard_tokens)} tokens</span>`}</div>
+          ${win ? (mode === "text"
+            ? html`<pre class="grow">${win.pieces.map((p) => (p.special ? html`<b class="boundary-mark">${p.piece}</b>` : p.piece))}</pre>`
+            : html`<${TokenChips} pieces=${win.pieces} boundaries=${isSft ? win.example_starts : win.doc_starts} showIds=${mode === "ids"} lossMask=${isSft} />`) : html`<div class="empty-note">…</div>`}
+          <div class="legend" style="margin-top:6px">One training row of ${fmtInt(len)} + 1 tokens, exactly as the loader cuts it: a contiguous slice that may start mid-${isSft ? "example" : "document"}.
+            ${isSft ? html` The loss denominator is the number of green positions.` : html` Every token is a target; this source contributes ${(row.weight * 100).toFixed(1)}% of rows.`}</div></div>`}
+        ${sub === "raw" && html`<div class="grow">
+          ${!row.raw ? html`<div class="panel"><b>No raw parquet for this source.</b><div class="legend" style="margin-top:6px">${row.provenance}</div></div>`
+            : !raw ? html`<div class="empty-note">sampling a row from ${row.raw.source}…</div>` : html`<div class="grow">
+            <div class="sub">${row.raw.source} · file ${raw.file} · row group ${raw.rg} · row ${raw.row} · ${fmtInt(raw.text.length)} chars
+              <button style="margin-left:8px" onClick=${() => { setRaw(null); setTrace(null); }}>another row</button>
+              <button onClick=${doTrace}>trace through preparation</button></div>
+            ${trace && trace !== "…" && html`<div class="panel" style=${"margin-bottom:6px;border-color:" + (trace.kept ? "#86efac" : "#fca5a5")}>${trace.reason}</div>`}
+            ${trace && trace.pieces && mode !== "text" ? html`<div class="grow"><${TokenChips} pieces=${trace.pieces} showIds=${mode === "ids"} lossMask=${isSft} /></div>`
+              : html`<pre class="grow">${raw.text}</pre>`}
+            <div class="legend" style="margin-top:6px">There is no stored row-to-document mapping, so "trace" re-derives the result with the same tokenizer and the same filters rather than looking it up.${isSft ? " For SFT the stored example on the left is the ground truth; the marker/natural style is drawn from a per-set RNG that cannot be replayed for one row." : ""}</div>
+          </div>`}
+        </div>`}
+      </div>
+    </div>
+  </div>`;
 }
 
 function RlPanel({ rl }) {
@@ -78,9 +181,11 @@ function RlPanel({ rl }) {
 function Recipe({ id }) {
   const [r, setR] = useState(null);
   const [err, setErr] = useState(null);
-  useEffect(() => { setR(null); setErr(null); api(`/api/data/recipe?id=${encodeURIComponent(id)}`).then(setR).catch((e) => setErr(String(e))); }, [id]);
+  const [pick, setPick] = useState(null);
+  useEffect(() => { setR(null); setErr(null); setPick(null); api(`/api/data/recipe?id=${encodeURIComponent(id)}`).then(setR).catch((e) => setErr(String(e))); }, [id]);
   if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
   if (!r) return html`<div>loading…</div>`;
+  const picked = pick && r.rows.find((x) => x.source === pick);
   return html`<div>
     <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
       <b>${r.run_name}</b><span class="stage-badge ${r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : ""}">${r.stage}</span>
@@ -91,9 +196,10 @@ function Recipe({ id }) {
       ${r.init_from ? ` · init_from ${r.init_from}` : " · random init"}${r.root ? ` · ${r.root}` : ""}</div>
     ${r.plan_differs === true && html`<div class="panel" style="border-color:#fcd34d">The yaml <code>${r.config_path}</code> no longer matches what this run started with (configs get edited between phases). This page shows the run.</div>`}
     ${r.rl ? html`<${RlPanel} rl=${r.rl} />` : html`<div>
-      <${MixTable} rows=${r.rows} showPlanned=${true} streams=${r.stream_sources} />
-      <div class="legend" style="margin-top:6px">epochs = planned tokens / available tokens; above 1.5 (red) the source is repeated.${r.stream_sources ? " 'consumed' is the loader's own per-source count at the last checkpoint." : ""}</div>
-      ${r.extra_val.length > 0 && html`<h2>extra_val_mixture (drift set, val splits only)</h2>
+      <${MixTable} rows=${r.rows} showPlanned=${true} streams=${r.stream_sources} sel=${pick} onPick=${(s) => setPick(s === pick ? null : s)} />
+      <div class="legend" style="margin-top:6px">epochs = planned tokens / available tokens; above 1.5 (red) the source is repeated.${r.stream_sources ? " 'consumed' is the loader's own per-source count at the last checkpoint." : ""} Click a row to inspect what the model sees from it.</div>
+      ${picked && html`<${Inspector} row=${picked} tag=${picked.kind === "sft" ? r.tag : r.tokenizer_tag} seqLen=${r.seq_len} key=${picked.source + r.id} />`}
+      ${!picked && r.extra_val.length > 0 && html`<h2>extra_val_mixture (drift set, val splits only)</h2>
         <${MixTable} rows=${r.extra_val} showPlanned=${false} />
         <div class="legend">Pretraining validation tracked alongside the stage's own val loss, so base-model drift is visible; ${fmtTok(r.extra_val_tokens)} tokens per evaluation.</div>`}
     </div>`}

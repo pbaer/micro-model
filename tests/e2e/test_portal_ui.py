@@ -211,6 +211,16 @@ def test_data_page(server, browser):
     p.settle(600)
     body = p.page.inner_text("main")
     assert "available (train)" in body and "alpha" in body and "beta" in body, body[:300]
+    # the inspector: a mixture row opens raw / prepared / training-row sub-tabs for that source
+    p.page.locator("tr.click", has_text="alpha").first.click()
+    p.settle(700)
+    p.page.get_by_role("button", name="random", exact=True).click()
+    p.settle(700)
+    assert p.page.locator(".chip").count() > 3, "prepared document must render as token chips"
+    p.page.get_by_role("button", name="row", exact=True).click()
+    p.settle(800)
+    assert p.page.locator(".chip.boundary").count() >= 1, "the training row must mark document boundaries"
+    assert "may start mid-document" in p.page.inner_text("main")
     p.page.get_by_role("button", name="\u2039 all recipes", exact=True).click()
     p.settle(400)
     clicked = set()
