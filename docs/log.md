@@ -337,3 +337,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   9 families, 77% of calls with loops, 11% with `def`, 11% calling declared functions, 13 real error hints;
   hold-outs `pipeline.dict` and `declared.distance` in val only). At 1.5% of phase 2's 2.5B that is 0.96 epochs.
   Phase 2 is ready to launch on Peter's go (STOP file removed, stub run set aside, config shell-free).
+- 13:55 Peter: "That makes eraser." reads wrong. `natural_answer` now picks numeric templates (that makes / that
+  gives / comes to / the result is) only for numeric answers and text templates (the answer is / it is / that would
+  be / so it's) otherwise. `synthetic-python-tools` regenerated (same seed) and `tool-chat` rebuilt (36.0M tokens;
+  the previous build kept as `tool-chat-v2`).

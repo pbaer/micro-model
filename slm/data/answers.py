@@ -10,10 +10,11 @@ with the instruction (`slm.rl.tasks.prompt_messages`), so the verifier stays str
 from __future__ import annotations
 
 import random
+import re
 
 SUFFIX = "\nThink step by step, then give the final answer on its own line as '#### <number>'."
 
-_NATURAL = [
+_NATURAL_NUMERIC = [  # "that makes 42" reads fine; "that makes eraser" does not
     "So the answer is {x}.",
     "The answer is {x}.",
     "That gives {x}.",
@@ -21,6 +22,18 @@ _NATURAL = [
     "So it comes to {x}.",
     "The result is {x}.",
 ]
+_NATURAL_TEXT = [
+    "The answer is {x}.",
+    "So the answer is {x}.",
+    "It is {x}.",
+    "That would be {x}.",
+    "So it's {x}.",
+]
+_NUMERIC_RE = re.compile(r"^[-+]?[\d,]*\.?\d+(e[-+]?\d+)?%?$")
+
+
+def is_numeric_answer(x: str) -> bool:
+    return bool(_NUMERIC_RE.match(x.strip().replace(" ", "")))
 
 
 def marker_answer(x: str) -> str:
@@ -28,7 +41,7 @@ def marker_answer(x: str) -> str:
 
 
 def natural_answer(x: str, rng: random.Random) -> str:
-    return rng.choice(_NATURAL).format(x=x)
+    return rng.choice(_NATURAL_NUMERIC if is_numeric_answer(x) else _NATURAL_TEXT).format(x=x)
 
 
 def apply_style(messages: list[dict], rng: random.Random, p_marker: float = 0.5, final: str | None = None) -> list[dict]:
