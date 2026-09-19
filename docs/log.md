@@ -273,3 +273,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (29.9K tok/s). Judge = a Claude subagent on Sonnet, blind to checkpoint identity (shuffled packets, opaque
   ids), scores validated on ingest. Run page: two charts + a `quality` tab. Phase 2 config generates the suite
   on the GPU at every milestone (`eval.quality_suite: true`). Protocol: docs/quality_eval.md.
+- 23:45 needle sweep (`slm.eval.needle_sweep`): every snapshot re-measured at n=64 with one fixed haystack draw,
+  overlaid on the run page's needle chart. Measured cost: 35 s per 336M snapshot on the GPU (estimate), 1769 s
+  (29.5 min) on CPU with 24 threads at 1K+2K, with training throughput unaffected (29.9K tok/s). Phase 1's 30
+  snapshots are backfilling on the idle CPU (~14 h); phase 2 gets swept on the GPU at 1K/2K/4K once the pipeline
+  finishes. The in-run tracker moved from n=4 to n=16 mid-run, which is why one consistent curve is wanted.

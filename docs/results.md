@@ -263,6 +263,13 @@ Factual-recall probe (`slm.eval.facts`, 194 items, greedy, whole-word match):
 - cuDNN attention during generation: samples stalled a training run; decoding now uses the efficient
   backend.
 
+## 7a. Needle sweep cost (`slm.eval.needle_sweep`, 336M, n=64, 5 depths, 1K+2K = 640 prompts per snapshot)
+
+| device | per snapshot | notes |
+|---|---|---|
+| CPU, 24 threads, fp32, below-normal priority | 1,769 s | beside the live run; training throughput unchanged (29.9K tok/s) |
+| GPU, bf16, 32K-token batches | ~35 s (estimate from in-run eval timings) | GPU must be free |
+
 ## 8. Judged quality (LLM-scored prompt suite; `docs/quality_eval.md`)
 
 35 prompts (facts, prose, Python, bash, arithmetic, pattern continuation, definitions, narrative, why-questions),
