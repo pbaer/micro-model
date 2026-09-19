@@ -52,6 +52,30 @@ def run_tool(code: str, session: PySession | None = None) -> tuple[str, bool]:
         return f"error: {str(e)[:MAX_RESULT_CHARS]}", False
 
 
+_HOIST_RE = re.compile(r"^(?P<lead>.*?\S)\s*(?:because|since|as|so|,|:)?\s+(?P<expr>[-\d.,$%]+(?:\s*[-+*/x×÷]\s*[-\d.,$%]+)+)\s*=\s*(?P<call><<[^>]*>>)(?P<rest>.*)$")
+
+
+def hoist_calls(text: str) -> str:
+    """GSM8K-style traces often state a result and then justify it: "He eats 32 pieces because 2 x 16 =
+    <<2*16=32>>32". Converted to tool calls as-is, that teaches the model to produce the number BEFORE calling
+    the tool, i.e. that the call is decorative (measured: 8% of GSM8K annotations). Move the computation in front
+    of such a sentence so the number only appears after the result: "2 x 16 = <<2*16=32>>. He eats 32 pieces."
+    Lines whose prose does not already contain the result are left alone."""
+    out = []
+    for line in text.split("\n"):
+        m = _HOIST_RE.match(line)
+        if m:
+            result = m.group("call").split("=")[-1].rstrip(">").strip()
+            lead = m.group("lead")
+            if result and re.search(rf"(?<![\d.]){re.escape(result)}(?![\d.])", lead):
+                rest = m.group("rest").strip()
+                rest = rest[len(result):].lstrip() if rest.startswith(result) else rest  # drop the echoed result
+                lead = lead.rstrip(" ,:").rstrip()
+                line = f"{m.group('expr')} = {m.group('call')}. {lead}{'.' if not lead.endswith(('.', '!', '?')) else ''}{(' ' + rest) if rest else ''}"
+        out.append(line)
+    return "\n".join(out)
+
+
 def split_markup(text: str, session: PySession | None = None) -> list[ToolSpan]:
     """Split text on tool markup. The code is run on each span (in `session`, so state carries across
     spans of one conversation): when it succeeds, the sandbox output is the result; when it fails, the span

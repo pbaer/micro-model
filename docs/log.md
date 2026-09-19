@@ -341,3 +341,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   gives / comes to / the result is) only for numeric answers and text templates (the answer is / it is / that would
   be / so it's) otherwise. `synthetic-python-tools` regenerated (same seed) and `tool-chat` rebuilt (36.0M tokens;
   the previous build kept as `tool-chat-v2`).
+- 14:20 Peter spotted a GSM8K trace in tool-chat stating "72 ounces ... because 12 x 6 = <call>": the answer before
+  its own computation, which teaches that the tool call is decorative. Measured: 8.3% of gsm8k-tools calls, 2.8% of
+  metamathqa-tools, ~1% of the synthetic sets. `hoist_calls` (slm/tools/protocol.py, applied by the SFT prep
+  `--tools` path) moves the computation in front of such a sentence ("2 x 16 = <<2*16=32>>. He eats 32 pieces."),
+  so a number only ever appears after the tool result. gsm8k-tools and metamathqa-tools regenerated, tool-chat
+  rebuilt (previous build kept as `tool-chat-v3`).

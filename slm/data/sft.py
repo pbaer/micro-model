@@ -27,6 +27,7 @@ from slm.data.chat import format_chat, rows_to_messages  # noqa: F401 (re-export
 from slm.data.loader import PretrainLoader, TokenStream
 from slm.data.sources import DATA_ROOT, SOURCES, Source
 from slm.data.tokenizer import SlmTokenizer
+from slm.tools.protocol import hoist_calls
 from slm.model.loss import IGNORE_INDEX
 
 SFT_DIR = DATA_ROOT / "sft"
@@ -96,6 +97,10 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
                     continue
                 if src.kind in ("math_qa", "math_cot"):
                     apply_style(msgs, style_rng, marker_mix)
+                if tools:
+                    for m in msgs:  # the number must follow the tool result, never precede the call
+                        if m["role"] == "assistant" and m.get("think"):
+                            m["think"] = hoist_calls(m["think"])
                 if tools and not any("<<" in (m.get("think") or "") + m.get("content", "") for m in msgs if m["role"] == "assistant"):
                     n_notool += 1
                     continue

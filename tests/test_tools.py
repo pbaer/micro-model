@@ -7,6 +7,7 @@ import torch
 from slm.data.chat import format_chat, parse_assistant
 from slm.data.tokenizer import SlmTokenizer, train_bpe
 from slm.tools import PySession, ToolError, calc, render_tools, run_tool, split_markup
+from slm.tools.protocol import hoist_calls
 from slm.tools.loop import ToolCompletion, sample_with_tools
 
 
@@ -247,3 +248,17 @@ def test_tool_loop_with_declared_function(tok, monkeypatch):
     state["round"].clear()
     outs = sample_with_tools(M(), tok, [[0, 5, 6]], max_new_tokens=64, temperature=0.0)  # without the declaration the name is unknown
     assert outs[0].n_errors == 1 and "NameError" in outs[0].calls[0][1]
+
+
+def test_hoist_calls_puts_the_computation_before_a_stated_result():
+    """In GSM8K traces the answer often precedes its own calculation; as tool data that teaches the model the call is
+    decorative. The hoist moves the computation first, so the number only appears after the tool result."""
+    assert hoist_calls("He eats 32 from the largest pizzas because 2 x 16 = <<2*16=32>>32") == "2 x 16 = <<2*16=32>>. He eats 32 from the largest pizzas."
+    assert hoist_calls("He saved up $110 total because 95 + 15 = <<95+15=110>>110") == "95 + 15 = <<95+15=110>>. He saved up $110 total."
+    # a line whose prose does not state the result is untouched (the expression before the call is fine: it is the plan)
+    same = "She is making 12 x 6 = <<12*6=72>> ounces of water."
+    assert hoist_calls(same) == same
+    assert hoist_calls("Twice 8 is <<8*2=16>>.") == "Twice 8 is <<8*2=16>>."
+    # multi-line traces: only the offending lines move
+    tr = "A: 4 apples because 2 + 2 = <<2+2=4>>4\nB gets <<4*3=12>> pears."
+    assert hoist_calls(tr) == "2 + 2 = <<2+2=4>>. A: 4 apples.\nB gets <<4*3=12>> pears."
