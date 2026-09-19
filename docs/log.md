@@ -317,3 +317,18 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   registered so `<<code=result>>` markup calling them resolves at conversion time), `sample_with_tools(functions=...)`,
   and the portal's `POST /api/model/generate` `functions` field with the def blocks highlighted in the token view.
   The data generator builds on this API next.
+- 15:40 Grammar-generated Python-tool set landed (the data half of the 13:00 decision): `slm/rl/synth_python.py`
+  writes `synthetic-python-tools` (170K conversations, 28.5M train + 2.3M val tokens, 259K calls) from small
+  grammars rather than templates — data pipelines (source -> 1-3 transforms -> aggregate, several idioms per
+  step), strings, number theory and sequences, loop-with-state simulations, multi-turn REPL (a helper `def` or a
+  variable defined once and reused across 2-4 turns), "run this code and tell me what it prints", error-and-recover
+  (the first call really trips a sandbox hint, taken from a live `PySession`, never hand-written), declared-function
+  services, and the old arithmetic word problems at 6%. Real sentences and words are drawn from the `fineweb-edu-b`
+  val shards so inputs look like text. Everything is correct by construction: the gold is cross-checked against an
+  independently computed host value and `format_chat(tools=True)` runs every program again at conversion time.
+  Measured feature coverage of the call spans (the point of the exercise): loops 77%, list ops 61%, string methods
+  20%, declared-function calls 10.9%, `def` 11.1%, `math.` 6.7% — against 0% for all of them in the old sets.
+  Two whole families, `pipeline.dict` and `declared.distance`, are written to val only, so validation measures
+  generalisation to unseen program shapes. `tool-chat-v2` rebuilt from the four old tool sets plus this one:
+  36.1M train / 2.9M val tokens, 225K docs (the existing `tool-chat` dir is untouched; the swap is a rename at
+  launch time). At 1.5% of phase 2's 2.5B that is ~0.96 epochs.

@@ -211,10 +211,15 @@ question.
 SFT shards (`tokens_*.bin` + `idx_*.npy`, chat-formatted examples `<|bos|>…<|eos|>`) are re-laid as an ordinary
 pretraining source (`shard_*.bin` + `shard_*.idx.npy`) with the loss mask dropped, so a pretraining run can sample
 whole conversations, including the `<|user|>`/`<|assistant|>`/`<|think|>`/`<|python_call|>` tokens and the inserted
-tool results, as plain next-token targets. The second base mixes `smoltalk-chat` (225M tokens) at 4.5% and `tool-chat`
-(4.7M tokens: GSM8K, MetaMathQA and templated traces with calls) at 1.5% into its 4K decay phase, following the
-SmolLM2 recipe of putting instruction data in the decay. Decision (Peter, 2026-09-16): pretraining is not limited
-to human text.
+tool results, as plain next-token targets. The second base mixes `smoltalk-chat` (225M tokens) at 4.5% and a tool set
+at 1.5% into its 4K decay phase, following the SmolLM2 recipe of putting instruction data in the decay. Decision
+(Peter, 2026-09-16): pretraining is not limited to human text.
+
+The tool source was rebuilt for phase 2 as `tool-chat-v2` (36.1M train / 2.9M val tokens, 225K docs): the four
+calculator-style sets (`gsm8k-tools`, `synthetic-reasoning-tools`, `metamathqa-tools`, `synthetic-multiturn-tools`,
+7.6M tokens together, the old `tool-chat`) plus `synthetic-python-tools` (28.5M), the grammar-generated set below.
+At 1.5% of a 2.5B-token phase it is sampled for ~0.96 epochs, which is why the size was chosen. The old `tool-chat`
+directory is kept as it is; swapping the data is a rename at launch time.
 
 ## 7. Context extension
 
@@ -354,3 +359,28 @@ Data: `slm.data.sft --tools` converts GSM8K's calculator annotations into calls 
 `slm.rl.synth --tools` writes templated traces whose every step is a call (programs for multi-step tasks);
 `slm.rl.synth_multiturn` writes 2–4-turn conversations whose follow-ups ("now add 5", "double it") reuse the session
 variable set in the first turn, so multi-turn REPL behaviour is trained directly.
+
+Those three teach the tags as a *calculator*: measured over their 87,593 call spans, not one contains a loop, a
+`def`, a list, a string method, an `if` or `math.`, although the sandbox supports all of them. `slm/rl/synth_python.py`
+(`synthetic-python-tools`, 2026-09-19) fixes that by generating programs from small grammars instead of templates —
+each step of a recipe has several idioms (loop with an accumulator, comprehension, builtin) and the prose question is
+composed from the same recipe, so the set has tens of thousands of distinct program shapes rather than dozens of
+templates. Families: **pipeline** (produce a list / string / range / dict, apply 1–3 transforms, aggregate),
+**strings**, **numbers** (gcd, lcm, primes, digit sums, factorials, powers, fibonacci-like recurrences, collatz,
+base conversion, hypotenuse, doublings), **simulation** (loops with state: growth, interest, inventories, scoring),
+**multiturn** (a helper `def` or a variable defined in one turn and reused in 2–4 later ones, never recomputed),
+**runcode** ("what does this print?": the user's own program, executed verbatim), **error** (a first call that really
+trips a sandbox hint, the hint read in the think text, then a corrected call), **declared** (1–3 `FunctionDecl`
+capabilities — a price list, a population register, distances, a unit conversion, postage, a sensor service, a
+warehouse lookup; a few conversations declare a function that is *not* needed, and a few call a name that was never
+declared and recover), and the old arithmetic word problems at a minority share. Real sentences and words are drawn
+from the `fineweb-edu-b` validation shards (`load_corpus`, with a built-in fallback so tests need no data root) so the
+inputs read like text. Correctness is doubly enforced: the gold answer is computed independently on the host and
+cross-checked against a real `PySession` run while generating (mismatches are dropped), and `format_chat(tools=True)`
+runs every program again at conversion time, so the stored result span is exactly what inference would insert. The
+one exception to the markup path is the error family: `split_markup` deliberately drops a *failing* call back to plain
+text, so those turns are encoded as explicit call spans (`_turn_ids`) and `encode_sample` then re-asserts the
+invariant that no `<|python_result|>` token is a loss target. Two whole families — `pipeline.dict` and
+`declared.distance` — are written only to the validation split, so val measures generalisation to program shapes that
+were never trained on. `tests/test_synth_python.py` checks per-family verification, the real hints, declared-function
+resolution, the masks, feature coverage and skeleton diversity floors, and the hold-out.

@@ -15,7 +15,7 @@ microbatch. Pretraining may include chat/tool data that would otherwise only app
 | Phase | Run | Tokens | Rows | Mixture | Time |
 |---|---|---|---|---|---|
 | 1 stable | `m8_base_stable_336m` | 7.5B | 2K, mb 4 | fineweb-edu-10bt 72 / cosmopedia 11 / finemath 7 / python-edu 5 / shell 1.5 / synth-retrieval 3.5 | ~73 h at 28.6K tok/s |
-| 2 decay | `m8_base_4k_336m` | 2.5B | 4K, mb 2 | fineweb-edu-10bt 66 / cosmopedia 11 / finemath 7 / python-edu 6.5 / synth-retrieval 3.5 / smoltalk-chat 4.5 / tool-chat 1.5 (no shell from 2026-09-19; tool-chat rebuilt on the grammar-generated Python-tool set before launch); LR decay over the last 80%; needle n=64 at 1K/2K/4K | ~27 h at 25.4K tok/s |
+| 2 decay | `m8_base_4k_336m` | 2.5B | 4K, mb 2 | fineweb-edu-10bt 66 / cosmopedia 11 / finemath 7 / python-edu 6.5 / synth-retrieval 3.5 / smoltalk-chat 4.5 / tool-chat 1.5 (no shell from 2026-09-19; the grammar-generated Python-tool set is ready as `tool-chat-v2`, 36.1M tokens ≈ 0.96 epochs — rename it over `tool-chat` at launch); LR decay over the last 80%; needle n=64 at 1K/2K/4K | ~27 h at 25.4K tok/s |
 | measure | needle 1K–4K (n = 16), lm-eval full + 2000-limit, diagnostics | | | | ~1 h |
 
 Sanity rule for phase 1: loss below the 149M curve at matching token counts from ~200M on, or stop. Python data: `python-edu` was

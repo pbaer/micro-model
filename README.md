@@ -117,6 +117,7 @@ volumes are on the Data page of the command center and in [docs/results.md](docs
 | tinystories | children's stories | M1 only |
 | SmolTalk subsets (magpie-ultra, openhermes, systemchats, constraints, everyday) | chat | instruction SFT; also mixed into the second base's decay phase as `smoltalk-chat` (4.5%) |
 | GSM8K / MetaMathQA / templated traces with Python tool calls (`gsm8k-tools`, `synthetic-reasoning-tools`) | tool-use reasoning | tool SFT; also mixed into the decay phase as `tool-chat` (1.5%) |
+| `synthetic-python-tools` (grammar-generated: data pipelines, strings, number theory, simulations, multi-turn REPL, "run this code", error-and-recover, declared functions) | real Python in the tool, not a calculator | tool SFT; the bulk of `tool-chat-v2`, the decay-phase tool source from 2026-09-19 |
 | `synth-retrieval*` (templated: facts inserted into real text + questions; key-value ledgers) | retrieval | context curriculum and 3.5% of the second base's mixture |
 | GSM8K, MetaMathQA (converted to think spans + `#### X`), synthetic traces from our task generators | reasoning | reasoning SFT |
 

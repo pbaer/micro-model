@@ -55,12 +55,16 @@ production the M2/M3a runs sustain 61–63K tok/s, slightly above the benchmark.
 | fineweb-edu-10bt | 10.07B | 51.5M | 9.66M | all 14 files of sample-10BT, min 16 tokens (second base) |
 | smoltalk-chat | 225M | 31.3M | 285K | the 5 SmolTalk SFT sets re-laid as a pretraining source (chat format, no mask) |
 | tool-chat | 7.5M | 0.5M | 67K | gsm8k-tools + synthetic-reasoning-tools + metamathqa-tools + synthetic-multiturn-tools as a pretraining source |
+| tool-chat-v2 | 36.1M | 2.9M | 225K | the same four plus `synthetic-python-tools`; phase 2's tool source (1.5% of 2.5B ≈ 0.96 epochs) |
 | synth-retrieval | 400M | 2.0M | 79K | regenerated 2026-09-16 with seed 7 (was 150M; old shards `synth-retrieval-v1`);  templated retrieval docs (needle facts in real text 70%, key-value ledgers 30%), 512–16K tokens, log-uniform; context curriculum only |
 
 SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens (88% targets,
 16K dropped for length), openhermes-100k 94K / 36M, systemchats-30k 34K / 20M, smol-constraints 34K /
 7M, everyday-conversations 2.3K / 0.4M, metamathqa-reasoning 44K / 10M, gsm8k-reasoning 7.4K / 1.4M,
 synthetic-reasoning 40K / 3.2M, synthetic-multiturn-tools 19K conversations / 2.8M (2–4 turns, Python calls reusing the session variable),
+synthetic-python-tools 158K train conversations / 28.5M tokens + 11.5K val / 2.3M (grammar-generated, 259K tool
+calls; feature coverage of the call spans: loops 77%, list ops 61%, string methods 20%, declared-function calls 10.9%,
+`def` 11.1%, `math.` 6.7%; hold-out families `pipeline.dict` and `declared.distance` are val-only),
 and 4096-token rebuilds of the five SmolTalk sets (`*-4k`: magpie-ultra keeps 134K conversations vs 121K at 2048). numina-cot-100k (105K / 54M) is prepared but unused. Raw downloads
 total 20 GB, tokenized shards 21 GB, SFT shards 1 GB.
 
