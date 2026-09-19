@@ -262,3 +262,23 @@ def test_hoist_calls_puts_the_computation_before_a_stated_result():
     # multi-line traces: only the offending lines move
     tr = "A: 4 apples because 2 + 2 = <<2+2=4>>4\nB gets <<4*3=12>> pears."
     assert hoist_calls(tr) == "2 + 2 = <<2+2=4>>. A: 4 apples.\nB gets <<4*3=12>> pears."
+
+
+def test_stored_tool_results_replay_from_the_sandbox():
+    """Every stored <|python_result|> in the real tool sets must be exactly what the sandbox produces when the calls
+    are replayed in order (sampled here; scripts/verify_tool_results.py does the whole sets). Guards against the
+    hint text or the result formatting drifting away from the data the model was trained on."""
+    from pathlib import Path
+
+    root = Path(r"C:\slm-data\sft\v1")
+    if not root.exists():
+        pytest.skip("no data root")
+    import scripts.verify_tool_results as V
+
+    tok = SlmTokenizer.load(r"C:\slm-data\tokenizer\v1")
+    impls = V.service_impls()
+    for name in ("gsm8k-tools", "synthetic-python-tools", "synthetic-multiturn-tools"):
+        if not (root / name).exists():
+            continue
+        s = V.verify(root / name, tok, impls, max_conversations=150)
+        assert s["calls"] > 0 and s["mismatches"] == 0, (name, s["examples"])

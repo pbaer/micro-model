@@ -347,3 +347,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   `--tools` path) moves the computation in front of such a sentence ("2 x 16 = <<2*16=32>>. He eats 32 pieces."),
   so a number only ever appears after the tool result. gsm8k-tools and metamathqa-tools regenerated, tool-chat
   rebuilt (previous build kept as `tool-chat-v3`).
+- 14:35 Peter: are stored `<|python_result|>` spans exactly what the sandbox produces? Verified by replay
+  (`scripts/verify_tool_results.py`: one fresh session per conversation, declared functions registered from the
+  generator's service registry, calls replayed in order): 360,516 calls across the five tool sets, 10,937 of them
+  stored error hints, 0 mismatches. A sampled version now runs in the test suite so a sandbox change that alters
+  a hint or a number format is caught against the data.
