@@ -98,11 +98,15 @@ def main() -> int:
             settle(1200)
             if page == "data":
                 clicked = set()
-                for tab in ("sources", "documents"):
-                    pg.get_by_role("button", name=tab, exact=True).click()
-                    settle(800)
-                    clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "‹ all recipes", "recipes", "sources", "documents"))
-                    cycle_selects(2)
+                pg.get_by_role("button", name="catalog", exact=True).click()
+                settle(800)
+                clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "‹ all recipes", "‹ catalog", "recipes", "catalog"))
+                cycle_selects(2)
+                first = pg.evaluate("fetch('/api/runs').then(r=>r.json()).then(j=>(j[0]||{}).run_name||'')")
+                for route in (("chain/run%3A" + first) if first else "catalog", "catalog"):
+                    pg.goto(a.url + "/#/data/" + route)
+                    settle(900)
+                    clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "‹ all recipes", "‹ catalog", "recipes", "catalog"))
             elif page == "inference" and a.generate:
                 sel = pg.locator("main select").first
                 opts = [o.get_attribute("value") for o in sel.locator("option").all() if o.get_attribute("value")]

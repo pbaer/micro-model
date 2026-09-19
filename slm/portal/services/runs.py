@@ -139,32 +139,49 @@ class RunIndex:
         out = [self.get(n).summary() for n in self.names()]
         by_name = {s["run_name"]: s for s in out}
         for s in out:
-            s["cumulative_tokens"] = self._cumulative_tokens(s, by_name, depth=0)
+            s["cumulative_tokens"] = sum(e["tokens_used"] for e in self.chain(s["run_name"], by_name))
         out.sort(key=lambda s: s.get("last_record_time") or 0, reverse=True)
         return out
 
-    def _cumulative_tokens(self, s: dict, by_name: dict, depth: int) -> int:
-        """Tokens seen by the weights: this run's tokens plus those of the checkpoint it started from
-        (exact per-file counts from that run's checkpoints/index.json), followed recursively."""
-        own = int(s.get("tokens") or 0)
-        init = s.get("init_from") or ""
-        if not init or depth > 8:
-            return own
-        p = Path(init)
-        parent_name = p.parent.parent.name if p.parent.name == "checkpoints" else None
-        if parent_name not in by_name:
-            return own
-        idx_path = self.root / parent_name / "checkpoints" / "index.json"
-        base = None
-        if idx_path.exists():
-            try:
-                base = json.loads(idx_path.read_text(encoding="utf-8")).get(p.name, {}).get("tokens")
-            except json.JSONDecodeError:
-                base = None
-        if base is None:
-            base = by_name[parent_name].get("tokens") or 0
-        parent_cum = self._cumulative_tokens(by_name[parent_name], by_name, depth + 1) - int(by_name[parent_name].get("tokens") or 0)
-        return own + int(base) + max(0, parent_cum)
+    def _checkpoint_tokens(self, run: str, ckpt: str) -> int | None:
+        """Exact token count of one checkpoint file, from that run's checkpoints/index.json."""
+        p = self.root / run / "checkpoints" / "index.json"
+        if not p.exists():
+            return None
+        try:
+            return json.loads(p.read_text(encoding="utf-8")).get(ckpt, {}).get("tokens")
+        except (OSError, json.JSONDecodeError):
+            return None
+
+    def chain(self, name: str, by_name: dict | None = None) -> list[dict]:
+        """The `init_from` chain ending at `name`, root first.
+
+        `tokens_used` is the part of each run the weights at the end of the chain actually saw: the run's
+        own tokens for the last entry, and for an ancestor the token count of the checkpoint its child
+        loaded (exact, from that run's checkpoints/index.json; its own total when the index is missing).
+        Summing the column gives the cumulative tokens shown on the overview.
+        """
+        if by_name is None:
+            by_name = {s["run_name"]: s for s in (self.get(n).summary() for n in self.names())}
+        out: list[dict] = []
+        cur, used, ckpt = name, None, None
+        for _ in range(10):
+            s = by_name.get(cur)
+            if s is None:
+                break
+            own = int(s.get("tokens") or 0)
+            out.append({"run": cur, "stage": s.get("stage") or "pretrain", "own_tokens": own,
+                        "tokens_used": own if used is None else int(used), "checkpoint": ckpt,
+                        "init_from": s.get("init_from") or "", "status": s.get("status")})
+            p = Path(s.get("init_from") or "")
+            parent = p.parent.parent.name if str(p) and p.parent.name == "checkpoints" else None
+            if not parent or parent not in by_name or any(e["run"] == parent for e in out):
+                break
+            base = self._checkpoint_tokens(parent, p.name)
+            used = base if base is not None else (by_name[parent].get("tokens") or 0)
+            ckpt, cur = p.name, parent
+        out.reverse()
+        return out
 
     def live_runs(self, within_s: float = 900.0) -> list[str]:  # pretraining logs every ~3 min at 524K-token updates; keep a generous window
         import time

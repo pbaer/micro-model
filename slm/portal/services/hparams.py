@@ -6,7 +6,6 @@ import math
 from pathlib import Path
 
 from slm.config import ModelConfig, RopeScaling, from_dict, load_yaml
-from slm.model.rope import rope_inv_freq
 from slm.train.config import TrainConfig, load_train_config
 from slm.train.schedule import lr_at
 
@@ -29,6 +28,8 @@ def batch_diagram(cfg: TrainConfig) -> dict:
 
 
 def rope_curves(mcfg: ModelConfig, positions: int | None = None) -> dict:
+    from slm.model.rope import rope_inv_freq  # slm.model imports torch; the portal main process stays torch-free
+
     D = mcfg.head_dim
     base, _ = rope_inv_freq(D, mcfg.rope_theta)
     wavelengths = (2 * math.pi / base).tolist()  # tokens per full rotation, per frequency pair

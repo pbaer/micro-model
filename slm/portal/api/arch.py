@@ -6,8 +6,10 @@ from pathlib import Path
 import anyio
 from fastapi import APIRouter, HTTPException, Request
 
-from slm.model.introspect import build_graph, flops_per_token, kv_cache_shape, memory_budget
 from slm.portal.services.hparams import illustrations, model_config_from
+
+# slm.model.introspect pulls in torch (and with it CUDA init); the portal main process stays torch-free
+# at import and only loads it inside the one request that needs a graph.
 
 router = APIRouter(prefix="/api/arch")
 
@@ -24,6 +26,8 @@ def configs(request: Request) -> dict:
 
 @router.get("/graph")
 async def graph(request: Request, config: str, B: int = 8, T: int = 2048, override: list[str] | None = None, expand_layers: int = 1, grad_checkpointing: bool = False, loss_chunk: int = 0) -> dict:
+    from slm.model.introspect import build_graph, flops_per_token, kv_cache_shape, memory_budget
+
     try:
         mcfg, label = model_config_from(config, request.app.state.settings.runs_root, override)
     except (FileNotFoundError, KeyError) as e:

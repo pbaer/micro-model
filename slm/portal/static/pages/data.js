@@ -6,21 +6,31 @@ import { TokenChips } from "../components/tokens.js";
 
 const html = htm.bind(h);
 
-// Routes (the hash parts after "#/data"): [] = recipe list · ["recipe", <encoded id>] = one recipe ·
-// ["catalog"] / ["documents"] = the source-centric views. Recipe ids carry ":" and "/", so they travel encoded.
+// Routes (the hash parts after "#/data"): [] = recipe list · ["recipe"|"recipes", <encoded id>] = one recipe ·
+// ["compare", <id a>, <id b>] · ["chain", "run:<name>"] · ["catalog"] = the source list ·
+// ["source", <name>] = one source. Recipe ids carry ":" and "/", so they travel encoded.
 export const dataHref = (...parts) => "#/data" + parts.map((p) => "/" + encodeURIComponent(p)).join("");
 
 export function DataPage({ parts = [] }) {
   const route = parts[0] || "recipes";
-  const tabs = [["recipes", "recipes", dataHref()], ["catalog", "sources", dataHref("catalog")], ["documents", "documents", dataHref("documents")]];
+  const tabs = [["recipes", "recipes", dataHref()], ["catalog", "catalog", dataHref("catalog")]];
   return html`<div>
     <h1>Data</h1>
     <div class="row" style="margin:8px 0">${tabs.map(([id, label, href]) => html`<a href=${href}><button class=${route === id ? "active" : ""}>${label}</button></a>`)}</div>
     ${route === "recipes" && (parts[1] ? html`<${Recipe} id=${decodeURIComponent(parts[1])} key=${parts[1]} />` : html`<${RecipeList} />`)}
     ${route === "recipe" && html`<${Recipe} id=${decodeURIComponent(parts[1] || "")} key=${parts[1]} />`}
-    ${route === "catalog" && html`<${Sources} />`}
-    ${route === "documents" && html`<${Documents} />`}
+    ${route === "compare" && html`<${Compare} a=${decodeURIComponent(parts[1] || "")} b=${decodeURIComponent(parts[2] || "")} key=${parts.join("|")} />`}
+    ${route === "chain" && html`<${ChainView} id=${decodeURIComponent(parts[1] || "")} key=${parts[1]} />`}
+    ${route === "catalog" && html`<${Catalog} />`}
+    ${route === "source" && html`<${SourcePage} name=${decodeURIComponent(parts[1] || "")} key=${parts[1]} />`}
   </div>`;
+}
+
+/** run name out of an init_from path ("runs/m3_base_8k_149m/checkpoints/final.pt" -> "m3_base_8k_149m") */
+export function parentRun(initFrom) {
+  const p = String(initFrom || "").replace(/\\/g, "/").split("/");
+  const i = p.lastIndexOf("checkpoints");
+  return i > 0 ? p[i - 1] : null;
 }
 
 const STAGE = { pretrain: "pretrain", sft: "sft", rl: "rl" };
@@ -186,12 +196,16 @@ function Recipe({ id }) {
   if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
   if (!r) return html`<div>loading…</div>`;
   const picked = pick && r.rows.find((x) => x.source === pick);
+  const parent = parentRun(r.init_from);  // the default pairing for a run: the phase it continues
   return html`<div>
     <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
       <b>${r.run_name}</b><span class="stage-badge ${r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : ""}">${r.stage}</span>
       <span class="muted">${r.kind === "run" ? "run (what it started with)" : "plan (yaml)"} · ${r.status}</span>
       ${r.kind === "run" && r.config_path && html`<a href=${dataHref("recipes", "config:" + r.config_path)}><button>see the plan</button></a>`}
-      ${r.kind === "run" && html`<a href=${"#/runs/" + encodeURIComponent(r.run_name)}><button>run page</button></a>`}</div>
+      ${r.kind === "run" && html`<a href=${"#/runs/" + encodeURIComponent(r.run_name)}><button>run page</button></a>`}
+      ${parent && html`<a href=${dataHref("compare", "run:" + parent, r.id)}><button>compare with ${parent}</button></a>`}
+      <a href=${dataHref("compare", r.id, "")}><button>compare with…</button></a>
+      ${r.kind === "run" && html`<a href=${dataHref("chain", "run:" + r.run_name)}><button>chain</button></a>`}</div>
     <div class="sub">tokenizer ${r.tokenizer_tag} · ${r.seq_len ? `seq_len ${r.seq_len} · ` : ""}${r.total_tokens ? fmtTok(r.total_tokens) + " tokens" : ""}${r.total_note ? ` (${r.total_note})` : ""}
       ${r.init_from ? ` · init_from ${r.init_from}` : " · random init"}${r.root ? ` · ${r.root}` : ""}</div>
     ${r.plan_differs === true && html`<div class="panel" style="border-color:#fcd34d">The yaml <code>${r.config_path}</code> no longer matches what this run started with (configs get edited between phases). This page shows the run.</div>`}
@@ -206,20 +220,157 @@ function Recipe({ id }) {
   </div>`;
 }
 
-function Sources() {
-  const [ov, setOv] = useState(null);
-  useEffect(() => { api("/api/data/sources").then(setOv).catch(() => {}); }, []);
-  if (!ov) return html`<div>loading…</div>`;
+// ------------------------------------------------------------------ compare two recipes
+const recipeLabel = (r) => (r ? `${r.run_name}${r.kind === "config" ? " (plan)" : ""}` : "…");
+
+/** Two recipes side by side, computed entirely from two /api/data/recipe payloads. */
+function Compare({ a, b }) {
+  const [ra, setRa] = useState(null);
+  const [rb, setRb] = useState(null);
+  const [err, setErr] = useState(null);
+  const [all, setAll] = useState([]);
+  useEffect(() => { api("/api/data/recipes").then(setAll).catch(() => {}); }, []);
+  useEffect(() => { setRa(null); setErr(null); if (a) api(`/api/data/recipe?id=${encodeURIComponent(a)}`).then(setRa).catch((e) => setErr(String(e))); }, [a]);
+  useEffect(() => { setRb(null); if (b) api(`/api/data/recipe?id=${encodeURIComponent(b)}`).then(setRb).catch((e) => setErr(String(e))); }, [b]);
+  const pick = (which, id) => { location.hash = dataHref("compare", which === "a" ? id : a, which === "a" ? b : id).slice(1); };
+  const sel = (which, cur) => html`<select value=${cur} onChange=${(e) => pick(which, e.target.value)}>
+    <option value="">…</option>${all.map((r) => html`<option value=${r.id}>${r.stage} · ${r.run_name}${r.kind === "config" ? " (plan)" : ""}</option>`)}</select>`;
+  if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
+  const rows = [];
+  if (ra && rb) {
+    const names = [...ra.rows.map((r) => r.source), ...rb.rows.map((r) => r.source).filter((n) => !ra.rows.some((x) => x.source === n))];
+    for (const n of names) rows.push([n, ra.rows.find((x) => x.source === n) || null, rb.rows.find((x) => x.source === n) || null]);
+    rows.sort((x, y) => (y[1] ? y[1].weight : 0) + (y[2] ? y[2].weight : 0) - ((x[1] ? x[1].weight : 0) + (x[2] ? x[2].weight : 0)));
+  }
+  const hdr = [["seq_len", (r) => r.seq_len || "-"], ["total tokens", (r) => fmtTok(r.total_tokens)], ["stage", (r) => r.stage],
+    ["tokenized / sft root", (r) => r.root || "-"], ["init_from", (r) => r.init_from || "random init"],
+    ["extra_val_mixture", (r) => (r.extra_val.length ? r.extra_val.map((x) => `${x.source} ${(x.weight * 100).toFixed(0)}`).join(" · ") : "none")]];
   return html`<div>
-    <table><tr><th>source</th><th>kind</th><th>license</th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})</th><th>val tokens (${t})</th><th>docs (${t})</th><th>dropped (${t})</th>`)}<th class="l">notes</th></tr>
-    ${ov.sources.map((s) => html`<tr><td>${s.name}</td><td>${s.kind}</td><td>${s.license}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
-      ${ov.tags.map((t) => { const m = s.tokenized[t]; return m ? html`<td>${fmtTok(m.train_tokens)}</td><td>${fmtTok(m.val_tokens)}</td><td>${fmtInt(m.train_docs)}</td><td>${(m.docs_dropped / Math.max(1, m.docs_seen) * 100).toFixed(2)}%</td>` : html`<td colspan="4" class="muted">${(ov.sft && ov.sft[t] && Object.keys(ov.sft[t]).some((n) => n.startsWith(s.name) || (s.name === "gsm8k" && n.startsWith("gsm8k")))) ? "chat-formatted → see SFT table below" : "not tokenized"}</td>`; })}
-      <td class="l">${s.notes}</td></tr>`)}
+    <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
+      <b>compare</b>${sel("a", a)}<span class="muted">vs</span>${sel("b", b)}
+      <button onClick=${() => pick("a", b) || (location.hash = dataHref("compare", b, a).slice(1))}>swap</button></div>
+    ${!ra || !rb ? html`<div class="empty-note">pick two recipes</div>` : html`<div>
+      <table><tr><th class="l">header</th><th class="l">${recipeLabel(ra)}</th><th class="l">${recipeLabel(rb)}</th></tr>
+        ${hdr.map(([k, f]) => { const x = String(f(ra)), y = String(f(rb)); return html`<tr><td class="l">${k}</td>
+          <td class="l">${x}</td><td class=${"l" + (x === y ? "" : " diff")} style=${x === y ? "" : "color:#b45309;font-weight:600"}>${y}</td></tr>`; })}</table>
+      <h2>mixture</h2>
+      <table><tr><th class="l">source</th><th>weight A</th><th>weight B</th><th>Δ (pp)</th><th>planned A</th><th>planned B</th><th>epochs A</th><th>epochs B</th></tr>
+        ${rows.map(([n, x, y]) => { const d = ((y ? y.weight : 0) - (x ? x.weight : 0)) * 100; const only = !x || !y;
+          return html`<tr style=${only ? "background:#fef3c7" : ""}>
+            <td class="l">${n}${only ? html` <span class="muted">only in ${x ? "A" : "B"}</span>` : ""}</td>
+            <td>${x ? (x.weight * 100).toFixed(1) + "%" : "-"}</td><td>${y ? (y.weight * 100).toFixed(1) + "%" : "-"}</td>
+            <td style=${Math.abs(d) < 0.05 ? "" : "font-weight:600;color:" + (d > 0 ? "#15803d" : "#b91c1c")}>${(d > 0 ? "+" : "") + d.toFixed(1)}</td>
+            <td>${x ? fmtTok(x.planned_tokens) : "-"}</td><td>${y ? fmtTok(y.planned_tokens) : "-"}</td>
+            <td>${x && x.epochs != null ? x.epochs.toFixed(2) : "-"}</td><td>${y && y.epochs != null ? y.epochs.toFixed(2) : "-"}</td></tr>`; })}
+      </table>
+      <div class="legend" style="margin-top:6px">Δ is B minus A in percentage points of the normalized mixture. Rows in only one recipe are highlighted; planned tokens are that recipe's own total x weight, so they are comparable only when the totals are.</div>
+    </div>`}
+  </div>`;
+}
+
+// ------------------------------------------------------------------ the init_from chain
+const CHAIN_COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#ca8a04", "#db2777", "#4b5563", "#65a30d"];
+
+/** Cumulative exposure per source along the init_from chain, one row per stage plus a stacked bar. */
+function ChainView({ id }) {
+  const run = id.startsWith("run:") ? id.slice(4) : id;
+  const [c, setC] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { setC(null); setErr(null); api(`/api/data/chain?run=${encodeURIComponent(run)}`).then(setC).catch((e) => setErr(String(e))); }, [run]);
+  if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
+  if (!c) return html`<div>loading…</div>`;
+  const color = (n) => CHAIN_COLORS[c.sources.indexOf(n) % CHAIN_COLORS.length];
+  const widest = Math.max(1, ...c.runs.map((r) => r.tokens_used));
+  return html`<div>
+    <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
+      <b>${run}</b><span class="muted">data seen by these weights, back through init_from</span></div>
+    <div class="sub">${c.runs.length} stages · ${fmtTok(c.cumulative_tokens)} cumulative tokens</div>
+    <div style="margin:10px 0 16px">
+      ${c.runs.map((r) => html`<div style="margin-bottom:6px">
+        <div class="legend">${r.run} <span class="muted">· ${r.stage} · ${fmtTok(r.tokens_used)}${r.checkpoint ? ` up to ${r.checkpoint}` : ""}${r.actual ? "" : " (expected)"}</span></div>
+        <div style=${"display:flex;height:16px;width:" + (r.tokens_used / widest * 100).toFixed(1) + "%;min-width:2px;border-radius:3px;overflow:hidden"}>
+          ${c.sources.filter((n) => r.per_source[n]).map((n) => html`<div title=${`${n}: ${fmtTok(r.per_source[n])}`}
+            style=${"background:" + color(n) + ";width:" + (r.per_source[n] / Math.max(1, r.tokens_used) * 100).toFixed(2) + "%"}></div>`)}
+          ${!c.sources.some((n) => r.per_source[n]) && html`<div style="background:#cbd5e1;width:100%"></div>`}
+        </div></div>`)}
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px">${c.sources.map((n) => html`<span class="legend"><span style=${"display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;background:" + color(n)}></span>${n}</span>`)}</div>
+    </div>
+    <table><tr><th class="l">run</th><th>stage</th><th>seq</th><th>tokens used</th><th>source</th>${c.sources.map((n) => html`<th>${n}</th>`)}</tr>
+      ${c.runs.map((r) => html`<tr><td class="l"><a href=${dataHref("recipes", "run:" + r.run)}>${r.run}</a>${r.checkpoint ? html` <span class="muted">→ ${r.checkpoint}</span>` : ""}</td>
+        <td><span class=${"stage-badge " + (r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : "")}>${r.stage}</span></td>
+        <td>${r.seq_len || "-"}</td><td>${fmtTok(r.tokens_used)}</td>
+        <td>${r.rl ? html`<span class="muted">own samples</span>` : r.actual ? html`<b style="color:#15803d">actual</b>` : html`<span class="muted">expected</span>`}</td>
+        ${c.sources.map((n) => html`<td>${r.per_source[n] ? fmtTok(r.per_source[n]) : html`<span class="muted">-</span>`}</td>`)}</tr>`)}
+      <tr style="font-weight:600;border-top:2px solid #94a3b8"><td class="l">total</td><td></td><td></td><td>${fmtTok(c.cumulative_tokens)}</td><td></td>
+        ${c.sources.map((n) => html`<td>${fmtTok(c.totals[n])}</td>`)}</tr>
     </table>
-    ${Object.keys(ov.sft || {}).length > 0 && html`<h2>SFT / reasoning sets (chat-formatted, with loss masks)</h2>
-      ${Object.entries(ov.sft).map(([tag, sets]) => html`<div class="sub">tokenizer ${tag}</div>
-      <table><tr><th>set</th><th>train examples</th><th>train tokens</th><th>loss targets</th><th>val examples</th><th>max len</th><th>think span</th><th>dropped / too long</th></tr>
-      ${Object.entries(sets).map(([name, m]) => html`<tr><td>${name}</td><td>${fmtInt(m.train_examples)}</td><td>${fmtTok(m.train_tokens)}</td><td>${m.train_tokens ? (m.train_targets / m.train_tokens * 100).toFixed(0) + "%" : "-"}</td><td>${fmtInt(m.val_examples)}</td><td>${m.max_len || "-"}</td><td>${m.think_required ? "mandatory" : "no"}</td><td>${fmtInt(m.dropped || 0)} / ${fmtInt(m.too_long || 0)}</td></tr>`)}</table>`)}`}
+    <div class="legend" style="margin-top:6px">"actual" rows come from the loader's own per-source counters in the last <code>checkpoint</code> record of that run (scaled when the child loaded a mid-run checkpoint); "expected" rows are tokens used x normalized mixture weight, because runs started before the trainers logged that block carry no counters.${c.any_expected ? "" : " Every row here is actual."} RL stages train on the model's own samples, so they have no source mixture.</div>
+  </div>`;
+}
+
+function Catalog() {
+  const [ov, setOv] = useState(null);
+  const [recipes, setRecipes] = useState([]);
+  const [showUnused, setShowUnused] = useState(false);
+  useEffect(() => { api("/api/data/sources").then(setOv).catch(() => {}); api("/api/data/recipes").then(setRecipes).catch(() => {}); }, []);
+  if (!ov) return html`<div>loading…</div>`;
+  const used = new Set();
+  for (const r of recipes) for (const x of r.rows || []) used.add(x.source);
+  const nUses = (n) => recipes.filter((r) => (r.rows || []).some((x) => x.source === n)).length;
+  const keep = (n) => showUnused || (used.has(n) && !/-v1$/.test(n));
+  const shown = ov.sources.filter((s) => keep(s.name));
+  const sets = [];
+  for (const [tag, m] of Object.entries(ov.sft || {})) for (const [n, x] of Object.entries(m)) if (keep(n)) sets.push([tag, n, x]);
+  const nHidden = ov.sources.length - shown.length + Object.values(ov.sft || {}).reduce((a, m) => a + Object.keys(m).length, 0) - sets.length;
+  return html`<div>
+    <div class="row" style="margin-bottom:6px"><span class="sub" style="margin:0">Every raw, tokenized and chat-formatted data set. A set is "used" when some recipe's mixture names it.</span>
+      <button class=${showUnused ? "active" : ""} onClick=${() => setShowUnused(!showUnused)}>show unused</button>
+      ${!showUnused && html`<span class="muted">${nHidden} unused or *-v1 sets hidden</span>`}</div>
+    <table><tr><th class="l">source</th><th>kind</th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})</th><th>val tokens (${t})</th><th>docs (${t})</th>`)}<th>used by</th></tr>
+    ${shown.map((s) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", s.name).slice(1); }}>
+      <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
+      ${ov.tags.map((t) => { const p = (s.prepared || {})[t]; return p ? html`<td>${fmtTok(p.train_tokens)}</td><td>${fmtTok(p.val_tokens)}</td><td>${fmtInt(p.train_docs)}</td>` : html`<td colspan="3" class="muted">not tokenized</td>`; })}
+      <td>${nUses(s.name)}</td></tr>`)}
+    </table>
+    ${sets.length > 0 && html`<h2>SFT / reasoning sets (chat-formatted, with loss masks)</h2>
+      <table><tr><th>tag</th><th class="l">set</th><th>train examples</th><th>train tokens</th><th>loss targets</th><th>val examples</th><th>max len</th><th>think span</th><th>dropped / too long</th><th>used by</th></tr>
+      ${sets.map(([tag, n, m]) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", n).slice(1); }}>
+        <td>${tag}</td><td class="l">${n}</td><td>${fmtInt(m.train_examples)}</td><td>${fmtTok(m.train_tokens)}</td><td>${m.train_tokens ? (m.train_targets / m.train_tokens * 100).toFixed(0) + "%" : "-"}</td>
+        <td>${fmtInt(m.val_examples)}</td><td>${m.max_len || "-"}</td><td>${m.think_required ? "mandatory" : "no"}</td><td>${fmtInt(m.dropped || 0)} / ${fmtInt(m.too_long || 0)}</td><td>${nUses(n)}</td></tr>`)}</table>`}
+    <div class="legend" style="margin-top:6px">Click a row for its provenance chain, prepared artifacts, the recipes that use it, and the document browser.</div>
+  </div>`;
+}
+
+/** One catalog entry: raw files, prepared artifacts per tag, provenance, children, used_by, and a browser. */
+function SourcePage({ name }) {
+  const [s, setS] = useState(null);
+  const [err, setErr] = useState(null);
+  const [browse, setBrowse] = useState(false);
+  useEffect(() => { setS(null); setErr(null); setBrowse(false); api(`/api/data/source/${encodeURIComponent(name)}`).then(setS).catch((e) => setErr(String(e))); }, [name]);
+  if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
+  if (!s) return html`<div>loading…</div>`;
+  return html`<div>
+    <div class="row" style="margin-bottom:6px"><a href=${dataHref("catalog")}><button>‹ catalog</button></a><b>${s.name}</b>
+      <span class="muted">${s.kind}${s.license ? " · " + s.license : ""}${s.repo ? " · " + s.repo : ""}</span>
+      <button class=${browse ? "active" : ""} onClick=${() => setBrowse(!browse)}>browse</button></div>
+    ${s.notes && html`<div class="sub">${s.notes}</div>`}
+    ${s.raw_files.length > 0 && html`<div><h2>raw files</h2>
+      <table><tr><th>#</th><th class="l">file</th><th>rows</th><th>row groups</th><th>size</th></tr>
+      ${s.raw_files.map((f) => html`<tr><td>${f.index}</td><td class="l">${f.name}</td><td>${fmtInt(f.rows)}</td><td>${f.row_groups}</td><td>${fmtBytes(f.bytes)}</td></tr>`)}</table></div>`}
+    <h2>prepared artifacts</h2>
+    ${Object.keys(s.prepared).length === 0 ? html`<div class="empty-note">nothing prepared from this source</div>`
+      : html`<table><tr><th>tag</th><th>kind</th><th>made by</th><th>train tokens</th><th>train docs</th><th>val tokens</th><th>shards</th><th>loss targets</th><th class="l">provenance</th></tr>
+      ${Object.entries(s.prepared).map(([k, p]) => html`<tr><td>${p.tag}</td><td>${p.kind}</td><td>${p.made_by}</td><td>${fmtTok(p.train_tokens)}</td><td>${fmtInt(p.train_docs)}</td><td>${fmtTok(p.val_tokens)}</td><td>${p.train_shards}</td>
+        <td>${p.targets ? (p.targets / Math.max(1, p.train_tokens) * 100).toFixed(0) + "%" : "-"}</td><td class="l"><span class="legend">${p.provenance}</span></td></tr>`)}</table>`}
+    ${s.parents.length > 0 && html`<div class="sub">derived from ${s.parents.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
+    ${s.children.length > 0 && html`<div class="sub">feeds ${s.children.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
+    <h2>used by</h2>
+    ${s.used_by.length === 0 ? html`<div class="empty-note">no recipe's mixture names this source</div>`
+      : html`<table><tr><th>stage</th><th class="l">recipe</th><th>weight</th></tr>
+      ${s.used_by.map((u) => html`<tr class="click" onClick=${() => { location.hash = dataHref("recipes", u.recipe_id).slice(1); }}>
+        <td><span class=${"stage-badge " + (u.stage === "sft" ? "sft" : u.stage === "rl" ? "rl" : "")}>${u.stage}</span></td>
+        <td class="l">${u.run_name}${u.kind === "config" ? html` <span class="muted">(plan)</span>` : ""}</td><td>${(u.weight * 100).toFixed(1)}%</td></tr>`)}</table>`}
+    ${browse && html`<div><h2>browse</h2><${Documents} initial=${s.name} /></div>`}
   </div>`;
 }
 
@@ -228,10 +379,10 @@ function Hist({ edges, counts, label }) {
   return html`<div><h3>${label}</h3><div class="hist" style="margin-bottom:18px">${counts.map((c, i) => html`<div style=${"height:" + (c / max * 100).toFixed(1) + "%"} title=${`${fmtTok(edges[i])}+: ${fmtInt(c)}`}><span>${fmtTok(edges[i])}</span></div>`)}</div></div>`;
 }
 
-function Documents() {
+function Documents({ initial = null }) {
   const [ov, setOv] = useState(null);
   const [tag, setTag] = useState(null);
-  const [source, setSource] = useState(null);
+  const [source, setSource] = useState(initial);
   const [split, setSplit] = useState("train");
   const [shards, setShards] = useState([]);
   const [shard, setShard] = useState(0);
@@ -259,10 +410,10 @@ function Documents() {
   const base = isTok ? `/api/data/tokenized/${tag}/${source}/${split}` : null;
   useEffect(() => {
     setDoc(null); setWin(null); setStats(null); setDocs(null); setPage(null); setRawTokens(null); setShard(0); setOffset(0); setView("doc");
-    if (!source) return;
+    if (!ov || !tag || !source) return;  // before the overview lands we cannot tell tokenized from raw-only
     if (isTok) { api(`${base}/shards`).then(setShards).catch(() => setShards([])); api(`${base}/stats`).then(setStats).catch(() => setStats(null)); }
     else { setFile(0); setRg(0); api(`/api/data/raw/${source}/files`).then(setFiles).catch(() => setFiles([])); }
-  }, [source, split, tag]);
+  }, [ov, source, split, tag]);
   useEffect(() => { if (base) api(`${base}/docs?shard=${shard}&offset=${offset}&limit=200`).then(setDocs).catch(() => setDocs(null)); }, [base, shard, offset]);
   useEffect(() => { if (base && view === "window") api(`${base}/window?shard=${shard}&start=${winStart}&length=${winLen}`).then(setWin).catch(() => setWin(null)); }, [base, shard, winStart, winLen, view]);
   useEffect(() => { if (!isTok && source && files.length) api(`/api/data/raw/${source}/docs?file=${file}&rg=${rg}&limit=100`).then(setPage).catch(() => setPage(null)); }, [source, files, file, rg]);

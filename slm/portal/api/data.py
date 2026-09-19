@@ -124,9 +124,97 @@ async def recipe(request: Request, id: str) -> dict:
     return {**r, **extra, "id": id}
 
 
+@router.get("/chain")
+async def chain(request: Request, run: str) -> dict:
+    """Cumulative data exposure along the init_from chain ending at `run`, one row per stage.
+
+    Per-source tokens are the loader's own counts when the run's last `checkpoint` record carries a
+    `sources` block (scaled when the child loaded a mid-run checkpoint), and `tokens_used x weight`
+    otherwise; `actual` says which, per row. RL stages contribute no mixture (the model trains on its
+    own samples), so they show as tokens with no per-source split.
+    """
+
+    def build() -> dict:
+        idx, cat = request.app.state.runs, request.app.state.data
+        entries = idx.chain(run)
+        if not entries:
+            raise HTTPException(404, f"unknown run {run!r}")
+        cache: dict = {}
+        rows, totals = [], {}
+        for e in entries:
+            cfg, stage, _ = _run_cfg(request, e["run"])
+            r = cat.recipe(cfg, stage, cache)
+            used, own = int(e["tokens_used"]), int(e["own_tokens"] or 0)
+            streams = idx.get(e["run"]).stream_sources()
+            if streams and own:
+                frac = used / own  # a mid-run checkpoint means only part of what the loader consumed
+                per = {k: float((v or {}).get("tokens", 0)) * frac for k, v in streams.items()}
+                actual = True
+            else:
+                per, actual = {x["source"]: used * x["weight"] for x in r["rows"]}, False
+            for k, v in per.items():
+                totals[k] = totals.get(k, 0.0) + v
+            rows.append({**e, "seq_len": r["seq_len"], "tag": r["tokenizer_tag"], "per_source": per,
+                         "actual": actual, "n_sources": len(r["rows"]), "rl": r["rl"] is not None})
+        order = sorted(totals, key=lambda k: -totals[k])
+        return {"run": run, "runs": rows, "sources": order, "totals": totals,
+                "cumulative_tokens": sum(int(e["tokens_used"]) for e in entries),
+                "any_expected": any(not x["actual"] and x["per_source"] for x in rows)}
+
+    return await anyio.to_thread.run_sync(build)
+
+
 @router.get("/sources")
 async def sources(request: Request) -> dict:
     return await anyio.to_thread.run_sync(request.app.state.data.overview)
+
+
+@router.get("/source/{name}")
+async def source(request: Request, name: str) -> dict:
+    """One catalog entry: raw files, prepared artifacts per tag, provenance both ways, and the
+    recipes whose mixture names it (with the weight each gives it)."""
+
+    def build() -> dict:
+        from slm.data.sources import SOURCES
+        from slm.portal.services.datasets import _prov_line, normalize_manifest
+
+        cat = request.app.state.data
+        prepared: dict[str, dict] = {}
+        parents: list[str] = []
+        for tag in cat.tags():
+            m = cat.manifests(tag).get(name)
+            if m:
+                p = normalize_manifest(name, m)
+                prepared[f"tokenized:{tag}"] = {**p, "tag": tag, "provenance": _prov_line(name, p)}
+                parents += [x for x in p["from"] if x and x != name]
+        for tag, sets in cat.sft_manifests().items():
+            if name in sets:
+                p = normalize_manifest(name, sets[name])
+                prepared[f"sft:{tag}"] = {**p, "tag": tag, "provenance": _prov_line(name, p)}
+                parents += [x for x in p["from"] if x and x != name]
+        src = SOURCES.get(name)
+        children = []
+        for tag in cat.tags():
+            for other, m in cat.manifests(tag).items():
+                if other != name and name in normalize_manifest(other, m)["from"]:
+                    children.append(other)
+        for tag, sets in cat.sft_manifests().items():
+            for other, m in sets.items():
+                if other != name and name in normalize_manifest(other, m)["from"]:
+                    children.append(other)
+        if src is None and not prepared:
+            raise HTTPException(404, f"unknown source {name!r}")
+        return {"name": name, "kind": src.kind if src else (list(prepared.values())[0]["kind"] if prepared else "?"),
+                "license": src.license if src else "", "repo": src.repo if src else "",
+                "notes": src.notes if src else (list(prepared.values())[0]["provenance"] if prepared else ""),
+                "raw_files": cat.raw(name).files() if src else [], "prepared": prepared,
+                "parents": sorted(set(parents)), "children": sorted(set(children)),
+                "browsable": bool(src) or any(p["kind"] == "tokenized" for p in prepared.values())}
+
+    out = await anyio.to_thread.run_sync(build)
+    out["used_by"] = [{"recipe_id": r["id"], "run_name": r["run_name"], "stage": r.get("stage"), "kind": r["kind"], "weight": x["weight"]}
+                      for r in await recipes(request) for x in (r.get("rows") or []) if x["source"] == name]
+    return out
 
 
 @router.get("/configs")

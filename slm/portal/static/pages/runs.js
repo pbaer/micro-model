@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum, fmtInt, fmtSci, fmtBytes, fmtTime } from "../components/util.js";
 import { Chart } from "../components/chart.js";
+import { dataHref } from "./data.js";
 
 const html = htm.bind(h);
 
@@ -27,12 +28,14 @@ export function RunDetail({ run }) {
   const [logy, setLogy] = useState(false);
   const [tab, setTab] = useState("charts");
   const [live, setLive] = useState(false);
+  const [recipe, setRecipe] = useState(null);  // only for the plan-differs note in the header
 
   const reload = () => {
     api(`/api/runs/${encodeURIComponent(run)}`).then(setInfo).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/series`).then(setSeries).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/checkpoints`).then(setCkpts).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/events`).then(setEvents).catch(() => {});
+    api(`/api/data/recipe?id=run:${encodeURIComponent(run)}`).then(setRecipe).catch(() => setRecipe(null));
     api(`/api/runs/${encodeURIComponent(run)}/samples`).then((s) => { setSamples(s); if (s.length && sampleTok == null) setSampleTok(s[s.length - 1].tokens); }).catch(() => {});
     api(`/api/runs/${encodeURIComponent(run)}/quality`).then((q) => { setQuality(q); const c = q.checkpoints || []; if (c.length && qualityTok == null) setQualityTok(c[c.length - 1].tokens); }).catch(() => {});
   };
@@ -92,7 +95,8 @@ export function RunDetail({ run }) {
   const eta = s.status === "running" ? s.eta_s : null;
   return html`<div>
     <h1>${run} <span class=${"status " + s.status}>${s.status}</span> ${live && s.status === "running" ? html`<span class="muted" style="font-size:12px">● live</span>` : ""}</h1>
-    <div class="sub">${s.stage} · started ${s.started || "?"} · ${s.gpu || ""} · git ${(s.git_commit || "").slice(0, 8)} · ${fmtInt(s.n_params)} params · ${s.has_report ? html`<a href=${`/api/runs/${encodeURIComponent(run)}/report`} target="_blank">report.html</a>` : ""}</div>
+    <div class="sub">${s.stage} · started ${s.started || "?"} · ${s.gpu || ""} · git ${(s.git_commit || "").slice(0, 8)} · ${fmtInt(s.n_params)} params · ${s.has_report ? html`<a href=${`/api/runs/${encodeURIComponent(run)}/report`} target="_blank">report.html</a> · ` : ""}<a href=${dataHref("recipes", "run:" + run)}>data</a></div>
+    ${recipe && recipe.plan_differs === true && html`<div class="sub" style="color:#b45309">The yaml <code>${recipe.config_path}</code> no longer matches what this run started with — <a href=${dataHref("recipes", "run:" + run)}>the data page shows both</a>.</div>`}
     <div class="bar"><div style=${"width:" + (s.progress * 100).toFixed(2) + "%"}></div></div>
     <div class="tiles">
       <${Tile} k="progress" v=${(s.progress * 100).toFixed(1) + "%"} s=${s.total_steps ? `step ${fmtInt(s.update)} / ${fmtInt(s.total_steps)} · ${fmtTok(s.tokens)} completion tokens` : `${fmtTok(s.tokens)} / ${fmtTok(s.total_tokens)} tokens`} />

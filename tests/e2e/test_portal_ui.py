@@ -67,6 +67,9 @@ def build_world(root: Path) -> dict:
         cfg = {"schedule": {"total_tokens": 100 * n}, "milestone_tokens": 500, "batch": {"microbatch": 2, "tokens_per_update": 100},
                "data": {"kind": "pretrain", "seq_len": 32, "tokenized_root": str(root / "tokenized" / "v1"), "sft_root": str(root / "sft" / "v1"),
                         "mixture": {"alpha": 0.7, "beta": 0.3}, "extra_val_mixture": {"beta": 1.0}}}
+        if name == "live":  # a two-stage init_from chain, so #/data/chain has something to walk
+            cfg["init_from"] = str(runs / "fin" / "checkpoints" / "best.pt").replace("\\", "/")
+            cfg["data"]["mixture"] = {"alpha": 0.5, "beta": 0.5}
         (d / "run.json").write_text(json.dumps({"run_name": name, "stage": "pretrain", "n_params": 12345, "config": cfg, "model_config": to_dict(load_config(ModelConfig, "configs/model/tiny.yaml")), "env": {"gpu": "test", "git_commit": "abc"}, "started": "2026-09-13 00:00:00"}))
         lg = MetricsLogger(d)
         lg.log("start", msg="go")
@@ -221,38 +224,63 @@ def test_data_page(server, browser):
     p.settle(800)
     assert p.page.locator(".chip.boundary").count() >= 1, "the training row must mark document boundaries"
     assert "may start mid-document" in p.page.inner_text("main")
-    p.page.get_by_role("button", name="\u2039 all recipes", exact=True).click()
+    p.page.get_by_role("button", name="‹ all recipes", exact=True).click()
     p.settle(400)
-    clicked = set()
-    for tab in ("sources", "documents"):
-        p.page.get_by_role("button", name=tab, exact=True).click()
-        p.settle(600)
-        clicked |= p.click_all_buttons(skip=("\u2039", "\u203a", "\u2039 prev", "next \u203a", "recipes", "sources", "documents"))
-    assert {"random doc", "doc", "window", "stats", "text", "tokens", "ids"} <= clicked, clicked
-    p.page.get_by_role("button", name="documents", exact=True).click()
-    p.settle()
-    # text <-> tokens toggle on one document
+    assert not p.errors, p.errors
+
+
+def test_data_compare_and_chain(server, browser):
+    """Two recipes side by side (client-side from two payloads) and the init_from chain of a run."""
+    p = Page(browser, server)
+    p.goto("/data/recipes/run%3Alive")
+    p.settle(700)
+    # the default pairing is the run's init_from parent, offered as one click
+    p.page.get_by_role("button", name="compare with fin", exact=True).click()
+    p.settle(800)
+    body = p.page.inner_text("main")
+    assert "Δ (pp)" in body and "weight A" in body and "weight B" in body, body[:400]
+    assert "seq_len" in body and "extra_val_mixture" in body
+    assert "+20.0" in body or "-20.0" in body, "alpha moves 70% -> 50%, so the delta column must show it"
+    p.page.get_by_role("button", name="swap", exact=True).click()
+    p.settle(600)
+    p.goto("/data/chain/run%3Alive")
+    p.settle(800)
+    body = p.page.inner_text("main")
+    assert "cumulative tokens" in body and "fin" in body and "live" in body, body[:400]
+    assert "tokens used" in body and "total" in body
+    assert "expected" in body or "actual" in body
+    assert not p.errors, p.errors
+
+
+def test_data_catalog_and_source_page(server, browser):
+    """The catalog replaced the sources/mixture/documents tabs; a source page carries the browser."""
+    p = Page(browser, server)
+    p.goto("/data/catalog")
+    p.settle(700)
+    body = p.page.inner_text("main")
+    assert "alpha" in body and "used by" in body, body[:300]
+    p.page.get_by_role("button", name="show unused", exact=True).click()
+    p.settle(500)
+    p.page.locator("tr.click", has_text="alpha").first.click()
+    p.settle(800)
+    body = p.page.inner_text("main")
+    assert "prepared artifacts" in body and "used by" in body, body[:400]
+    # "browse" keeps the document browser reachable now that the documents tab is gone
+    p.page.get_by_role("button", name="browse", exact=True).click()
+    p.settle(900)
     p.page.get_by_role("button", name="random doc", exact=True).click()
     p.settle(800)
-    p.page.get_by_role("button", name="text", exact=True).click()
-    p.settle()
-    assert p.page.locator("main pre").count() >= 1
-    p.page.get_by_role("button", name="tokens", exact=True).click()
-    p.settle()
-    assert p.page.locator(".chip").count() > 3
-    # window view renders boundaries and the legend with literal token names
     p.page.get_by_role("button", name="window", exact=True).click()
     p.settle(800)
     body = p.page.inner_text("main")
     assert "<|bos|>/<|eos|> mark boundaries" in body
-    assert p.page.locator(".chip.boundary").count() >= 1
-    # the text/tokens/ids toggle applies to the window view too, not just to single documents
-    p.page.get_by_role("button", name="text", exact=True).click()
-    p.settle(400)
-    assert p.page.locator("main pre").count() >= 1 and p.page.locator(".chip").count() == 0, "window text view must decode, not chip"
+    assert p.page.locator("main pre").count() >= 1, "the window opens in text mode"
     p.page.get_by_role("button", name="tokens", exact=True).click()
-    p.settle(400)
-    assert p.page.locator(".chip").count() > 3
+    p.settle(600)
+    assert p.page.locator(".chip.boundary").count() >= 1
+    p.page.get_by_role("button", name="stats", exact=True).click()
+    p.settle(900)
+    assert "documents by length" in p.page.inner_text("main")
     p.cycle_selects()
     assert not p.errors, p.errors
 

@@ -207,3 +207,39 @@ def test_sft_split_window_carries_mask_and_example_bounds(tmp_path):
     w = s.window(0, 80, 160)
     assert w["example_starts"] == [20, 140] and w["n_target"] == 20 and w["shard_tokens"] == 300
     assert s.stats()["targets"] == 50 and abs(s.stats()["target_share"] - 50 / 300) < 1e-9
+
+
+def test_portal_main_process_is_torch_free():
+    """Importing the app must not pull torch (and with it CUDA init) into the portal process: a live
+    training run owns the GPU. Every torch-touching route imports inside the handler.
+
+    Checked in a subprocess: this session has torch imported already by other tests.
+    """
+    import subprocess
+    import sys
+
+    out = subprocess.run([sys.executable, "-c", "import sys; import slm.portal.app; print('torch' in sys.modules)"],
+                         capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "False", out.stdout
+
+
+def test_chain_walks_init_from_back_to_the_root(tmp_path):
+    """The chain is what the weights saw: this run's tokens plus the checkpoint each parent was cut at."""
+    runs = tmp_path / "runs"
+    make_run(runs, "root", n=20, finished=True)
+    make_run(runs, "mid", n=10, finished=True)
+    make_run(runs, "leaf", n=5, finished=True)
+    for child, parent, ckpt in (("mid", "root", "snap_1K.pt"), ("leaf", "mid", "latest.pt")):
+        meta = json.loads((runs / child / "run.json").read_text())
+        meta["config"]["init_from"] = f"runs/{parent}/checkpoints/{ckpt}"
+        (runs / child / "run.json").write_text(json.dumps(meta))
+    (runs / "root" / "checkpoints" / "index.json").write_text(json.dumps({"snap_1K.pt": {"tokens": 1000}}))
+    from slm.portal.services.runs import RunIndex
+
+    idx = RunIndex(runs)
+    ch = idx.chain("leaf")
+    assert [c["run"] for c in ch] == ["root", "mid", "leaf"]
+    assert ch[0]["tokens_used"] == 1000 and ch[0]["checkpoint"] == "snap_1K.pt"  # exact count from index.json
+    assert ch[1]["tokens_used"] == 1000 and ch[2]["tokens_used"] == 500  # mid has no index entry -> its own total
+    assert sum(c["tokens_used"] for c in ch) == next(s["cumulative_tokens"] for s in idx.summaries() if s["run_name"] == "leaf")
+    assert idx.chain("root") == [c for c in idx.chain("root")] and len(idx.chain("root")) == 1
