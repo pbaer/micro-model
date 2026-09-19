@@ -303,3 +303,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   sandbox-verified Python-tool set covering the whole supported subset (plus a sandbox-filtered public source),
   and add declared functions (`<|python_def|>sig<|python_comment|>text<|/python_def|>`, masked, registered into the
   session) to the vocabulary and the data. Two Opus agents in sequence: plumbing, then the generator.
+- 12:48 M8 phase 1 FINISHED: 7.50B tokens in 2d 23h 28m, best val 2.6081 at 7.4B (final 2.6086), 149M chain's
+  equivalent 2.88; the power-law fit from 3B predicted 2.612 at 7.5B. The pre-placed STOP file ended phase 2 after
+  one update (55 s); that stub run dir is set aside as `runs/m8_base_4k_336m_stub` so the real phase 2 starts
+  fresh from phase 1's final.pt with the shell-free mixture (a resumed loader state would still carry the shell
+  stream). The n=64 needle sweep of phase 1's 30 snapshots is running on the freed GPU.
