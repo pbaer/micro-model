@@ -202,7 +202,9 @@ vendored Preact + uPlot, no build step). Pages: **Overview** (pipeline table, li
 readiness), run detail (live charts including GPU temperature/power, milestones, samples timeline,
 checkpoints, events, config), **Data** (a recipe per training config or run: its mixture with
 epochs and drift set, and per source an inspector from raw parquet row to prepared document or SFT
-example to the exact training row the loader cuts, with loss masks; plus the source catalog and browser), **Tokenizer** playground, **Inference**
+example to the exact training row the loader cuts, with loss masks; for RL the prompt list and the
+stored rollouts with their rewards; two recipes side by side, the cumulative exposure along the
+`init_from` chain, and a source catalog with provenance, "used by" and the document browser), **Tokenizer** playground, **Inference**
 (checkpoint slots A/B in a torch worker subprocess with a GPU guard, streaming generation with per-token
 log-probs, scoring), and **Architecture** (interactive module graph, FLOPs/memory, LR/RoPE
 illustrations computed by the real functions). It is a supplement to working in the repo, not the

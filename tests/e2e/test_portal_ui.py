@@ -186,7 +186,8 @@ def test_home_and_runs(server, browser):
     assert "Pipeline and runs" in body and "Data readiness" in body and "Pretraining (base model)" in body and "not started" in body
     assert "fin" in body and "live" in body and "100.0%" in body  # finished run shows exactly 100%
     assert body.count("live running") == 1  # the live run appears once in the table (card shows it without the word twice)
-    p.page.locator("tr.click", has_text="fin").first.click()
+    # by the link, not by row text: the live run's row also mentions "fin" (it inits from its checkpoint)
+    p.page.get_by_role("link", name="fin", exact=True).click()
     p.settle(800)
     assert "finished" in p.page.inner_text("main")
     clicked = p.click_all_buttons()
