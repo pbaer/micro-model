@@ -352,3 +352,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   generator's service registry, calls replayed in order): 360,516 calls across the five tool sets, 10,937 of them
   stored error hints, 0 mismatches. A sampled version now runs in the test suite so a sandbox change that alters
   a hint or a number format is caught against the data.
+- 14:32 M8 phase 2 (`m8_base_4k_336m`) launched on Peter's go: fresh start from phase 1's final.pt, 4K rows x mb 2,
+  2.5B tokens, WSD decay over the last 80%, mixture fineweb 66 / cosmopedia 11 / finemath 7 / python-edu 6.5 /
+  synth-retrieval 3.5 / smoltalk-chat 4.5 / tool-chat 1.5 (no shell; tool-chat = the rebuilt 36.0M-token Python-tool
+  source at 1.04 epochs), needle n=64 at 1K/2K/4K with 32K-token batches and a fixed haystack seed, quality suite
+  generated at every milestone, per-source stream state in every checkpoint record. Final measurements run at
+  n=64. Expected ~27 h.
