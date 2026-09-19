@@ -278,36 +278,40 @@ on correctness / coherence / task (1-5 each; overall = mean). Suite v1, rubric v
 items, so a single prompt moves the overall by about 0.03 and a category (2-8 prompts) by 0.1-0.5: read the
 trend, not the last digit.
 
-### Second base, phase 1 (`m8_base_stable_336m`, constant LR, 2K rows) — 2026-09-19, through 7.0B tokens
+### Second base, phase 1 (`m8_base_stable_336m`, constant LR, 2K rows) — complete, 30 snapshots to 7.5B (overall excludes bash from 2026-09-19; the bash column is still scored)
 
 | tokens | overall | correctness | coherence | task | facts | pattern | python | prose | arithmetic | bash |
 |---|---|---|---|---|---|---|---|---|---|---|
-| 0.25B | 1.11 | 1.00 | 1.17 | 1.17 | 1.17 | 1.25 | 1.17 | 1.17 | 1.00 | 1.00 |
-| 0.50B | 1.39 | 1.11 | 1.63 | 1.43 | 1.38 | 1.42 | 1.39 | 1.42 | 1.33 | 1.33 |
-| 1.00B | 1.79 | 1.29 | 1.97 | 2.11 | 2.04 | 1.67 | 1.83 | 1.67 | 1.67 | 1.33 |
-| 1.50B | 2.07 | 1.77 | 2.00 | 2.43 | 2.67 | 2.25 | 2.00 | 2.00 | 1.42 | 1.33 |
-| 2.00B | 2.05 | 1.74 | 2.17 | 2.23 | 2.04 | 2.92 | 2.17 | 2.00 | 1.42 | 1.33 |
-| 2.50B | 2.02 | 1.86 | 2.00 | 2.20 | 2.67 | 1.75 | 2.78 | 1.75 | 1.42 | 1.44 |
-| 3.00B | 2.22 | 2.09 | 2.14 | 2.43 | 2.62 | 2.17 | 2.50 | 2.08 | 1.33 | 1.22 |
-| 3.25B | 2.33 | 2.11 | 2.31 | 2.57 | 2.58 | 3.33 | 2.94 | 1.83 | 1.67 | 1.33 |
-| 3.50B | 2.31 | 2.03 | 2.37 | 2.51 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
-| 3.50B | 2.31 | 2.03 | 2.37 | 2.51 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
-| 3.75B | 2.21 | 2.14 | 2.06 | 2.43 | 2.79 | 2.42 | 2.61 | 2.17 | 1.25 | 1.22 |
-| 4.00B | 2.20 | 2.00 | 2.26 | 2.34 | 2.46 | 3.08 | 2.67 | 2.33 | 1.25 | 1.22 |
-| 4.25B | 2.56 | 2.34 | 2.40 | 2.94 | 2.88 | 3.08 | 3.50 | 2.50 | 1.67 | 1.11 |
-| 4.50B | 2.66 | 2.54 | 2.43 | 3.00 | 3.46 | 2.92 | 3.78 | 2.50 | 1.42 | 1.22 |
-| 4.75B | 2.40 | 2.11 | 2.31 | 2.77 | 2.83 | 3.25 | 2.17 | 2.42 | 1.67 | 1.33 |
-| 5.00B | 2.35 | 2.03 | 2.23 | 2.80 | 2.83 | 2.67 | 2.56 | 2.25 | 1.33 | 1.22 |
-| 5.25B | 2.24 | 2.34 | 1.91 | 2.46 | 2.46 | 3.33 | 2.17 | 2.25 | 1.17 | 1.11 |
-| 5.50B | 2.76 | 2.74 | 2.69 | 2.86 | 3.00 | 2.50 | 3.50 | 2.50 | 1.67 | 1.33 |
-| 5.75B | 2.31 | 2.31 | 2.23 | 2.37 | 3.00 | 3.17 | 2.00 | 2.00 | 1.50 | 1.44 |
-| 6.00B | 2.69 | 2.60 | 2.66 | 2.83 | 3.17 | 3.00 | 4.00 | 1.83 | 1.17 | 1.22 |
-| 6.25B | 2.33 | 2.29 | 2.17 | 2.54 | 3.00 | 2.33 | 1.94 | 2.17 | 1.83 | 1.33 |
-| 6.50B | 2.67 | 2.71 | 2.43 | 2.86 | 2.71 | 3.50 | 3.39 | 2.33 | 1.42 | 1.44 |
-| 6.75B | 2.69 | 2.63 | 2.57 | 2.89 | 3.33 | 2.67 | 3.17 | 2.50 | 1.75 | 1.22 |
-| 7.00B | 2.66 | 2.59 | 2.47 | 2.91 | 3.25 | 3.33 | 2.94 | 2.44 | 1.83 | 1.22 |
-| 6.00B | 2.69 | 2.60 | 2.66 | 2.83 | 3.17 | 3.00 | 4.00 | 1.83 | 1.17 | 1.22 |
-| 5.00B | 2.35 | 2.03 | 2.23 | 2.80 | 2.83 | 2.67 | 2.56 | 2.25 | 1.33 | 1.22 |
+| 0.25B | 1.12 | 1.00 | 1.19 | 1.19 | 1.17 | 1.25 | 1.17 | 1.17 | 1.00 | 1.00 |
+| 0.50B | 1.40 | 1.12 | 1.59 | 1.47 | 1.38 | 1.42 | 1.39 | 1.42 | 1.33 | 1.33 |
+| 0.75B | 1.74 | 1.38 | 1.94 | 1.91 | 1.75 | 1.58 | 2.17 | 1.50 | 1.42 | 1.22 |
+| 1.00B | 1.83 | 1.31 | 1.97 | 2.22 | 2.04 | 1.67 | 1.83 | 1.67 | 1.67 | 1.33 |
+| 1.25B | 1.80 | 1.41 | 2.00 | 2.00 | 1.88 | 1.58 | 1.78 | 2.00 | 1.58 | 1.44 |
+| 1.50B | 2.13 | 1.84 | 2.03 | 2.53 | 2.67 | 2.25 | 2.00 | 2.00 | 1.42 | 1.33 |
+| 1.75B | 2.16 | 1.84 | 2.19 | 2.44 | 2.00 | 2.42 | 2.67 | 2.25 | 1.33 | 1.56 |
+| 2.00B | 2.12 | 1.81 | 2.19 | 2.34 | 2.04 | 2.92 | 2.17 | 2.00 | 1.42 | 1.33 |
+| 2.25B | 2.06 | 1.88 | 2.06 | 2.25 | 1.92 | 2.50 | 2.89 | 1.83 | 1.58 | 1.22 |
+| 2.50B | 2.07 | 1.94 | 2.00 | 2.28 | 2.67 | 1.75 | 2.78 | 1.75 | 1.42 | 1.44 |
+| 2.75B | 2.26 | 2.00 | 2.25 | 2.53 | 2.08 | 2.17 | 2.94 | 2.25 | 1.58 | 1.33 |
+| 3.00B | 2.31 | 2.19 | 2.19 | 2.56 | 2.62 | 2.17 | 2.50 | 2.08 | 1.33 | 1.22 |
+| 3.25B | 2.43 | 2.22 | 2.34 | 2.72 | 2.58 | 3.33 | 2.94 | 1.83 | 1.67 | 1.33 |
+| 3.50B | 2.40 | 2.12 | 2.41 | 2.66 | 2.62 | 3.00 | 2.67 | 2.75 | 1.67 | 1.33 |
+| 3.75B | 2.30 | 2.25 | 2.09 | 2.56 | 2.79 | 2.42 | 2.61 | 2.17 | 1.25 | 1.22 |
+| 4.00B | 2.29 | 2.09 | 2.31 | 2.47 | 2.46 | 3.08 | 2.67 | 2.33 | 1.25 | 1.22 |
+| 4.25B | 2.70 | 2.47 | 2.50 | 3.12 | 2.88 | 3.08 | 3.50 | 2.50 | 1.67 | 1.11 |
+| 4.50B | 2.79 | 2.69 | 2.50 | 3.19 | 3.46 | 2.92 | 3.78 | 2.50 | 1.42 | 1.22 |
+| 4.75B | 2.50 | 2.22 | 2.34 | 2.94 | 2.83 | 3.25 | 2.17 | 2.42 | 1.67 | 1.33 |
+| 5.00B | 2.46 | 2.12 | 2.28 | 2.97 | 2.83 | 2.67 | 2.56 | 2.25 | 1.33 | 1.22 |
+| 5.25B | 2.34 | 2.47 | 1.97 | 2.59 | 2.46 | 3.33 | 2.17 | 2.25 | 1.17 | 1.11 |
+| 5.50B | 2.90 | 2.91 | 2.75 | 3.03 | 3.00 | 2.50 | 3.50 | 2.50 | 1.67 | 1.33 |
+| 5.75B | 2.38 | 2.44 | 2.22 | 2.50 | 3.00 | 3.17 | 2.00 | 2.00 | 1.50 | 1.44 |
+| 6.00B | 2.83 | 2.75 | 2.75 | 3.00 | 3.17 | 3.00 | 4.00 | 1.83 | 1.17 | 1.22 |
+| 6.25B | 2.43 | 2.41 | 2.19 | 2.69 | 3.00 | 2.33 | 1.94 | 2.17 | 1.83 | 1.33 |
+| 6.50B | 2.78 | 2.88 | 2.44 | 3.03 | 2.71 | 3.50 | 3.39 | 2.33 | 1.42 | 1.44 |
+| 6.75B | 2.83 | 2.78 | 2.66 | 3.06 | 3.33 | 2.67 | 3.17 | 2.50 | 1.75 | 1.22 |
+| 7.00B | 2.82 | 2.75 | 2.59 | 3.12 | 3.25 | 3.33 | 2.94 | 2.75 | 1.83 | 1.22 |
+| 7.25B | 3.05 | 3.03 | 2.50 | 3.62 | 3.29 | 3.25 | 3.89 | 2.75 | 1.50 | 1.22 |
+| 7.50B | 3.07 | 3.00 | 2.53 | 3.69 | 2.79 | 3.92 | 4.00 | 3.17 | 1.33 | 1.11 |
 
 What the judge sees at 3.5B (all 14 checkpoints judged, 490 items): the right first sentence arrives long before
 the model learns to stop. `The capital of France is` → "Paris, the capital of France is Paris. The capital of
@@ -317,7 +321,7 @@ moved off the floor in 3.5B tokens: a base model at this size does not answer "W
 prompt (it restates the equation), and bash prompts drift into prose or number lists. Those two are the headroom
 the SFT / tool stages are for, and this table is the baseline they will be compared against.
 
-Reading the curve: overall rises 1.11 → 2.76 (5.5B), and from 6.5B on holds 2.66-2.70 on three consecutive snapshots (the first time it has held above 2.6), with checkpoint-to-checkpoint wobble of ±0.25 earlier under the constant LR (3.75-4.0B dipped to 2.20, 4.5B jumped to 2.66, 5.0B sits at 2.35), far larger than the ±0.03 judge noise: at a constant learning rate the greedy behaviours (where a loop starts) move between snapshots even as validation loss improves monotonically, so read the trend over several points, and expect the decay phase to settle it;
+Reading the curve: overall (ex-bash) rises 1.12 → 3.07 at 7.5B, holding above 2.78 on every snapshot from 6.5B and jumping at 7.25B (task 3.6+, correctness 3.0); earlier there was checkpoint-to-checkpoint wobble of ±0.25 under the constant LR (3.75-4.0B dipped to 2.20, 4.5B jumped to 2.66, 5.0B sits at 2.35), far larger than the ±0.03 judge noise: at a constant learning rate the greedy behaviours (where a loop starts) move between snapshots even as validation loss improves monotonically, so read the trend over several points, and expect the decay phase to settle it;
 `correctness` is the slowest rubric (1.0 → 2.0) and `task` the fastest (1.2 → 2.5), i.e. the model learns what
 kind of text to produce before it learns to be right. Cost: 53 s of CPU per checkpoint, ~75K judge tokens per
 40-item packet, zero measurable training-throughput impact.
