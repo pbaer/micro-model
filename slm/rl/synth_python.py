@@ -52,6 +52,7 @@ from slm.tools.pysandbox import _fmt as render_value  # the sandbox's own print 
 FAMILY_SHARES = {"pipeline": 0.235, "strings": 0.12, "numbers": 0.12, "simulation": 0.08, "multiturn": 0.12,
                  "runcode": 0.08, "error": 0.05, "declared": 0.145, "arith": 0.05}
 HOLDOUT_FAMILIES = ("pipeline.dict", "declared.distance")  # written to val only
+HOLDOUT_SERVICES = {h.split(".", 1)[1] for h in HOLDOUT_FAMILIES if h.startswith("declared.")}  # never declared in train
 DEFAULT_CORPUS = DATA_ROOT / "tokenized" / "v1" / "fineweb-edu-b" / "val"
 
 
@@ -1476,11 +1477,11 @@ def gen_declared(rng: random.Random, corpus: Corpus) -> Sample | None:
     svc = rng.choices(list(DECL_WEIGHTS), weights=list(DECL_WEIGHTS.values()))[0]
     decls = DECL_SERVICES[svc]()
     impls = {d.name: d.impl for d in decls}
-    extra = rng.random() < 0.3  # a second, unrelated declaration that is not needed
-    if extra:
-        other = rng.choice([s for s in DECL_SERVICES if s != svc])
+    if rng.random() < 0.3:  # a second, unrelated declaration that is not needed
+        other = rng.choice([s for s in DECL_SERVICES if s != svc and s not in HOLDOUT_SERVICES])
         decls = decls + [DECL_SERVICES[other]()[0]]
-    unneeded = rng.random() < 0.05  # the declarations do not help: plain Python is the answer
+    # a held-out service must not appear in train at all, not even as an unused declaration block
+    unneeded = svc not in HOLDOUT_SERVICES and rng.random() < 0.05  # the declarations do not help: plain Python is the answer
     recover = rng.random() < 0.12  # a call to a function that was never declared, then the right one
 
     if unneeded:

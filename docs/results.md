@@ -62,9 +62,9 @@ SFT shards (`C:\slm-data\sft\v1`): smol-magpie-ultra 121K examples / 162M tokens
 16K dropped for length), openhermes-100k 94K / 36M, systemchats-30k 34K / 20M, smol-constraints 34K /
 7M, everyday-conversations 2.3K / 0.4M, metamathqa-reasoning 44K / 10M, gsm8k-reasoning 7.4K / 1.4M,
 synthetic-reasoning 40K / 3.2M, synthetic-multiturn-tools 19K conversations / 2.8M (2–4 turns, Python calls reusing the session variable),
-synthetic-python-tools 158K train conversations / 28.5M tokens + 11.5K val / 2.3M (grammar-generated, 259K tool
-calls; feature coverage of the call spans: loops 77%, list ops 61%, string methods 20%, declared-function calls 10.9%,
-`def` 11.1%, `math.` 6.7%; hold-out families `pipeline.dict` and `declared.distance` are val-only),
+synthetic-python-tools 158K train conversations / 28.4M tokens + 11.8K val / 2.4M (grammar-generated, 259K tool
+calls; feature coverage of the call spans: loops 77%, list ops 61%, string methods 20%, declared-function calls 11.0%,
+`def` 11.0%, `math.` 6.6%; hold-out families `pipeline.dict` and `declared.distance` are val-only),
 and 4096-token rebuilds of the five SmolTalk sets (`*-4k`: magpie-ultra keeps 134K conversations vs 121K at 2048). numina-cot-100k (105K / 54M) is prepared but unused. Raw downloads
 total 20 GB, tokenized shards 21 GB, SFT shards 1 GB.
 

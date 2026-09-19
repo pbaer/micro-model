@@ -249,6 +249,10 @@ def test_holdout_families_are_val_only(sample_set):
     for h in sp.HOLDOUT_FAMILIES:
         assert sum(v for (f, sp_), v in seen.items() if f.startswith(h)) >= 20, h
         assert not any(f.startswith(h) and sp_ == "train" for (f, sp_) in seen)
+    # a held-out service is never even declared in a training conversation
+    for s in sample_set:
+        if sp.split_for(s) == "train":
+            assert not any(d.name == "distance_km" for d in s.decls), s.family
 
 
 def test_build_writes_shards_and_manifest(tok, tmp_path):

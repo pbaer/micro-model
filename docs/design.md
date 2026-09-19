@@ -217,7 +217,7 @@ at 1.5% into its 4K decay phase, following the SmolLM2 recipe of putting instruc
 
 The tool source was rebuilt for phase 2 as `tool-chat-v2` (36.1M train / 2.9M val tokens, 225K docs): the four
 calculator-style sets (`gsm8k-tools`, `synthetic-reasoning-tools`, `metamathqa-tools`, `synthetic-multiturn-tools`,
-7.6M tokens together, the old `tool-chat`) plus `synthetic-python-tools` (28.5M), the grammar-generated set below.
+7.6M tokens together, the old `tool-chat`) plus `synthetic-python-tools` (28.4M), the grammar-generated set below.
 At 1.5% of a 2.5B-token phase it is sampled for ~0.96 epochs, which is why the size was chosen. The old `tool-chat`
 directory is kept as it is; swapping the data is a rename at launch time.
 
