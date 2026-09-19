@@ -49,8 +49,8 @@ eval:
     - "<|user|>What is 17 + 26?<|end|><|assistant|>"
   needle_lengths: [1024, 2048, 4096]
   needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
-  needle_n: 16
-  needle_batch_tokens: 8192
+  needle_n: 64              # per cell; a true 90% cell reads below the 80% gate 1.4% of the time (21% at n=16)
+  needle_batch_tokens: 32768  # 8 rows at 4K; ~2 GB transient during eval, released afterwards
   quality_suite: true       # judged-quality prompt suite at every milestone snapshot (docs/quality_eval.md)
   needle_source: fineweb-edu-b
 milestone_tokens: 250000000
