@@ -239,6 +239,56 @@ class TokenizedSplit:
         return res
 
 
+# ------------------------------------------------------------------- manifest dialects
+def normalize_manifest(name: str, m: dict) -> dict:
+    """One shape for the four manifest writers, so every consumer reads the same keys.
+
+    prepare.py          train_tokens/train_docs/... + files + source
+    sft.py              train_examples/train_tokens/train_targets + max_len/think_required/tools
+    sft_to_pretrain.py  train: {tokens, docs, shards}  + from_sft   (source == the output name)
+    synth_retrieval.py / rl.synth.py   name + train_tokens, backdrop / tasks, no raw source
+    """
+    src = m.get("source")
+    if "from_sft" in m:  # chat/tool SFT sets converted into a pretraining stream
+        tr, va = m.get("train") or {}, m.get("val") or {}
+        return {"kind": "tokenized", "made_by": "sft_to_pretrain", "from": list(m["from_sft"]), "raw_source": None,
+                "train_tokens": int(tr.get("tokens", 0)), "train_docs": int(tr.get("docs", 0)), "train_shards": int(tr.get("shards", 0)),
+                "val_tokens": int(va.get("tokens", 0)), "val_docs": int(va.get("docs", 0)), "val_shards": int(va.get("shards", 0)),
+                "targets": None, "manifest": m}
+    if "train_examples" in m:  # an SFT set (chat examples + loss mask), whether from parquet or templated
+        made = "rl.synth" if "tasks" in m else "sft"
+        return {"kind": "sft", "made_by": made, "from": list(m.get("tasks", [])) if made == "rl.synth" else ([src] if src else []), "raw_source": src,
+                "train_tokens": int(m.get("train_tokens", 0)), "train_docs": int(m.get("train_examples", 0)), "train_shards": int(m.get("train_shards", 0)),
+                "val_tokens": int(m.get("val_tokens", 0)), "val_docs": int(m.get("val_examples", 0)), "val_shards": int(m.get("val_shards", 0)),
+                "targets": int(m.get("train_targets", 0)), "manifest": m}
+    if "backdrop" in m:  # synthetic retrieval, templated over another tokenized set
+        return {"kind": "tokenized", "made_by": "synth_retrieval", "from": [Path(str(m["backdrop"])).parent.name], "raw_source": None,
+                "train_tokens": int(m.get("train_tokens", 0)), "train_docs": int(m.get("train_docs", 0)), "train_shards": int(m.get("train_shards", 0)),
+                "val_tokens": int(m.get("val_tokens", 0)), "val_docs": int(m.get("val_docs", 0)), "val_shards": int(m.get("val_shards", 0)),
+                "targets": None, "manifest": m}
+    # prepare.py: `source` is the registry source, `name` the output set (they differ for fineweb-edu-long etc.)
+    return {"kind": "tokenized", "made_by": "prepare", "from": [src] if src and src != name else [], "raw_source": src if src != name else src,
+            "train_tokens": int(m.get("train_tokens", 0)), "train_docs": int(m.get("train_docs", 0)), "train_shards": int(m.get("train_shards", 0)),
+            "val_tokens": int(m.get("val_tokens", 0)), "val_docs": int(m.get("val_docs", 0)), "val_shards": int(m.get("val_shards", 0)),
+            "targets": None, "raw_files": len(m.get("files") or []), "manifest": m}
+
+
+def _prov_line(name: str, p: dict) -> str:
+    """One-line 'where did this come from' for a prepared set."""
+    m = p["manifest"]
+    if p["made_by"] == "sft_to_pretrain":
+        return f"{len(p['from'])} SFT sets in chat format: " + ", ".join(p["from"])
+    if p["made_by"] == "synth_retrieval":
+        return f"templated needle/ledger documents over {p['from'][0] if p['from'] else '?'} (seed {m.get('seed', '-')}, {m.get('min_len', '-')}–{m.get('max_len', '-')} tokens)"
+    if p["made_by"] == "rl.synth":
+        return "templated reasoning traces for tasks " + ", ".join(p["from"])
+    if p["made_by"] == "sft":
+        return f"chat-formatted from {p['raw_source']} (max_len {m.get('max_len', '-')}, think {'required' if m.get('think_required') else 'optional'}{', tools' if m.get('tools') else ''})"
+    raw = p.get("raw_source") or "?"
+    extra = f", min_doc_tokens {m['min_doc_tokens']}" if m.get("min_doc_tokens") else ""
+    return f"tokenized from {raw}" + (f" ({p.get('raw_files', 0)} parquet files{extra})" if p.get("raw_files") else extra)
+
+
 class DataCatalog:
     def __init__(self, data_root: Path, cache_dir: Path) -> None:
         self.data_root = Path(data_root)
@@ -290,19 +340,30 @@ class DataCatalog:
                 "tokenized": {t: mani[t].get(name) for t in tags if mani[t].get(name)},
             })
         # Tokenized sources that are not registry entries (derived sets such as fineweb-edu-long,
-        # fineweb-edu-b, or synthetic data) must still be browsable.
+        # fineweb-edu-b, or synthetic data) must still be browsable. Provenance comes from the
+        # normalizer, not from manifest["source"], which two writers set to the *output* name.
         known = {s["name"] for s in sources}
         for t in tags:
             for name, m in mani[t].items():
                 if name in known:
                     continue
                 known.add(name)
+                p = normalize_manifest(name, m)
                 sources.append({
-                    "name": name, "repo": f"derived from {m.get('source', '?')}", "kind": m.get("kind", "derived"), "license": "", "content_via_swh": False,
-                    "notes": f"derived tokenized set (min_doc_tokens={m.get('min_doc_tokens', '-')}); raw = {m.get('source', '?')}",
+                    "name": name, "repo": _prov_line(name, p), "kind": m.get("kind", "derived"), "license": "", "content_via_swh": False,
+                    "notes": _prov_line(name, p), "made_by": p["made_by"], "from": p["from"],
                     "raw_files": 0, "raw_bytes": 0, "raw_rows": 0, "tokenized": {tt: mani[tt].get(name) for tt in tags if mani[tt].get(name)},
                 })
+        for s in sources:
+            s["prepared"] = {t: normalize_manifest(s["name"], mani[t][s["name"]]) for t in tags if mani[t].get(s["name"])}
         return {"tags": tags, "sources": sources, "sft": self.sft_manifests()}
+
+    def prepared(self, tag: str) -> dict[str, dict]:
+        """Normalized prepared artifacts for one tokenizer tag: tokenized sets plus SFT sets."""
+        out = {n: normalize_manifest(n, m) for n, m in self.manifests(tag).items()}
+        for n, m in self.sft_manifests().get(tag, {}).items():
+            out.setdefault(f"sft:{n}", normalize_manifest(n, m))
+        return out
 
     def raw(self, name: str) -> RawSource:
         with self.lock:
@@ -320,15 +381,73 @@ class DataCatalog:
                 self._splits[key] = TokenizedSplit(d)
             return self._splits[key]
 
-    def mixture(self, train_cfg) -> dict:
-        tag = Path(train_cfg.data.tokenized_root).name
-        mani = self.manifests(tag)
-        total = train_cfg.schedule.total_tokens
-        w = sum(train_cfg.data.mixture.values())
-        rows = []
-        for name, weight in train_cfg.data.mixture.items():
-            m = mani.get(name, {})
-            avail = m.get("train_tokens", 0)
-            planned = total * weight / w
-            rows.append({"source": name, "weight": weight / w, "available_tokens": avail, "planned_tokens": planned, "epochs": planned / avail if avail else None, "val_tokens": m.get("val_tokens", 0)})
-        return {"tag": tag, "total_tokens": total, "seq_len": train_cfg.data.seq_len, "rows": rows}
+    # ------------------------------------------------------------------- recipes
+    def _row(self, name: str, weight: float, wsum: float, total: int, prep: dict, kind: str) -> dict:
+        p = prep.get(name)
+        avail = p["train_tokens"] if p else 0
+        planned = total * weight / wsum if wsum else 0.0
+        raw_src = (p or {}).get("raw_source")
+        return {"source": name, "weight": weight / wsum if wsum else 0.0, "planned_tokens": planned, "available_tokens": avail,
+                "epochs": planned / avail if avail else None, "val_tokens": (p or {}).get("val_tokens", 0),
+                "prepared": p, "provenance": _prov_line(name, p) if p else None, "missing": p is None, "kind": kind,
+                "raw": {"source": raw_src, "files": (p or {}).get("raw_files", 0)} if raw_src and raw_src in SOURCES else None}
+
+    def recipe(self, cfg: dict, stage: str, cache: dict | None = None) -> dict:
+        """The data section of one training config or run, resolved against what is on disk.
+
+        `cfg` is a plain dict (yaml under TrainConfig defaults, or run.json's `config`), never a
+        dataclass: RL configs have a different shape and must not go through TrainConfig at all.
+        """
+        if stage == "rl":
+            return self._rl_recipe(cfg)
+        cache = {} if cache is None else cache
+        data, sched = cfg.get("data") or {}, cfg.get("schedule") or {}
+        is_sft = (data.get("kind") or "pretrain") == "sft"
+        tok_root = data.get("tokenized_root") or ""
+        root = (data.get("sft_root") or "") if is_sft else tok_root
+        tag, tok_tag = Path(root).name, Path(tok_root).name
+        if ("tok", tok_tag) not in cache:
+            cache[("tok", tok_tag)] = {n: normalize_manifest(n, m) for n, m in self.manifests(tok_tag).items()}
+        if is_sft and ("sft", tag) not in cache:
+            cache[("sft", tag)] = {n: normalize_manifest(n, m) for n, m in self.sft_manifests().get(tag, {}).items()}
+        tok_prep = cache[("tok", tok_tag)]
+        prep = cache[("sft", tag)] if is_sft else tok_prep
+        mixture = {k: float(v) for k, v in (data.get("mixture") or {}).items()}
+        wsum = sum(mixture.values())
+        avail_total = sum((prep.get(n) or {}).get("train_tokens", 0) for n in mixture)
+        total, note = int(sched.get("total_tokens") or 0), None
+        if float(sched.get("epochs") or 0) > 0:  # the trainer resolves epochs against the loader at start (pretrain.py)
+            total = int(float(sched["epochs"]) * avail_total)
+            note = f"{sched['epochs']} epochs x {avail_total / 1e6:.0f}M tokens in the mixture"
+        rows = [self._row(n, w, wsum, total, prep, "sft" if is_sft else "tokenized") for n, w in mixture.items()]
+        rows.sort(key=lambda r: -r["weight"])
+        ev = {k: float(v) for k, v in (data.get("extra_val_mixture") or {}).items()}
+        evs = sum(ev.values())
+        extra_val = [self._row(n, w, evs, 0, tok_prep, "tokenized") for n, w in ev.items()]
+        extra_val.sort(key=lambda r: -r["weight"])
+        return {"stage": "sft" if is_sft else "pretrain", "tag": tag, "tokenizer_tag": tok_tag, "root": root, "seq_len": int(data.get("seq_len") or 0),
+                "total_tokens": total, "total_note": note, "available_tokens": avail_total, "schedule": sched,
+                "init_from": cfg.get("init_from") or "", "rows": rows, "extra_val": extra_val, "extra_val_tokens": int(data.get("val_tokens") or 0), "rl": None}
+
+    def _rl_recipe(self, cfg: dict) -> dict:
+        from slm.train.rl_config import REWARD_RULES  # torch-free
+
+        tasks = list(cfg.get("tasks") or [])
+        counts: dict[str, int] = {}
+        for t in tasks:
+            counts[t] = counts.get(t, 0) + 1
+        n = len(tasks) or 1
+        rl = {"tasks": sorted(counts), "task_weights": {k: v / n for k, v in counts.items()}, "task_counts": counts,
+              "reward_rule": REWARD_RULES.get(cfg.get("reward_scheme", "binary"), "?"),
+              **{k: cfg.get(k) for k in ("n_train_prompts", "n_heldout_prompts", "group_size", "prompts_per_step", "max_new_tokens",
+                                         "think_required", "tools", "max_tool_calls", "reward_scheme", "kl_coef", "kl_kind", "clip_eps",
+                                         "temperature", "top_p", "entropy_stop", "kl_stop", "total_steps", "lr", "seed")}}
+        return {"stage": "rl", "tag": Path(cfg.get("tokenizer_dir") or "").name, "tokenizer_tag": Path(cfg.get("tokenizer_dir") or "").name,
+                "root": "", "seq_len": 0, "total_tokens": 0, "total_note": f"{cfg.get('total_steps')} steps x {cfg.get('prompts_per_step')} prompts x {cfg.get('group_size')} rollouts",
+                "available_tokens": 0, "schedule": {}, "init_from": cfg.get("init_from") or "", "rows": [], "extra_val": [], "extra_val_tokens": 0, "rl": rl}
+
+    def mixture(self, train_cfg) -> dict:  # legacy shape, kept for one release (see docs/command_center.md)
+        from slm.config import to_dict
+
+        r = self.recipe(to_dict(train_cfg), "sft" if train_cfg.data.kind == "sft" else "pretrain")
+        return {"tag": r["tag"], "total_tokens": r["total_tokens"], "seq_len": r["seq_len"], "rows": r["rows"]}

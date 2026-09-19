@@ -64,7 +64,9 @@ def build_world(root: Path) -> dict:
     for name, n, finished in (("fin", 40, True), ("live", 25, False)):
         d = runs / name
         d.mkdir(parents=True)
-        cfg = {"schedule": {"total_tokens": 100 * n}, "milestone_tokens": 500, "batch": {"microbatch": 2, "tokens_per_update": 100}, "data": {"seq_len": 32}}
+        cfg = {"schedule": {"total_tokens": 100 * n}, "milestone_tokens": 500, "batch": {"microbatch": 2, "tokens_per_update": 100},
+               "data": {"kind": "pretrain", "seq_len": 32, "tokenized_root": str(root / "tokenized" / "v1"), "sft_root": str(root / "sft" / "v1"),
+                        "mixture": {"alpha": 0.7, "beta": 0.3}, "extra_val_mixture": {"beta": 1.0}}}
         (d / "run.json").write_text(json.dumps({"run_name": name, "stage": "pretrain", "n_params": 12345, "config": cfg, "model_config": to_dict(load_config(ModelConfig, "configs/model/tiny.yaml")), "env": {"gpu": "test", "git_commit": "abc"}, "started": "2026-09-13 00:00:00"}))
         lg = MetricsLogger(d)
         lg.log("start", msg="go")
@@ -202,11 +204,20 @@ def test_home_and_runs(server, browser):
 def test_data_page(server, browser):
     p = Page(browser, server)
     p.goto("/data")
+    # the recipe list is the default view: one row per run and per config that has no run
+    body = p.page.inner_text("main")
+    assert "fin" in body and "t" in body and "pretrain" in body, body[:300]
+    p.page.locator("tr.click", has_text="fin").first.click()
+    p.settle(600)
+    body = p.page.inner_text("main")
+    assert "available (train)" in body and "alpha" in body and "beta" in body, body[:300]
+    p.page.get_by_role("button", name="\u2039 all recipes", exact=True).click()
+    p.settle(400)
     clicked = set()
-    for tab in ("sources", "mixture", "documents"):
+    for tab in ("sources", "documents"):
         p.page.get_by_role("button", name=tab, exact=True).click()
         p.settle(600)
-        clicked |= p.click_all_buttons(skip=("\u2039", "\u203a", "\u2039 prev", "next \u203a", "sources", "mixture", "documents"))
+        clicked |= p.click_all_buttons(skip=("\u2039", "\u203a", "\u2039 prev", "next \u203a", "recipes", "sources", "documents"))
     assert {"random doc", "doc", "window", "stats", "text", "tokens", "ids"} <= clicked, clicked
     p.page.get_by_role("button", name="documents", exact=True).click()
     p.settle()

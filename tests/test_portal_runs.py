@@ -116,3 +116,73 @@ def test_tokenized_split_notices_replaced_shards(tmp_path):
     np.arange(4000, dtype=np.uint16).tofile(d / "shard_00000.bin")
     np.save(d / "shard_00000.idx.npy", np.array([0, 10, 20, 30, 40], dtype=np.int64))
     assert ts.shards()[0]["docs"] == 5 and ts.shards()[0]["tokens"] == 4000 and len(ts.idx(0)) == 5
+
+
+def _world(root):
+    """Minimal data root with one manifest of each of the four dialects plus one SFT set."""
+    import numpy as np
+
+    def tokset(name, m, tokens=200):
+        d = root / "tokenized" / "v1" / name
+        (d / "train").mkdir(parents=True)
+        np.arange(tokens, dtype=np.uint16).tofile(d / "train" / "shard_00000.bin")
+        np.save(d / "train" / "shard_00000.idx.npy", np.array([0], dtype=np.int64))
+        (d / "manifest.json").write_text(json.dumps(m))
+
+    tokset("prose", {"source": "fineweb-edu", "name": "prose", "kind": "prose", "min_doc_tokens": 16, "train_tokens": 1000, "val_tokens": 10, "files": ["a.parquet"]})
+    tokset("chatstream", {"source": "chatstream", "from_sft": ["setA", "setB"], "train": {"tokens": 500, "docs": 7, "shards": 1}, "val": {"tokens": 5, "docs": 1, "shards": 1}})
+    tokset("synth", {"name": "synth-v2", "train_tokens": 300, "train_docs": 3, "val_tokens": 3, "backdrop": str(root / "tokenized" / "v1" / "prose" / "train"), "seed": 7, "min_len": 512, "max_len": 4096})
+    d = root / "sft" / "v1" / "setA"
+    d.mkdir(parents=True)
+    (d / "manifest.json").write_text(json.dumps({"source": "gsm8k", "name": "setA", "max_len": 2048, "think_required": True, "tools": True,
+                                                 "train_examples": 10, "train_tokens": 400, "train_targets": 200, "val_examples": 2, "val_tokens": 40}))
+    return root
+
+
+def test_manifest_normalizer_and_recipe(tmp_path):
+    from slm.portal.services.datasets import DataCatalog, normalize_manifest
+
+    root = _world(tmp_path / "data")
+    cat = DataCatalog(root, tmp_path / "cache")
+    p = cat.prepared("v1")
+    assert p["prose"]["made_by"] == "prepare" and p["prose"]["train_tokens"] == 1000 and p["prose"]["from"] == ["fineweb-edu"]
+    assert p["chatstream"]["made_by"] == "sft_to_pretrain" and p["chatstream"]["train_tokens"] == 500 and p["chatstream"]["from"] == ["setA", "setB"]
+    assert p["synth"]["made_by"] == "synth_retrieval" and p["synth"]["from"] == ["prose"]  # never "?" (the writer stores no `source`)
+    assert p["sft:setA"]["made_by"] == "sft" and p["sft:setA"]["train_tokens"] == 400 and p["sft:setA"]["train_docs"] == 10
+    assert normalize_manifest("x", {"name": "x", "tasks": ["arith1"], "train_examples": 3, "train_tokens": 30})["made_by"] == "rl.synth"
+
+    tok_root = str(root / "tokenized" / "v1")
+    cfg = {"data": {"kind": "pretrain", "tokenized_root": tok_root, "mixture": {"prose": 0.5, "chatstream": 0.5}, "seq_len": 64,
+                    "extra_val_mixture": {"prose": 1.0}}, "schedule": {"total_tokens": 2000}}
+    r = cat.recipe(cfg, "pretrain")
+    rows = {x["source"]: x for x in r["rows"]}
+    assert rows["chatstream"]["available_tokens"] == 500 and abs(rows["chatstream"]["epochs"] - 2.0) < 1e-9  # the `train: {tokens}` dialect used to read 0
+    assert "SFT sets in chat format" in rows["chatstream"]["provenance"]
+    assert [x["source"] for x in r["extra_val"]] == ["prose"] and r["extra_val"][0]["val_tokens"] == 10
+
+    sft_cfg = {"data": {"kind": "sft", "tokenized_root": tok_root, "sft_root": str(root / "sft" / "v1"), "mixture": {"setA": 1.0}, "seq_len": 64},
+               "schedule": {"total_tokens": 0, "epochs": 2.0}}
+    rs = cat.recipe(sft_cfg, "sft")
+    assert rs["stage"] == "sft" and rs["total_tokens"] == 800 and rs["rows"][0]["available_tokens"] == 400  # epochs resolved like the trainer does
+
+
+def test_recipe_api_handles_rl_yaml(tmp_path):
+    """RL yaml has unknown keys for TrainConfig; the recipe endpoint must return the prompt panel, not 500."""
+    make_run(tmp_path / "runs", "alpha", finished=True)
+    root = _world(tmp_path / "data")
+    cfgs = tmp_path / "configs" / "train"
+    cfgs.mkdir(parents=True)
+    (cfgs / "rl_x.yaml").write_text("\n".join(["run_name: rl_x", "tasks: [gsm8k, gsm8k, word]", "reward_scheme: tool", "tools: true", "total_steps: 7"]))
+    tok_root = str(root / "tokenized" / "v1").replace("\\", "/")
+    (cfgs / "alpha.yaml").write_text("\n".join(["run_name: alpha", "data: {tokenized_root: '%s', mixture: {prose: 1.0}}" % tok_root]))
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=root, configs_root=tmp_path / "configs", cache_dir=tmp_path / "cache", open_browser=False))
+    c = TestClient(app)
+    rl = c.get("/api/data/recipe", params={"id": "config:%s" % (cfgs / "rl_x.yaml")}).json()
+    assert rl["stage"] == "rl" and rl["rl"]["task_weights"]["gsm8k"] == 2 / 3 and "Python call" in rl["rl"]["reward_rule"]
+    rs = c.get("/api/data/recipes").json()
+    ids = {x["id"]: x for x in rs}
+    assert any(k.startswith("config:") and k.endswith("rl_x.yaml") for k in ids)
+    assert ids["run:alpha"]["kind"] == "run" and ids["run:alpha"]["plan_differs"] is True  # run.json config != alpha.yaml
+    assert c.get("/api/data/recipe", params={"id": "run:nope"}).status_code == 404
+    assert c.get("/api/data/recipe", params={"id": "bogus"}).status_code == 400
+

@@ -98,10 +98,10 @@ def main() -> int:
             settle(1200)
             if page == "data":
                 clicked = set()
-                for tab in ("sources", "mixture", "documents"):
+                for tab in ("sources", "documents"):
                     pg.get_by_role("button", name=tab, exact=True).click()
                     settle(800)
-                    clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "sources", "mixture", "documents"))
+                    clicked |= click_all(skip=("‹", "›", "‹ prev", "next ›", "‹ all recipes", "recipes", "sources", "documents"))
                     cycle_selects(2)
             elif page == "inference" and a.generate:
                 sel = pg.locator("main select").first

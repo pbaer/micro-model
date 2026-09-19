@@ -6,14 +6,97 @@ import { TokenChips } from "../components/tokens.js";
 
 const html = htm.bind(h);
 
-export function DataPage() {
-  const [tab, setTab] = useState("sources");
+// Routes (the hash parts after "#/data"): [] = recipe list · ["recipe", <encoded id>] = one recipe ·
+// ["catalog"] / ["documents"] = the source-centric views. Recipe ids carry ":" and "/", so they travel encoded.
+export const dataHref = (...parts) => "#/data" + parts.map((p) => "/" + encodeURIComponent(p)).join("");
+
+export function DataPage({ parts = [] }) {
+  const route = parts[0] || "recipes";
+  const tabs = [["recipes", "recipes", dataHref()], ["catalog", "sources", dataHref("catalog")], ["documents", "documents", dataHref("documents")]];
   return html`<div>
     <h1>Data</h1>
-    <div class="row" style="margin:8px 0">${["sources", "mixture", "documents"].map((x) => html`<button class=${tab === x ? "active" : ""} onClick=${() => setTab(x)}>${x}</button>`)}</div>
-    ${tab === "sources" && html`<${Sources} />`}
-    ${tab === "mixture" && html`<${Mixture} />`}
-    ${tab === "documents" && html`<${Documents} />`}
+    <div class="row" style="margin:8px 0">${tabs.map(([id, label, href]) => html`<a href=${href}><button class=${route === id ? "active" : ""}>${label}</button></a>`)}</div>
+    ${route === "recipes" && (parts[1] ? html`<${Recipe} id=${decodeURIComponent(parts[1])} key=${parts[1]} />` : html`<${RecipeList} />`)}
+    ${route === "recipe" && html`<${Recipe} id=${decodeURIComponent(parts[1] || "")} key=${parts[1]} />`}
+    ${route === "catalog" && html`<${Sources} />`}
+    ${route === "documents" && html`<${Documents} />`}
+  </div>`;
+}
+
+const STAGE = { pretrain: "pretrain", sft: "sft", rl: "rl" };
+
+function RecipeList() {
+  const [rs, setRs] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { api("/api/data/recipes").then(setRs).catch((e) => setErr(String(e))); }, []);
+  if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
+  if (!rs) return html`<div>loading…</div>`;
+  return html`<div>
+    <div class="sub">Every training config and run, by stage. A recipe is the data section of one plan (config) or of one run (what it actually started with).</div>
+    <table><tr><th>stage</th><th class="l">recipe</th><th>status</th><th>sources</th><th>seq</th><th>tokens</th><th class="l">init_from</th><th class="l">plan</th></tr>
+    ${rs.map((r) => html`<tr class="click" onClick=${() => { location.hash = dataHref("recipes", r.id).slice(1); }}>
+      <td><span class=${"stage-badge " + (r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : "")}>${STAGE[r.stage] || r.stage}</span></td>
+      <td class="l">${r.run_name}${r.kind === "config" ? html` <span class="muted">(plan only)</span>` : ""}</td>
+      <td>${r.status}</td>
+      <td>${r.stage === "rl" ? (r.rl ? r.rl.tasks.join(", ") : "-") : r.rows.length}</td>
+      <td>${r.seq_len || "-"}</td>
+      <td>${r.stage === "rl" ? (r.rl ? r.rl.total_steps + " steps" : "-") : html`${fmtTok(r.tokens)}${r.total_tokens ? " / " + fmtTok(r.total_tokens) : ""}`}</td>
+      <td class="l"><span class="muted">${(r.init_from || "random init").replace("runs/", "").replace("/checkpoints", "")}</span></td>
+      <td class="l">${r.plan_differs === true ? html`<b style="color:#b45309">yaml differs from run</b>` : r.plan_differs === false ? html`<span class="muted">matches yaml</span>` : ""}</td></tr>`)}
+    </table>
+  </div>`;
+}
+
+/** weight / planned / available / epochs table shared by the mixture and the extra_val block */
+function MixTable({ rows, showPlanned, streams }) {
+  return html`<table><tr><th class="l">source</th><th>weight</th>${showPlanned ? html`<th>planned</th>` : ""}<th>available (train)</th><th>epochs</th>${streams ? html`<th>consumed</th>` : ""}<th>val tokens</th><th class="l">prepared from</th></tr>
+    ${rows.map((r) => { const st = streams && streams[r.source]; return html`<tr>
+      <td class="l">${r.source}${r.missing ? html` <b style="color:#b91c1c">not on disk</b>` : ""}</td>
+      <td>${(r.weight * 100).toFixed(1)}%</td>
+      ${showPlanned ? html`<td>${fmtTok(r.planned_tokens)}</td>` : ""}
+      <td>${fmtTok(r.available_tokens)}</td>
+      <td style=${r.epochs > 1.5 ? "color:#b91c1c;font-weight:600" : ""}>${r.epochs == null ? (showPlanned ? "no data" : "-") : r.epochs.toFixed(2)}</td>
+      ${streams ? html`<td>${st ? html`${fmtTok(st.tokens)} <span class="muted">(${st.epoch.toFixed(2)} ep)</span>` : html`<span class="muted">-</span>`}</td>` : ""}
+      <td>${fmtTok(r.val_tokens)}</td>
+      <td class="l"><span class="legend">${r.provenance || "-"}</span></td></tr>`; })}
+  </table>`;
+}
+
+function RlPanel({ rl }) {
+  const rows = [["tasks", rl.tasks.map((t) => `${t} ${(rl.task_weights[t] * 100).toFixed(0)}%`).join(" · ")],
+    ["prompts", `${fmtInt(rl.n_train_prompts)} train / ${fmtInt(rl.n_heldout_prompts)} held out (split by prompt-text hash, 10% held out)`],
+    ["rollouts", `${rl.prompts_per_step} prompts/step x ${rl.group_size} samples, max ${rl.max_new_tokens} new tokens, T=${rl.temperature} top_p=${rl.top_p}`],
+    ["format", `think span ${rl.think_required ? "mandatory" : "optional"}${rl.tools ? ` · Python tool, max ${rl.max_tool_calls} calls` : " · no tools"}`],
+    ["reward", `${rl.reward_scheme}: ${rl.reward_rule}`],
+    ["objective", `clip ${rl.clip_eps} · KL ${rl.kl_coef} (${rl.kl_kind}) · lr ${rl.lr}`],
+    ["collapse guards", `entropy_stop ${rl.entropy_stop || "off"} · kl_stop ${rl.kl_stop || "off"}`]];
+  return html`<div><h2>Prompts and reward</h2>
+    <table>${rows.map(([k, v]) => html`<tr><td>${k}</td><td class="l">${v}</td></tr>`)}</table>
+    <div class="legend" style="margin-top:6px">RL has no token mixture: the model trains on its own samples. Prompts are generated deterministically from the task list and the seed.</div></div>`;
+}
+
+function Recipe({ id }) {
+  const [r, setR] = useState(null);
+  const [err, setErr] = useState(null);
+  useEffect(() => { setR(null); setErr(null); api(`/api/data/recipe?id=${encodeURIComponent(id)}`).then(setR).catch((e) => setErr(String(e))); }, [id]);
+  if (err) return html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`;
+  if (!r) return html`<div>loading…</div>`;
+  return html`<div>
+    <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
+      <b>${r.run_name}</b><span class="stage-badge ${r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : ""}">${r.stage}</span>
+      <span class="muted">${r.kind === "run" ? "run (what it started with)" : "plan (yaml)"} · ${r.status}</span>
+      ${r.kind === "run" && r.config_path && html`<a href=${dataHref("recipes", "config:" + r.config_path)}><button>see the plan</button></a>`}
+      ${r.kind === "run" && html`<a href=${"#/runs/" + encodeURIComponent(r.run_name)}><button>run page</button></a>`}</div>
+    <div class="sub">tokenizer ${r.tokenizer_tag} · ${r.seq_len ? `seq_len ${r.seq_len} · ` : ""}${r.total_tokens ? fmtTok(r.total_tokens) + " tokens" : ""}${r.total_note ? ` (${r.total_note})` : ""}
+      ${r.init_from ? ` · init_from ${r.init_from}` : " · random init"}${r.root ? ` · ${r.root}` : ""}</div>
+    ${r.plan_differs === true && html`<div class="panel" style="border-color:#fcd34d">The yaml <code>${r.config_path}</code> no longer matches what this run started with (configs get edited between phases). This page shows the run.</div>`}
+    ${r.rl ? html`<${RlPanel} rl=${r.rl} />` : html`<div>
+      <${MixTable} rows=${r.rows} showPlanned=${true} streams=${r.stream_sources} />
+      <div class="legend" style="margin-top:6px">epochs = planned tokens / available tokens; above 1.5 (red) the source is repeated.${r.stream_sources ? " 'consumed' is the loader's own per-source count at the last checkpoint." : ""}</div>
+      ${r.extra_val.length > 0 && html`<h2>extra_val_mixture (drift set, val splits only)</h2>
+        <${MixTable} rows=${r.extra_val} showPlanned=${false} />
+        <div class="legend">Pretraining validation tracked alongside the stage's own val loss, so base-model drift is visible; ${fmtTok(r.extra_val_tokens)} tokens per evaluation.</div>`}
+    </div>`}
   </div>`;
 }
 
@@ -31,22 +114,6 @@ function Sources() {
       ${Object.entries(ov.sft).map(([tag, sets]) => html`<div class="sub">tokenizer ${tag}</div>
       <table><tr><th>set</th><th>train examples</th><th>train tokens</th><th>loss targets</th><th>val examples</th><th>max len</th><th>think span</th><th>dropped / too long</th></tr>
       ${Object.entries(sets).map(([name, m]) => html`<tr><td>${name}</td><td>${fmtInt(m.train_examples)}</td><td>${fmtTok(m.train_tokens)}</td><td>${m.train_tokens ? (m.train_targets / m.train_tokens * 100).toFixed(0) + "%" : "-"}</td><td>${fmtInt(m.val_examples)}</td><td>${m.max_len || "-"}</td><td>${m.think_required ? "mandatory" : "no"}</td><td>${fmtInt(m.dropped || 0)} / ${fmtInt(m.too_long || 0)}</td></tr>`)}</table>`)}`}
-  </div>`;
-}
-
-function Mixture() {
-  const [configs, setConfigs] = useState([]);
-  const [cfg, setCfg] = useState(null);
-  const [mix, setMix] = useState(null);
-  useEffect(() => { api("/api/data/configs").then((c) => { setConfigs(c); if (c.length) setCfg(c[0]); }); }, []);
-  useEffect(() => { if (cfg) api(`/api/data/mixture?config=${encodeURIComponent(cfg)}`).then(setMix).catch(() => setMix(null)); }, [cfg]);
-  return html`<div>
-    <div class="row"><span class="muted">train config:</span><select value=${cfg} onChange=${(e) => setCfg(e.target.value)}>${configs.map((c) => html`<option value=${c}>${c}</option>`)}</select></div>
-    ${mix && html`<div style="margin-top:10px"><div class="sub">tokenizer ${mix.tag} · ${fmtTok(mix.total_tokens)} planned tokens · seq_len ${mix.seq_len}</div>
-      <table><tr><th>source</th><th>weight</th><th>planned tokens</th><th>available (train)</th><th>epochs</th><th>val tokens</th></tr>
-      ${mix.rows.map((r) => html`<tr><td>${r.source}</td><td>${(r.weight * 100).toFixed(1)}%</td><td>${fmtTok(r.planned_tokens)}</td><td>${fmtTok(r.available_tokens)}</td>
-        <td style=${r.epochs > 1.5 ? "color:#b91c1c;font-weight:600" : ""}>${r.epochs == null ? "no data" : r.epochs.toFixed(2)}</td><td>${fmtTok(r.val_tokens)}</td></tr>`)}</table>
-      <div class="legend" style="margin-top:6px">epochs > 1.5 (red) means that source will be repeated; consider downloading more of it.</div></div>`}
   </div>`;
 }
 

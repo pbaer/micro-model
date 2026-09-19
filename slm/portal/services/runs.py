@@ -69,6 +69,15 @@ class RunReader:
         except (OSError, json.JSONDecodeError):
             return None
 
+    def stream_sources(self) -> dict | None:
+        """Per-source loader state ({name: {tokens, epoch}}) from the last `checkpoint` record that
+        carries it. Runs started before the trainers logged it fall back to weight x tokens."""
+        self.refresh()
+        for r in reversed(self.records):
+            if r.get("kind") == "checkpoint" and isinstance(r.get("sources"), dict):
+                return r["sources"]
+        return None
+
     def events(self, limit: int = 50) -> list[dict]:
         self.refresh()
         return [r for r in self.records if r["kind"] in M.EVENT_KINDS][-limit:]
