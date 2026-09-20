@@ -1,4 +1,5 @@
 import json
+import shutil
 import time
 from pathlib import Path
 
@@ -249,3 +250,27 @@ def test_loader_adopts_a_parent_runs_stream_positions(tmp_path):
     after = child.consumed()
     assert after["a"]["tokens"] >= got["a"]["tokens"] and after["a"]["tokens"] + after["c"]["tokens"] == got["a"]["tokens"] + 4 * 16
     child.close()
+
+
+def test_loader_state_survives_a_mixture_change_and_a_smaller_source(tmp_path, capsys):
+    """Resuming after a source was swapped for a smaller one, or after the mixture changed, must not crash: an
+    out-of-range cursor restarts that stream and names it, unknown sources are ignored."""
+    _make_shards(tmp_path, "a", "train", 6, 1000, 1)
+    _make_shards(tmp_path, "b", "train", 1, 1000, 2)
+    big = PretrainLoader(MixtureSpec(tmp_path, {"a": 1.0}), seq_len=15, microbatch=4, seed=0, device="cpu", prefetch=2)
+    for _ in range(40):
+        big.next()
+    state = big.state_dict()
+    big.close()
+    assert state["streams"]["a"]["shard"] >= 2  # past shard 0, so it is out of range once "a" shrinks to one shard
+    # "a" now has only one shard (swapped for a smaller corpus) and the mixture gained "b" and lost nothing
+    shutil.rmtree(tmp_path / "a")
+    _make_shards(tmp_path, "a", "train", 1, 1000, 7)
+    state["streams"]["gone"] = {"shard": 0, "offset": 0, "epoch": 0}  # a source this run no longer has
+    ld = PretrainLoader(MixtureSpec(tmp_path, {"a": 0.5, "b": 0.5}), seq_len=15, microbatch=4, seed=0, device="cpu", prefetch=2)
+    ld.load_state_dict(state)
+    assert "restarting this stream" in capsys.readouterr().out
+    assert ld.streams["a"].shard == 0 and ld.streams["a"].offset == 0
+    x, y = ld.next()  # reads without an IndexError
+    assert x.shape == (4, 15)
+    ld.close()

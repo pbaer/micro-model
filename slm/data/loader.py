@@ -51,7 +51,17 @@ class TokenStream:
         return {"shard": self.shard, "offset": self.offset, "epoch": self.epoch}
 
     def load_state_dict(self, d: dict) -> None:
+        # A cursor can outlive the shards it indexes (a source swapped for a smaller one mid-run). Restart such a
+        # stream rather than crashing on the first read: the alternative is an IndexError hours into a run.
         self.shard, self.offset, self.epoch = d["shard"], d["offset"], d["epoch"]
+        if self.shard >= len(self.mm) or self.offset > self.sizes[min(self.shard, len(self.sizes) - 1)]:
+            print(f"[loader] {self.dir.parent.name}: saved cursor (shard {self.shard}, offset {self.offset:,}) is outside the shards on disk; restarting this stream")
+            self.shard, self.offset = 0, 0
+
+    def close(self) -> None:
+        """Drop the memmaps. On Windows an open mapping blocks renaming or overwriting the shard, which is how a
+        data swap fails (see docs/runbook.md); a closed loader must not hold its files."""
+        self.mm = []
 
     def doc_starts(self, shard: int) -> np.ndarray:
         return np.load(self.paths[shard].with_name(self.paths[shard].name.replace(".bin", ".idx.npy")))
@@ -112,7 +122,8 @@ class PretrainLoader:
     def load_state_dict(self, d: dict) -> None:
         self._stop_thread()
         for n, st in d["streams"].items():
-            self.streams[n].load_state_dict(st)
+            if n in self.streams:  # a resume after a mixture change: sources this run dropped are ignored,
+                self.streams[n].load_state_dict(st)  # and sources it added stay at 0
         self.rng.bit_generator.state = d["rng"]
         self.n_batches = d["n_batches"]
         self.tokens_served = d["tokens_served"]
@@ -203,6 +214,8 @@ class PretrainLoader:
 
     def close(self) -> None:
         self._stop_thread()
+        for s in self.streams.values():
+            s.close()
 
     @property
     def total_tokens(self) -> int:
