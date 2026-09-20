@@ -1,0 +1,60 @@
+# M9 stage C: GRPO on the 336M tool model, over three kinds of reward at once.
+#
+# The 149M RL runs optimized arithmetic only, so the policy got better at the one corner of the sandbox it was
+# already using. This mix is the whole permitted subset plus an ability nothing has rewarded so far:
+#   gsm8k        real word problems (train split, 90/10 hash split; the test split stays untouched)
+#   pytool       the grammars of slm.rl.synth_python (pipelines, strings, number theory, simulations,
+#                run-this-code, declared functions) - gold answers are often a list, a word or a boolean
+#   constraints  writing prompts with 1-3 machine-checkable instructions (slm.rl.constraints)
+# Weighting is by repetition in `tasks`: 30% gsm8k, 40% pytool (+10% extra on declared functions), 30% constraints.
+#
+# Per-family reward schemes are the point of `reward_schemes`: constraint tasks have no tool to use, so under
+# `tool` they could never score above 0.5 and the policy would learn nothing from them. They get `fraction`
+# (the share of instructions satisfied), which also gives gradient long before an answer is fully obedient.
+#
+# VRAM: 336M at 4K trains at ~13.8 GiB with microbatch 2, and RL also holds a reference copy and generates.
+# Hence max_seq_len 4096, group_size 6 (KV cache ~48 KiB/token/row), microbatch 2 and a teacher-forced pass
+# over one group at a time. Watch vram_reserved_gib in the run page; > ~14.5 GiB is a failure, not a warning.
+# Wall clock: ~24 rollouts/step at a few hundred generated tokens each -> roughly 2 min/step, so ~8-10 h for
+# 250 steps plus five held-out evals. Checkpoints every 15 min, resume by default, best.pt keeps the best policy.
+run_name: m9_rl_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  max_seq_len: 4096  # the rollout KV cache is sized from this; the run is a 4K run
+init_from: runs/m9_tool_336m/checkpoints/final.pt
+tools: true
+max_tool_calls: 6
+tasks: [gsm8k, gsm8k, gsm8k, pytool, pytool, pytool, pytool_declared, constraints, constraints, constraints]
+n_train_prompts: 6000
+n_heldout_prompts: 96   # every eval greedy-decodes all of them; pytool prompt lengths vary, so batches are small
+group_size: 6
+prompts_per_step: 4
+max_new_tokens: 512     # a tool call, its result, and a written answer all have to fit
+temperature: 0.8
+top_p: 0.95
+think_required: true
+reward_scheme: tool     # default: 1.0 correct AND the answer came out of a Python call, 0.5 correct without one
+reward_schemes:
+  gsm8k: tool
+  pytool: tool          # matches every pytool_* family by its group prefix
+  constraints: fraction # the share of instructions satisfied; there is no tool to use here
+lr: 8.0e-7              # below the 149M run's 1e-6: bigger model, same KL budget
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.05           # m6 try1 collapsed at 0.01 (entropy 0.8 -> 5 by step 150)
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 2
+total_steps: 250
+entropy_stop: 2.5       # collapse guards: stop, checkpoint, keep best.pt
+kl_stop: 0.15
+eval_every_steps: 50
+eval_max_new_tokens: 512
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 9
+notes: "RL over the full tool subset plus instruction constraints. Per-family schemes (tool / fraction). Use best.pt (held-out) for evals; check tool_use_rate, answer_from_tool_rate and score_mean per family in the rollout dumps."

@@ -384,3 +384,17 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Old corpus kept as `synth-retrieval-16k`; that stream reset to shard 0 (new corpus, and the old cursor at shard
   5 is outside the new set's 4 shards). Val loss for 3.5% of val tokens changes content; the drift line does not.
   Resumed at 1.01B.
+- 15:10 RL beyond arithmetic. Two new task families for M9's GRPO stage: `pytool_*` (six families plus an
+  umbrella `pytool`) drawn from the *same* grammars as the tool SFT set — `synth_python.sample_question` now
+  hands `slm.rl.pytool` the `(prompt, gold, declarations)` of a generated conversation, so there is still one
+  copy of every grammar — and `constraints`, writing prompts with 1-3 machine-checkable instructions (18 types,
+  checked from the spec, never from the English). Declared-function tasks carry their `FunctionDecl`s through
+  `Task.meta["functions"]` into the prompt blocks and into each rollout's `PySession`, so RL can train a
+  capability the model has to call rather than guess. Gold answers are often a list, a word or a boolean now,
+  hence `verify_exact` (tolerant of packaging, strict about content) next to `verify_numeric`, dispatched by
+  `verify_answer`. `reward_scheme` became resolvable per family (`reward_schemes`, exact name then group
+  prefix) with a new `fraction` scheme: constraint tasks have no tool to use, so under `tool` they could never
+  have scored above 0.5. Also fixed a quiet bias in `make_tasks`: the gsm8k pool is pre-filtered by split and
+  always lands, while a generated prompt lands in held-out 1 time in 10, so held-out sets were ~75% gsm8k;
+  the drawn family is now retried instead of redrawn. `configs/train/m9_rl_336m.yaml` written (30% gsm8k /
+  40% pytool / 30% constraints, group 6 x 4 prompts at 4K), not launched.

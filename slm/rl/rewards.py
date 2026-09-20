@@ -32,11 +32,19 @@ def parse_final_answer(text: str) -> str | None:
     return m.group(0) if m else hits[-1].strip() or None
 
 
+def parse_final_span(text: str) -> str | None:
+    """The LAST '#### <answer>' line, whole and untouched — the non-numeric path (a word, a list, a
+    boolean), where taking the first number out of the line would be exactly wrong."""
+    hits = _ANSWER_RE.findall(text)
+    return (hits[-1].strip() or None) if hits else None
+
+
 @dataclass
 class Verdict:
     correct: bool
     parsed: str | None
     reason: str
+    fraction: float | None = None  # partial credit (constraints: the share satisfied); None = binary verdict
 
 
 def verify_numeric(answer_text: str, gold: str, strict: bool = True) -> Verdict:
@@ -54,19 +62,96 @@ def verify_numeric(answer_text: str, gold: str, strict: bool = True) -> Verdict:
     return Verdict(a == g, p, "numeric compare")
 
 
-_LITERAL_CALL_RE = re.compile(r"^\s*(?:print\(\s*)?-?[\d.,]+\s*\)?\s*$")
+_LISTISH_RE = re.compile(r"^[\[(].*[\])]$", re.DOTALL)
+
+
+def _norm_token(s: str) -> str:
+    """A word answer, stripped of the packaging a model puts around it: quotes, trailing punctuation,
+    repeated whitespace, case."""
+    s = " ".join(s.split()).strip("\"'`*")
+    return s.strip(" \t.,;:!?\"'`*").casefold()
+
+
+def _same_token(a: str, b: str) -> bool:
+    if a == b:
+        return True
+    na, nb = _to_number(a), _to_number(b)
+    return na is not None and nb is not None and na == nb  # 5 == 5.0, 1,200 == 1200
+
+
+def _items(s: str) -> list[str]:
+    body = s.strip()
+    if _LISTISH_RE.match(body):
+        body = body[1:-1]
+    return [x for x in (_norm_token(p) for p in body.split(",")) if x]
+
+
+def exact_match(parsed: str, gold: str) -> bool:
+    """Gold-shaped comparison: a list compares item by item (order and length count, brackets and quotes
+    do not), anything else compares as one normalized token (numbers numerically)."""
+    if _LISTISH_RE.match(gold.strip()) or ("," in gold and "," in parsed):
+        p, g = _items(parsed), _items(gold)
+        return len(p) == len(g) and all(_same_token(x, y) for x, y in zip(p, g))
+    return _same_token(_norm_token(parsed), _norm_token(gold))
+
+
+def verify_exact(answer_text: str, gold: str, strict: bool = True) -> Verdict:
+    """Non-numeric gold (a word, a list, a boolean): the final answer span must match it. Tolerant of the
+    packaging (case, surrounding punctuation, quotes, list brackets and spacing), strict about content —
+    a wrong item, a wrong word or an extra token fails."""
+    p = parse_final_span(answer_text)
+    if p is None and not strict:
+        lines = [ln.strip() for ln in answer_text.strip().splitlines() if ln.strip()]
+        p = lines[-1] if lines else None
+    if p is None:
+        return Verdict(False, None, "no '####' answer line")
+    return Verdict(exact_match(p, gold), p, "exact compare")
+
+
+def verify_constraints(answer_text: str, gold: str) -> Verdict:
+    """Instruction-following tasks: `correct` is "every constraint satisfied", `fraction` is the share."""
+    from slm.rl.constraints import check_constraints, parse_specs
+
+    specs = parse_specs(gold)
+    if not specs:
+        return Verdict(False, None, "no constraint spec")
+    ok, failed = check_constraints(answer_text, specs)
+    reason = "constraints: all satisfied" if not failed else "constraints failed: " + ",".join(failed)
+    return Verdict(ok == len(specs), f"{ok}/{len(specs)} satisfied", reason, ok / len(specs))
+
+
+def verify_answer(answer_text: str, gold: str, kind: str = "auto", strict: bool = True) -> Verdict:
+    """The single entry point the rollout path uses. "auto" dispatches on the gold's shape: a numeric gold
+    gets the numeric comparison it always had, anything else the exact one."""
+    from slm.data.answers import is_numeric_answer
+
+    if kind == "constraints":
+        return verify_constraints(answer_text, gold)
+    if kind == "numeric" or (kind == "auto" and is_numeric_answer(gold)):
+        return verify_numeric(answer_text, gold, strict)
+    if kind not in ("auto", "exact"):
+        raise ValueError(kind)
+    return verify_exact(answer_text, gold, strict)
+
+
+_LITERAL_CALL_RE = re.compile(r"""^\s*(?:print\(\s*)?(?:-?[\d.,]+|'[^']*'|"[^"]*"|\[[^][]*\])\s*\)?\s*$""")
 
 
 def answer_from_tool(parsed: str | None, calls: list[tuple[str, str]]) -> bool:
-    """True when the final answer equals a number some tool call produced, and that call did real work
-    (not a bare literal like print(42), which would let the model launder a mental answer)."""
+    """True when the final answer is something a tool call produced, and that call did real work (not a
+    bare literal like print(42) or print([1, 2]), which would let the model launder a mental answer).
+
+    A number may appear anywhere in the result (GSM8K traces print sentences); a non-numeric answer (a
+    word, a list) must be the whole result, which is what the sandbox prints for such a program."""
     if parsed is None:
         return False
     a = _to_number(parsed)
-    if a is None:
-        return False
     for code, result in calls:
         if not code or _LITERAL_CALL_RE.match(code) or result.startswith("error:"):
+            continue
+        if a is None:
+            if exact_match(parsed, result):
+                return True
             continue
         for m in _NUM_RE.finditer(result.replace(",", "")):
             if _to_number(m.group(0)) == a:
@@ -74,12 +159,31 @@ def answer_from_tool(parsed: str | None, calls: list[tuple[str, str]]) -> bool:
     return False
 
 
+def resolve_scheme(task: str, schemes: dict[str, str] | None, default: str = "binary") -> str:
+    """The reward scheme for one task family: an exact entry in `schemes` wins, then the family's group
+    (`pytool_declared` -> `pytool`), then the run's single `reward_scheme`. Constraint tasks have no tool
+    to use, so a run that trains them next to tool tasks needs both schemes at once."""
+    if schemes:
+        if task in schemes:
+            return schemes[task]
+        head = task.split("_", 1)[0]
+        if head in schemes:
+            return schemes[head]
+    return default
+
+
 def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", from_tool: bool = False) -> float:
     """binary: 1/0. signed: +1/-1. shaped: 1 correct, 0 wrong-but-parsable, -0.5 malformed/unparsable.
     tool: 1 if correct AND the answer came out of a Python call, 0.5 if correct without one, 0 otherwise —
-    the incentive to compute with the tool rather than in the head."""
+    the incentive to compute with the tool rather than in the head.
+    fraction: the verdict's partial credit (constraints: the share of instructions satisfied), so an answer
+    that obeys 2 of 3 rules is worth more than one that obeys none, long before any of them is perfect."""
     if scheme == "binary":
         return 1.0 if v.correct else 0.0
+    if scheme == "fraction":
+        if malformed:
+            return 0.0
+        return float(v.fraction if v.fraction is not None else (1.0 if v.correct else 0.0))
     if scheme == "tool":
         if malformed:
             return 0.0  # includes tool calls outside the think span

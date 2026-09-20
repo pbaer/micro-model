@@ -28,7 +28,7 @@ from slm.model import Transformer
 from slm.rl.advantages import group_advantages
 from slm.rl.objectives import entropy_from_logits, kl_penalty, policy_loss, sequence_logprobs
 from slm.rl.rollout import Rollout, greedy_accuracy, rollout_group, save_rollouts
-from slm.rl.tasks import make_tasks
+from slm.rl.tasks import make_tasks, set_task_corpus
 from slm.train.rl_config import RlConfig, load_rl_config  # noqa: F401 (re-export: torch-free config for the portal)
 from slm.utils import checkpoint as ckpt
 from slm.utils.logging import MetricsLogger, console, fmt_duration
@@ -58,6 +58,7 @@ class RlTrainer:
         decay = [p for p in self.model.parameters() if p.dim() >= 2]
         no_decay = [p for p in self.model.parameters() if p.dim() < 2]
         self.optimizer = torch.optim.AdamW([{"params": decay, "weight_decay": cfg.weight_decay}, {"params": no_decay, "weight_decay": 0.0}], lr=cfg.lr, betas=tuple(cfg.betas), fused=True)
+        set_task_corpus(self.tok, cfg.ingredients_corpus or None)  # real sentences for the pytool/constraint grammars
         self.train_tasks = make_tasks(cfg.tasks, cfg.n_train_prompts, "train", cfg.seed)
         self.heldout_tasks = make_tasks(cfg.tasks, cfg.n_heldout_prompts, "heldout", cfg.seed)
         assert not ({t.prompt for t in self.train_tasks} & {t.prompt for t in self.heldout_tasks}), "train/heldout leak"
@@ -109,7 +110,7 @@ class RlTrainer:
             with sdpa_context("decode"):
                 g = rollout_group(self.model, self.tok, t, c.group_size, c.max_new_tokens, c.temperature, c.top_p, c.top_k, seed=self.rng.randrange(2**31),
                                   think_required=c.think_required, reward_scheme=c.reward_scheme, ref_model=self.ref, checkpoint=c.init_from, step=self.step,
-                                  tools=c.tools, max_tool_calls=c.max_tool_calls)
+                                  tools=c.tools, max_tool_calls=c.max_tool_calls, reward_schemes=c.reward_schemes)
             r = torch.tensor([x.reward for x in g])
             adv = group_advantages(r, c.normalize_std)
             for x, a in zip(g, adv.tolist()):
@@ -120,6 +121,7 @@ class RlTrainer:
         rewards = [x.reward for x in rollouts]
         stats = {
             "reward_mean": sum(rewards) / len(rewards), "success_rate": sum(x.correct for x in rollouts) / len(rollouts),
+            "score_mean": sum(x.fraction if x.fraction is not None else float(x.correct) for x in rollouts) / len(rollouts),
             "group_std_mean": sum(group_stds) / len(group_stds), "groups_no_signal": all_zero / len(tasks),
             "adv_abs_mean": sum(abs(x.advantage) for x in rollouts) / len(rollouts),
             "len_mean": sum(x.n_tokens for x in rollouts) / len(rollouts), "len_max": max(x.n_tokens for x in rollouts),
@@ -188,7 +190,8 @@ class RlTrainer:
             train_sub = self.rng.sample(self.train_tasks, min(len(self.heldout_tasks), len(self.train_tasks)))
             tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls)
         self.model.train()
-        return {"heldout_acc": held["accuracy"], "heldout_malformed": held["malformed_rate"], "heldout_len": held["mean_len"], "train_acc": tr["accuracy"], "train_len": tr["mean_len"]}
+        return {"heldout_acc": held["accuracy"], "heldout_score": held["score"], "heldout_malformed": held["malformed_rate"], "heldout_len": held["mean_len"],
+                "train_acc": tr["accuracy"], "train_score": tr["score"], "train_len": tr["mean_len"]}
 
     def train(self) -> None:
         c = self.cfg

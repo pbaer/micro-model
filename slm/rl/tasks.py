@@ -7,7 +7,11 @@ both sides even if the generators overlap.
 Curriculum (from the brief):
   A  arith1/arith2      1-2 digit addition/subtraction/multiplication, exact integer answer
   B  arith_multi/algebra multi-step arithmetic expressions, linear equations, formatted answers
-  C  (later) code with unit tests, logic puzzles with deterministic checks
+  C  gsm8k              real word problems (train split only)
+  D  pytool_*           the Python-tool grammars of `slm.rl.synth_python` (`slm.rl.pytool`): gold answers
+                        are whatever the sandbox printed, often a list, a word or a boolean
+  E  constraints        writing prompts with 1-3 machine-checkable instructions (`slm.rl.constraints`);
+                        the reward is the fraction satisfied, not a right answer
 """
 
 from __future__ import annotations
@@ -15,15 +19,45 @@ from __future__ import annotations
 import hashlib
 import random
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass
 class Task:
     id: str
     prompt: str
-    answer: str
-    task: str
+    answer: str  # the gold: a number, an exact string, or (constraints) the JSON spec list
+    task: str  # family name, and the key per-family reward schemes resolve against
     meta: dict = field(default_factory=dict)
+    # meta keys used by the rollout path:
+    #   functions     list[FunctionDecl] declared to the model (blocks in the prompt, impls in the session)
+    #   verifier      "auto" (default) | "constraints"
+    #   answer_style  "auto" (append the '#### <answer>' instruction) | "free" (ask nothing)
+
+
+_CORPUS = None
+
+
+def task_corpus():
+    """Real-text ingredients (sentences, words) shared by the pytool and constraint generators.
+
+    Cached for the process. Without `set_task_corpus` this is `synth_python`'s built-in fallback list, so
+    tasks generate on any machine; a trainer with a tokenizer calls `set_task_corpus` to draw from real text."""
+    global _CORPUS
+    if _CORPUS is None:
+        from slm.rl.synth_python import load_corpus
+
+        _CORPUS = load_corpus()
+    return _CORPUS
+
+
+def set_task_corpus(tok=None, path=None) -> None:
+    """Point the generators at a tokenized split (default: `synth_python.DEFAULT_CORPUS`). Never fails:
+    `load_corpus` falls back to the built-in sentences when the data root is not on this machine."""
+    global _CORPUS
+    from slm.rl.synth_python import DEFAULT_CORPUS, load_corpus
+
+    _CORPUS = load_corpus(tok, DEFAULT_CORPUS if path is None else Path(path))
 
 
 def _split_of(canonical: str, holdout_permille: int = 100) -> str:
@@ -100,6 +134,18 @@ def gsm8k_pool() -> list[Task]:
     return _GSM8K_POOL
 
 
+def _pytool(rng: random.Random, family: str | None = None):
+    from slm.rl.pytool import gen_pytool  # lazy: pytool imports this module
+
+    return gen_pytool(rng, family)
+
+
+def _constraints(rng: random.Random):
+    from slm.rl.constraints import gen_constraints  # lazy: constraints imports this module
+
+    return gen_constraints(rng)
+
+
 GENERATORS = {
     "arith1": lambda r: gen_arith(r, 1, "+-"),
     "arith2": lambda r: gen_arith(r, 2, "+-"),
@@ -107,6 +153,16 @@ GENERATORS = {
     "arith_multi": lambda r: gen_arith_multi(r, 3, 2),
     "algebra": gen_linear,
     "word": gen_word_problem,
+    # Python-tool grammars (slm.rl.pytool): a generator may return None when its draw failed
+    "pytool": _pytool,
+    "pytool_pipeline": lambda r: _pytool(r, "pytool_pipeline"),
+    "pytool_strings": lambda r: _pytool(r, "pytool_strings"),
+    "pytool_numbers": lambda r: _pytool(r, "pytool_numbers"),
+    "pytool_sim": lambda r: _pytool(r, "pytool_sim"),
+    "pytool_runcode": lambda r: _pytool(r, "pytool_runcode"),
+    "pytool_declared": lambda r: _pytool(r, "pytool_declared"),
+    # instruction following (slm.rl.constraints)
+    "constraints": _constraints,
 }
 
 
@@ -121,23 +177,42 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
     while len(out) < n and attempts < n * 50:
         attempts += 1
         name = rng.choice(names)
-        if name == "gsm8k":
-            if not pool:
+        t = None
+        # Retry the family that was drawn instead of redrawing one. A generated prompt falls in the held-out
+        # bucket about one time in ten, while the gsm8k pool is pre-filtered and always lands: redrawing would
+        # make the held-out set almost all gsm8k and hide every other family from the eval that picks best.pt.
+        for _ in range(60):
+            if name == "gsm8k":
+                if not pool:
+                    break
+                t = pool.pop()
+            else:
+                t = GENERATORS[name](rng)
+                if t is None:  # a grammar-based generator whose draw did not work out
+                    continue
+            canon = t.prompt  # split by prompt text alone: generators overlap (arith1 vs arith2), and the
+            # same question must never be in train for one and held-out for another
+            if canon in seen or _split_of(canon, holdout_permille) != split:
+                t = None
                 continue
-            t = pool.pop()
-        else:
-            t = GENERATORS[name](rng)
-        canon = t.prompt  # split by prompt text alone: generators overlap (arith1 vs arith2), and the
-        # same question must never be in train for one and held-out for another
-        if canon in seen or _split_of(canon, holdout_permille) != split:
+            break
+        if t is None:
             continue
-        seen.add(canon)
-        t.id = f"{t.task}-{hashlib.sha1(canon.encode()).hexdigest()[:10]}"
+        seen.add(t.prompt)
+        t.id = f"{t.task}-{hashlib.sha1(t.prompt.encode()).hexdigest()[:10]}"
         out.append(t)
     return out
 
 
-def prompt_messages(t: Task) -> list[dict]:
-    from slm.data.answers import SUFFIX
+# `slm.data.answers.SUFFIX` asks for '#### <number>'; a pytool gold is often a word, a list or a boolean.
+SUFFIX_TEXT = "\nThink step by step, then give the final answer on its own line as '#### <answer>'."
 
-    return [{"role": "user", "content": t.prompt + SUFFIX}]
+
+def prompt_messages(t: Task) -> list[dict]:
+    """The user turn for a task. Verifiable tasks ask for the `#### ` marker (the verifier is strict about
+    it); `answer_style="free"` tasks (constraints) must not, since their answer *is* the writing."""
+    from slm.data.answers import SUFFIX, is_numeric_answer
+
+    if t.meta.get("answer_style") == "free":
+        return [{"role": "user", "content": t.prompt}]
+    return [{"role": "user", "content": t.prompt + (SUFFIX if is_numeric_answer(t.answer) else SUFFIX_TEXT)}]

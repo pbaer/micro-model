@@ -41,7 +41,11 @@ class RlConfig:
     top_p: float = 0.95
     top_k: int = 0
     think_required: bool = True
-    reward_scheme: str = "binary"
+    reward_scheme: str = "binary"  # the default for every family
+    # Per-family override, by task family name or its group prefix ({"constraints": "fraction", "pytool": "tool"}).
+    # A mixed run needs it: constraint tasks have no tool to use, so `tool` would cap them at 0.5 forever.
+    reward_schemes: dict = field(default_factory=dict)
+    ingredients_corpus: str = ""  # tokenized split the pytool/constraint generators draw real sentences from ("" = default)
     # objective
     lr: float = 2e-6
     betas: tuple[float, float] = (0.9, 0.95)
@@ -88,4 +92,5 @@ REWARD_RULES = {
     "tool": "1.0 correct AND the number came out of a Python call · 0.5 correct without one · 0.0 otherwise (malformed = 0.0)",
     "signed": "+1.0 correct, -1.0 wrong",
     "shaped": "1.0 correct · 0.0 wrong but parsable · -0.5 malformed/unparsable",
+    "fraction": "the verifier's partial credit (constraints: the share of instructions satisfied) · 0.0 malformed",
 }

@@ -228,6 +228,25 @@ def make_sample(family: str, msgs: list[dict], codes: list[str], decls: list[Fun
     return Sample(family, msgs, key, list(decls or []), codes, numeric)
 
 
+def sample_question(s: Sample | None) -> tuple[str, str, list[FunctionDecl]] | None:
+    """The (question, gold, declarations) of a single-turn sample — everything an RL prompt needs.
+
+    `slm.rl.pytool` builds RL tasks from the same grammars this module writes SFT conversations from:
+    the generators stay here (one grammar, one place), and this is the only thing the RL side needs to
+    know about the conversation convention. Multi-turn samples have no single prompt: None."""
+    if s is None:
+        return None
+    users = [m for m in s.messages if m["role"] == "user"]
+    assistants = [m for m in s.messages if m["role"] == "assistant"]
+    if len(users) != 1 or len(assistants) != 1:
+        return None
+    content = assistants[0].get("content", "")
+    if not content.startswith("#### "):
+        return None
+    gold = content[5:].strip()
+    return (users[0]["content"], gold, list(s.decls)) if gold else None
+
+
 # --------------------------------------------------------------------------------- encoding
 def _turn_ids(tok: SlmTokenizer, spans: list[tuple[str, str]], content: str, session: PySession) -> list[int]:
     """Ids of one assistant turn whose think span is given as explicit ("text"|"call", body) spans.

@@ -23,9 +23,14 @@ def test_tasks_disjoint_and_deterministic():
     assert [t.prompt for t in tr] == [t.prompt for t in make_tasks(["arith1", "arith2", "algebra", "word"], 300, "train", seed=1)]
     import random
 
+    for name in ("arith1", "arith2", "arith2mul", "arith_multi", "algebra", "word"):
+        t = GENERATORS[name](random.Random(3))
+        assert t.answer.lstrip("-").isdigit(), (name, t.answer)
+    # the grammar-based families (pytool_*, constraints) answer with whatever the sandbox printed or a
+    # constraint spec, and may return None when a draw fails; see tests/test_rl_families.py
     for name, g in GENERATORS.items():
         t = g(random.Random(3))
-        assert t.answer.lstrip("-").isdigit(), (name, t.answer)
+        assert t is None or (t.answer and t.prompt and t.task), name
 
 
 @pytest.mark.parametrize("text,gold,ok", [

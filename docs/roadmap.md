@@ -39,7 +39,10 @@ the ablation/reference model.
 ## Engineering (CPU-side, can overlap with training)
 
 - RL stage C: code tasks with sandboxed unit tests, logic puzzles with deterministic checkers;
-  synthetic traces for them; reward robustness review.
+  synthetic traces for them; reward robustness review. Done 2026-09-20: the `pytool_*` families (the whole
+  permitted sandbox subset, including declared functions) and `constraints` (instruction following, `fraction`
+  reward), with per-family reward schemes; `configs/train/m9_rl_336m.yaml`. Still open: unit-test tasks and
+  logic puzzles.
 - Ablations on the 26M model (cheap, ~1 h each): QK-norm on/off, tied vs untied embeddings, d_ff ratio,
   a Muon-style optimizer comparison. Report as a table in `results.md`.
 - Portal P1/P2 items (see `command_center.md` backlog): batch replay, run comparison, diagnostics
