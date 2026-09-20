@@ -358,3 +358,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   source at 1.04 epochs), needle n=64 at 1K/2K/4K with 32K-token batches and a fixed haystack seed, quality suite
   generated at every milestone, per-source stream state in every checkpoint record. Final measurements run at
   n=64. Expected ~27 h.
+- 17:05 phase 2's first two evals took 421 s and 622 s (phase 1: 47 s). Training resumed at full speed after each
+  (reserved back at 13.91 GiB thanks to empty_cache), so the paging was confined to the eval itself: with the
+  allocator already at 13.95 GiB reserved, the 4K needle's 32K-token batches needed an fp32 KV cache of 3.2 GB
+  (the cache took the model's master dtype) in contiguous segments the free pool could not supply, and WDDM paged
+  for the duration. Fix: bf16 KV cache whenever generation runs under autocast (halves it), needle_batch_tokens
+  8192 for phase 2 (2 rows at 4K). Restarted phase 2 to apply (~1 min).

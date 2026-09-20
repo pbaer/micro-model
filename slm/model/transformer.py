@@ -137,7 +137,11 @@ class Transformer(nn.Module):
     ) -> torch.Tensor:
         """Greedy/sampled decoding with a KV cache. idx: [B, T0] (same length prompts)."""
         B, T0 = idx.shape
-        cache = KVCache(self.cfg, B, T0 + max_new_tokens, idx.device, self.output_weight.dtype)
+        # Under autocast the K/V written to the cache are bf16 anyway; storing them in the fp32 master dtype doubles
+        # the cache (3.2 GB for 8 rows at 4K) and, inside a training process whose allocator sits at the VRAM edge,
+        # forces new segments and WDDM paging for the whole eval (M8 phase 2: 421 s and 622 s evals).
+        cache_dtype = torch.bfloat16 if idx.is_cuda and torch.is_autocast_enabled() else self.output_weight.dtype
+        cache = KVCache(self.cfg, B, T0 + max_new_tokens, idx.device, cache_dtype)
         out = idx
         cur = idx
         done = torch.zeros(B, dtype=torch.bool, device=idx.device)

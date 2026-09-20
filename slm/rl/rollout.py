@@ -95,7 +95,8 @@ def sample_completions(
     assert all(len(p) == P for p in prompts), "prompts must share a length"
     max_new_tokens = max(1, min(max_new_tokens, model.cfg.max_seq_len - P))
     stop = stop or {tok.end_id, tok.eos_id}
-    cache = KVCache(model.cfg, B, P + max_new_tokens, device, model.output_weight.dtype)
+    cache_dtype = torch.bfloat16 if device.type == "cuda" else model.output_weight.dtype  # the autocast block below writes bf16 K/V
+    cache = KVCache(model.cfg, B, P + max_new_tokens, device, cache_dtype)
     cur = torch.tensor(prompts, device=device)
     done = torch.zeros(B, dtype=torch.bool, device=device)
     comps: list[list[int]] = [[] for _ in range(B)]
