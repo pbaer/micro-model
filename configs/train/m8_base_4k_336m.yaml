@@ -8,6 +8,7 @@ model_file: configs/model/base_336m.yaml
 model:
   loss_chunk_size: 4096
 init_from: runs/m8_base_stable_336m/checkpoints/final.pt
+init_loader_from: runs/m8_base_stable_336m/checkpoints/latest.pt  # continue phase 1's data streams; without it every source restarts at token 0
 data:
   tokenized_root: C:\slm-data\tokenized\v1
   mixture: {fineweb-edu-10bt: 0.66, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035, smoltalk-chat: 0.045, tool-chat: 0.015}  # no shell from 2026-09-19 (Python is the only code we want); its 1.5% went to python-edu

@@ -115,6 +115,11 @@ class TrainConfig:
     # Initialize model weights from another run's checkpoint (snapshot or full). Counters, schedule,
     # and loader start fresh; set init_optimizer=True to also carry AdamW moments (full ckpt only).
     init_from: str = ""
+    # A continuation phase must also continue its data streams: without this every source restarts at token 0 and
+    # the phase re-reads what the parent already trained on (M8 phase 2 re-read 196M tokens of fineweb before this
+    # existed). Point it at the PARENT's latest.pt (final.pt is a weights-only snapshot and carries no loader
+    # state); sources the parent did not have start at 0, sources it had and this run drops are ignored.
+    init_loader_from: str = ""
     init_optimizer: bool = False
 
     @property

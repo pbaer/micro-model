@@ -99,6 +99,8 @@ class Trainer:
         else:
             if cfg.init_from:
                 self._init_from(cfg.init_from, cfg.init_optimizer)
+            if cfg.init_loader_from:
+                self._init_loader_from(cfg.init_loader_from)
             self._start_fresh()
         signal.signal(signal.SIGINT, self._on_sigint)
 
@@ -129,6 +131,18 @@ class Trainer:
         console(f"[{self.cfg.run_name}] fresh start. model {self.n_params:,} params ({self.model.num_params(True):,} non-embed); "
                 f"{self.accum}x{self.cfg.batch.microbatch}x{self.cfg.data.seq_len} = {self.cfg.batch.tokens_per_update:,} tokens/update; "
                 f"data {self.loader.total_tokens / 1e6:.0f}M tokens available; val {self.val_loader.n_tokens / 1e6:.1f}M tokens")
+
+    def _init_loader_from(self, path: str) -> None:
+        """Continue the parent run's data streams (see TrainConfig.init_loader_from)."""
+        ck = torch.load(path, map_location="cpu", weights_only=False)
+        streams = (ck.get("loader") or {}).get("streams")
+        if not streams:
+            raise ValueError(f"init_loader_from: {path} has no loader state (final.pt is weights-only; use the parent's latest.pt)")
+        adopted = self.loader.adopt_stream_positions(streams)
+        fresh = sorted(set(self.loader.streams) - set(adopted))
+        note = ", ".join(f"{n}@shard {s['shard']}+{s['offset']:,}" for n, s in sorted(adopted.items()))
+        self._init_note = getattr(self, "_init_note", "") + f"; loader continued from {path} ({note}" + (f"; fresh: {', '.join(fresh)}" if fresh else "") + ")"
+        console(f"[{self.cfg.run_name}] data streams continued from {path}: {len(adopted)} source(s) advanced, {len(fresh)} starting fresh")
 
     def _init_from(self, path: str, with_optimizer: bool) -> None:
         ck = torch.load(path, map_location="cuda", weights_only=False)

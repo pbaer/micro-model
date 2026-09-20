@@ -118,6 +118,19 @@ class PretrainLoader:
         self.tokens_served = d["tokens_served"]
         self._state_after_last = None
 
+    def adopt_stream_positions(self, streams: dict[str, dict]) -> dict[str, dict]:
+        """Continue another run's data streams: move this loader's cursor to where that run left each source.
+        Only sources present in both move; the rest stay where they are (new sources start at 0). Returns what
+        was adopted, for the log. Nothing else of that run's state (rng, counters) is taken."""
+        self._stop_thread()
+        adopted = {}
+        for n, st in streams.items():
+            if n in self.streams:
+                self.streams[n].load_state_dict(st)
+                adopted[n] = dict(st)
+        self._state_after_last = None
+        return adopted
+
     def consumed(self) -> dict[str, dict]:
         """Per source: tokens taken from its stream since the run started (torch-free, for metrics).
 

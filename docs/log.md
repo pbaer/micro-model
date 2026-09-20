@@ -364,3 +364,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (the cache took the model's master dtype) in contiguous segments the free pool could not supply, and WDDM paged
   for the duration. Fix: bf16 KV cache whenever generation runs under autocast (halves it), needle_batch_tokens
   8192 for phase 2 (2 rows at 4K). Restarted phase 2 to apply (~1 min).
+- 18:15 Peter caught a real waste: phase 2 started its data streams at token 0, so it re-read what phase 1 had
+  already trained on. Verified from the checkpoints: phase 1 ended at fineweb shard 54, phase 2 was at shard 2.
+  Of its first 311M tokens, 280M (94%) were a second epoch; only the two new sources (smoltalk-chat, tool-chat)
+  were fresh. Fix: `init_loader_from` (config) + `PretrainLoader.adopt_stream_positions`, pointed at the PARENT's
+  latest.pt (final.pt is weights-only and carries no loader state); shared sources continue, new ones start at 0,
+  dropped ones are ignored. The live run's latest.pt was patched the same way and resumed at 311M rather than
+  restarted: per data-constrained scaling a 2nd epoch is worth ~95% of fresh data, so the 280M cost ~0.6% of the
+  phase's value, against 3.2 h (12% of wall clock) to redo it.

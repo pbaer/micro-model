@@ -223,3 +223,29 @@ def test_report_builds_from_metrics(tmp_path):
     lg.close()
     h = build_report(run)
     assert "<html" in h and "4.5000" in h and "milestone" in h.lower() and "ETA" in h
+
+
+def test_loader_adopts_a_parent_runs_stream_positions(tmp_path):
+    """A continuation phase must continue the parent's data streams: shared sources resume where the parent left
+    off, sources the parent did not have start at 0, and sources it had that this phase drops are ignored."""
+    _make_shards(tmp_path, "a", "train", 2, 5000, 1)
+    _make_shards(tmp_path, "b", "train", 1, 5000, 2)
+    _make_shards(tmp_path, "c", "train", 1, 5000, 3)
+    parent = PretrainLoader(MixtureSpec(tmp_path, {"a": 0.5, "b": 0.5}), seq_len=15, microbatch=4, seed=0, device="cpu", prefetch=2)
+    for _ in range(12):
+        parent.next()
+    parent_state = parent.state_dict()
+    parent_consumed = parent.consumed()
+    parent.close()
+    # the child drops "b", keeps "a", adds "c"
+    child = PretrainLoader(MixtureSpec(tmp_path, {"a": 0.5, "c": 0.5}), seq_len=15, microbatch=4, seed=1, device="cpu", prefetch=2)
+    adopted = child.adopt_stream_positions(parent_state["streams"])
+    assert set(adopted) == {"a"}  # "b" is not in this mixture, "c" was not in the parent's
+    got = child.consumed()
+    assert got["a"]["tokens"] == parent_consumed["a"]["tokens"] and got["a"]["tokens"] > 0
+    assert got["c"]["tokens"] == 0
+    first = child.next()  # the first batch reads on from there, not from token 0
+    assert first[0].shape == (4, 15)
+    after = child.consumed()
+    assert after["a"]["tokens"] >= got["a"]["tokens"] and after["a"]["tokens"] + after["c"]["tokens"] == got["a"]["tokens"] + 4 * 16
+    child.close()
