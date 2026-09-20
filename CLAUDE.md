@@ -48,6 +48,13 @@ placeholder and may change, so don't bake it into code.
 - Loss functions return `(loss_sum, n_valid_tokens)`; the trainer divides by the global token count
   so gradient accumulation is invariant to the accumulation factor.
 - Every numeric hyperparameter is config-driven (`slm/config.py` dataclasses + YAML + `k=v` overrides).
+- A run that continues another one must inherit **everything** the continuation implies, and each piece is a
+  separate switch: weights (`init_from`), optimizer (`init_optimizer`), and **data-stream positions**
+  (`init_loader_from`, pointed at the parent's `latest.pt`; `final.pt` is a weights-only snapshot and carries
+  none). Miss the last one and every source restarts at token 0 and the phase re-reads what the parent already
+  trained on (M8 phase 2 did: 94% of its first 311M tokens). The trainer warns at startup when `init_from` is set
+  for a pretraining run and `init_loader_from` is not. When adding a new kind of run state, ask what a
+  continuation should do with it and make it explicit.
 - Long runs must: estimate wall-clock up front, checkpoint frequently, resume by default, save a
   checkpoint on Ctrl-C, and refresh a self-contained `runs/<run>/report.html` (inline charts, ETA,
   per-100M-token milestone timings) at least every 30 minutes and at every milestone.

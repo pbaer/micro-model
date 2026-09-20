@@ -79,3 +79,26 @@ def test_resume_equivalence(tmp_path):
     assert "resume" in kinds and "stop" in kinds and "finish" in kinds and "milestone" in kinds and "eval" in kinds
     meta = json.loads((cfg_b.run_dir / "run.json").read_text())
     assert meta["n_params"] > 0
+
+
+def test_pretrain_continuation_without_init_loader_from_warns(tmp_path, capsys):
+    """Continuing a pretraining run without continuing its data streams re-reads what the parent trained on; the
+    trainer must say so (loudly, not fatally: a fresh mixture is a legitimate reason to start at token 0)."""
+    from slm.train.pretrain import Trainer
+    from slm.utils.logging import MetricsLogger
+
+    parent = _setup(tmp_path, "parent", 4)
+    Trainer(parent).train()
+    child = _setup(tmp_path, "child", 4)
+    child.init_from = str(parent.run_dir / "checkpoints" / "final.pt")
+    Trainer(child)
+    assert "init_loader_from is not" in capsys.readouterr().out
+    warns = [r for r in MetricsLogger.read(child.run_dir / "metrics.jsonl") if r["kind"] == "warn"]
+    assert warns and "re-read from the beginning" in warns[0]["msg"]
+    # with it set, no warning and the streams continue
+    child2 = _setup(tmp_path, "child2", 4)
+    child2.init_from = str(parent.run_dir / "checkpoints" / "final.pt")
+    child2.init_loader_from = str(parent.run_dir / "checkpoints" / "latest.pt")
+    t = Trainer(child2)
+    assert "init_loader_from is not" not in capsys.readouterr().out
+    assert any(v["tokens"] > 0 for v in t.loader.consumed().values())

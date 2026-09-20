@@ -113,6 +113,17 @@ loaders, optional `extra_val_mixture` loader, then either resume from `latest.pt
 checkpoint (bf16 snapshot or full; weights only unless `init_optimizer`) and start fresh. `run.json`
 records config, model config, param counts, tokenizer hash, environment, git commit and start time.
 
+**What a continuation inherits.** Three independent switches, because a continuation is not always a continuation
+of everything: `init_from` (weights, from any checkpoint incl. a bf16 `snap_*.pt`/`final.pt`), `init_optimizer`
+(AdamW moments; needs a full `latest.pt`), and `init_loader_from` (per-source data-stream cursors, also a full
+`latest.pt`). The last one is the one that is easy to forget and invisible when wrong: without it every
+`TokenStream` starts at shard 0 offset 0 and the phase re-reads whatever the parent already consumed. M8 phase 2
+did exactly that for its first 311M tokens (94% of them a second epoch, caught only because Peter asked). The
+trainer now warns at startup when a pretraining run sets `init_from` without `init_loader_from`, and
+`PretrainLoader.adopt_stream_positions` moves only the sources present in both mixtures, so a changed mixture
+(new sources start at 0, dropped ones ignored) is handled. Per-source cursors are logged as `sources` in every
+`checkpoint` record, so the Data page's chain view can show actual rather than expected exposure.
+
 Update loop (per optimizer step): `grad_accum` microbatches under `autocast(bf16)` and the configured
 SDPA backend; each microbatch's `(loss_sum, n_valid)` is accumulated and `loss_sum / n_valid_global`
 is back-propagated; clip to 1.0; fused AdamW step; LR from `schedule.lr_at(tokens)` set before the step.

@@ -62,6 +62,12 @@ trained with it; a new tokenizer is a new `tokenized/<tag>` tree.
 3. **Config named after the run** in `configs/train/<run_name>.yaml`, `run_name` matching, `init_from`
    pointing at an existing checkpoint (`checkpoints/final.pt` or a `snap_*.pt`), mixture sources present
    under `C:\slm-data\tokenized\v1`.
+   **Continuing an earlier phase?** Set `init_loader_from` to the parent's `checkpoints/latest.pt` as well, or
+   every source restarts at token 0 and the phase re-reads what the parent already trained on. `final.pt` will not
+   do: it is a weights-only snapshot with no loader state. Sources the parent lacked start at 0 and sources it had
+   that this phase drops are ignored, so a changed mixture is fine. The trainer prints a WARNING and logs a `warn`
+   event when a pretraining run sets `init_from` without it; after launch the startup line names each source and
+   its shard, and `Data -> recipes -> <run> -> chain` shows cumulative tokens per source.
 4. **Sanity on the schedule**: `total_tokens`, `warmup_tokens`, `tokens_per_update` (must be
    `microbatch × seq_len × integer`), `milestone_tokens`, eval cadence. `python scripts/param_count.py
    configs/model/base_149m.yaml` prints the memory budget.

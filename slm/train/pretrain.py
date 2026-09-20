@@ -101,6 +101,8 @@ class Trainer:
                 self._init_from(cfg.init_from, cfg.init_optimizer)
             if cfg.init_loader_from:
                 self._init_loader_from(cfg.init_loader_from)
+            elif cfg.init_from and cfg.data.kind == "pretrain":
+                self._warn_streams_restart()
             self._start_fresh()
         signal.signal(signal.SIGINT, self._on_sigint)
 
@@ -131,6 +133,16 @@ class Trainer:
         console(f"[{self.cfg.run_name}] fresh start. model {self.n_params:,} params ({self.model.num_params(True):,} non-embed); "
                 f"{self.accum}x{self.cfg.batch.microbatch}x{self.cfg.data.seq_len} = {self.cfg.batch.tokens_per_update:,} tokens/update; "
                 f"data {self.loader.total_tokens / 1e6:.0f}M tokens available; val {self.val_loader.n_tokens / 1e6:.1f}M tokens")
+
+    def _warn_streams_restart(self) -> None:
+        """A pretraining phase continuing another one, with no init_loader_from: every source starts at token 0, so
+        whatever the parent already trained on is read again (M8 phase 2: 94% of its first 311M tokens). Loud, not
+        fatal: a genuinely fresh mixture is a legitimate reason to start at 0."""
+        msg = (f"init_from is set ({self.cfg.init_from}) but init_loader_from is not: every data stream starts at token 0, "
+               f"so any source the parent also trained on will be re-read from the beginning. Point init_loader_from at the "
+               f"parent's latest.pt to continue its streams.")
+        console(f"WARNING {msg}")
+        self.log.log("warn", tokens=0, msg=msg)
 
     def _init_loader_from(self, path: str) -> None:
         """Continue the parent run's data streams (see TrainConfig.init_loader_from)."""
