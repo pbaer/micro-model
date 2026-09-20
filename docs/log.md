@@ -372,3 +372,15 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   dropped ones are ignored. The live run's latest.pt was patched the same way and resumed at 311M rather than
   restarted: per data-constrained scaling a 2nd epoch is worth ~95% of fresh data, so the 280M cost ~0.6% of the
   phase's value, against 3.2 h (12% of wall clock) to redo it.
+
+## 2026-09-20
+- 01:50 4K retrieval trigger fired at the 1B milestone. Depth 0 (a needle at the very start of a 4096-token
+  window) peaked at 75% around 700M and then fell for four consecutive evals during the decay: 75 / 55 / 39 / 23%.
+  Depth 0.25 held at ~80-97%, 0.5 and beyond at 100%, and 1K/2K are 100%. Same window-edge failure as the 149M
+  model: full-window dependencies are rare in packed rows of ~1K-token documents, and as the LR decays the model
+  specialises toward the dominant web text. Acted on the pre-announced trigger: swapped `synth-retrieval` (400M,
+  512-16K docs, facts anywhere) for the contingency set built yesterday (150M, 3072-4096-token docs, 80% of facts
+  in the first 15%), same source name and 3.5% weight, so every full-width row carries a start-to-end dependency.
+  Old corpus kept as `synth-retrieval-16k`; that stream reset to shard 0 (new corpus, and the old cursor at shard
+  5 is outside the new set's 4 shards). Val loss for 3.5% of val tokens changes content; the drift line does not.
+  Resumed at 1.01B.
