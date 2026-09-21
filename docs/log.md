@@ -455,3 +455,34 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - 10:02 stage B v2 (`m9_tool2_336m`) launched, 120M tokens. Gate: misfire <= 0.10 first, then judged overall
   >= 3.40 with no category more than ~0.3 below stage A except arithmetic, needle >= 80% at 4K, and generated
   tool families no worse than v1. GSM8K is explicitly not gated here; closing it is the GRPO stage's job.
+
+## 2026-09-21 (later) — stage B v2 stopped at 27M; the ratio that actually governs routing
+
+- v2 (`m9_tool2_336m`, direct-think rehearsal, tool tokens 50% -> 33.5%) reported misfire **0.429** at its
+  first 15M checkpoint against v1's 0.464. Barely moved — but the outputs showed the fix working where it had
+  data: prose, python and qa were clean, with the templated think lines visible ("Let me think about what the
+  user is asking for"), sandbox errors fell 16 -> 2, and the misfiring categories narrowed from five to three.
+  Only short factual prompts still reached for code.
+- My first explanation — that short prompts were not being treated — was wrong, and measuring it said so:
+  short prompts are 15-19% of the rehearsal rows and are treated at the *highest* rate (37-40%).
+- The real cause: **mixture weights are token shares, but reaching for a tool is decided once per
+  conversation**, and a synthetic tool conversation is 70-220 tokens against a chat conversation's 400-1470.
+  Worse, only ~16% of a chat set's conversations have a short first user turn and only ~38% of those drew a
+  think line, so a `-direct` set teaches the contested decision about a fourteenth as often as its token share
+  suggests. v2's real ratio on short question-shaped prompts was **33.7 : 1** in favour of calling the tool.
+  Cutting the token share from 50% to 33.5% could never have fixed that, which is exactly why it didn't.
+- `scripts/mixture_decisions.py` now prints this for any candidate config: conversations per set, the share of
+  them that actually demonstrate the contested decision, epochs, and the ratio per decision class. It found a
+  second misrouting immediately, one I had written up as distribution shift: v1 taught
+  math-word-problem-without-tool 113k times against math-with-tool 89k — **0.8 : 1 against** the behaviour we
+  want, which is the whole of the 0.17 GSM8K tool-use rate. The prose-reasoning math sets were crowding out the
+  tool-math ones.
+- v2 stopped at 27M rather than run its remaining hour: both of its failure modes were already explained, and
+  v3 contains all of v2's data plus the fix, so v3's own checkpoint curve answers the same questions.
+- `slm.data.sft --short-only N` extracts conversations whose first user turn is at most N tokens, dropping the
+  ones a tool might legitimately serve, and pairs with `--direct-think 1.0`. magpie is deliberately excluded
+  from the resulting `-short` sets: its conversations are multi-turn and still average 1384 tokens, so the
+  filter buys almost nothing there. The useful ones are systemchats (609 tok/conv), openhermes (269) and
+  everyday-conversations (225).
+- 10:25 v3 (`m9_tool3_336m`) launched, 120M tokens. Measured ratios: short_tool : plain_no_tool **1.2 : 1**
+  (v2: 33.7 : 1), math_tool : math_no_tool **2.0 : 1** (v1: 0.8 : 1). Same gate, misfire read first.

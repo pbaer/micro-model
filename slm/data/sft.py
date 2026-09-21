@@ -70,14 +70,21 @@ class SftShardWriter:
 
 def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2048, val_permille: int = 10, max_examples: int | None = None,
                 think_required: bool = False, name: str | None = None, tools: bool = False, marker_mix: float = 0.5,
-                direct_think: float = 0.0) -> dict:
+                direct_think: float = 0.0, short_only: int | None = None) -> dict:
     """tools=True: <<expr=result>> annotations in assistant text become calculator calls (see slm.tools);
     rows whose assistant text has no such annotation are dropped, so the set teaches tool use consistently.
     marker_mix: for verifiable (math) rows, the share whose user turn asks for `#### <number>` and gets it; the rest
     keep the bare question and answer in a natural sentence (see slm.data.answers).
     direct_think: share of conversations whose assistant turns get a short prose think span instead of an empty
     one (see slm.data.direct_think). This is the "thinking without reaching for code" case, which the M9 stage B
-    mixture lacked entirely; the rest keep the empty span, so both non-tool behaviours stay in the gradient."""
+    mixture lacked entirely; the rest keep the empty span, so both non-tool behaviours stay in the gradient.
+    short_only: keep only conversations whose first user turn is at most this many tokens, and (with
+    direct_think) only those that actually received a think line. Mixture weights are in TOKENS but the decision
+    to reach for a tool is learned per CONVERSATION, and a tool conversation is ~180 tokens against a chat
+    conversation's ~1400. In the M9 stage B v2 mixture that made short question-shaped prompts 51:1 in favour of
+    calling the tool even at a 33.5% token share, which is why cutting that share from 50% barely moved the
+    misfire rate. Extracting the short conversations into their own set buys ~70k no-tool decisions for ~0.15 of
+    the tokens."""
     import random
 
     from slm.data import direct_think as dt
@@ -89,7 +96,7 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
     assert files, f"no raw files for {src.name}"
     out = out_root / (name or src.name)
     train, val = SftShardWriter(out / "train"), SftShardWriter(out / "val")
-    n_seen = n_drop = n_trunc = n_notool = n_direct = 0
+    n_seen = n_drop = n_trunc = n_notool = n_direct = n_long = n_computational = 0
     t0 = time.time()
     for f in files:
         is_test = "test" in f.name
@@ -103,6 +110,11 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
                     continue
                 if src.kind in ("math_qa", "math_cot"):
                     apply_style(msgs, style_rng, marker_mix)
+                if short_only is not None:
+                    first_user = next((m.get("content", "") for m in msgs if m["role"] == "user"), "")
+                    if len(tok.encode(first_user)) > short_only:
+                        n_long += 1
+                        continue
                 if direct_think and think_rng.random() < direct_think:
                     last_user = ""
                     for m in msgs:
@@ -113,6 +125,9 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
                             if t:
                                 m["think"] = t
                     n_direct += any(m.get("think") for m in msgs if m["role"] == "assistant")
+                if short_only is not None and not any(m.get("think") for m in msgs if m["role"] == "assistant"):
+                    n_computational += 1   # a short prompt that might want the tool teaches nothing here
+                    continue
                 if tools:
                     for m in msgs:  # the number must follow the tool result, never precede the call
                         if m["role"] == "assistant" and m.get("think"):
@@ -140,6 +155,7 @@ def prepare_sft(src: Source, tok: SlmTokenizer, out_root: Path, max_len: int = 2
     val.flush()
     m = {"source": src.name, "name": name or src.name, "tokenizer_sha256": tok.sha256, "max_len": max_len, "think_required": think_required, "tools": tools, "no_tool_calls": n_notool,
          "direct_think": direct_think, "direct_think_rows": n_direct,
+         "short_only": short_only, "dropped_long": n_long, "dropped_computational": n_computational,
          "marker_mix": marker_mix if src.kind in ("math_qa", "math_cot") else None,
          "train_examples": train.total_examples, "train_tokens": train.total_tokens, "train_targets": train.total_targets, "train_shards": train.shard_idx,
          "val_examples": val.total_examples, "val_tokens": val.total_tokens, "val_targets": val.total_targets, "val_shards": val.shard_idx,
@@ -263,6 +279,7 @@ def main() -> None:
     ap.add_argument("--max-examples", type=int, default=None)
     ap.add_argument("--think-required", action="store_true", help="always emit a <|think|> span (reasoning SFT)")
     ap.add_argument("--direct-think", type=float, default=0.0, help="share of conversations given a short prose think span that uses no tool")
+    ap.add_argument("--short-only", type=int, default=None, help="keep only conversations whose first user turn is at most N tokens (and got a think line)")
     ap.add_argument("--name", default=None)
     ap.add_argument("--tools", action="store_true", help="convert <<expr=result>> annotations to calculator calls; drop rows without any")
     ap.add_argument("--marker-mix", type=float, default=0.5, help="share of math rows that ask for and use the '#### <number>' marker")
@@ -271,7 +288,7 @@ def main() -> None:
     out_root = SFT_DIR / Path(a.tokenizer).name
     for s in a.sources:
         prepare_sft(SOURCES[s], tok, out_root, a.max_len, a.val_permille, a.max_examples, a.think_required, a.name if len(a.sources) == 1 else None, tools=a.tools, marker_mix=a.marker_mix,
-                    direct_think=a.direct_think)
+                    direct_think=a.direct_think, short_only=a.short_only)
 
 
 if __name__ == "__main__":

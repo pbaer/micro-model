@@ -1,0 +1,96 @@
+# M9 stage B, third attempt: reasoning and Python tool use on top of stage A's chat model.
+#
+# v1 (34% rehearsal, 50% tool tokens) and v2 (52% rehearsal, 33.5% tool tokens) both failed the same way: the
+# model called <|python_call|> on ~45% of the judged prompts where running code cannot help. Cutting the tool
+# TOKEN share from 50% to 33.5% moved the misfire rate only 0.464 -> 0.429, and v2's first checkpoint showed
+# why it could never have worked.
+#
+# Mixture weights are token shares, but "do I reach for the tool?" is decided ONCE PER CONVERSATION, and a
+# synthetic tool conversation is 70-220 tokens against a chat conversation's 400-1470. Worse, only ~16% of a
+# chat set's conversations have a short first user turn and only ~38% of those drew a prose think span, so a
+# `-direct` set teaches the contested decision about a fourteenth as often as its token share suggests. Run
+# `scripts/mixture_decisions.py` on v2 and the real ratio is 33.7 : 1 in favour of calling the tool.
+#
+# That script also surfaced a second misrouting I had blamed on distribution shift. v1's GSM8K tool-use rate
+# was 0.17; its mixture taught math-word-problem-WITHOUT-tool 113k times against math-WITH-tool 89k, a 0.8 : 1
+# ratio against the behaviour we want. The prose-reasoning math sets were crowding out the tool-math ones.
+#
+# So v3 fixes the ratios rather than the token shares:
+#   - `-short` sets (slm.data.sft --short-only 20 --direct-think 1.0) hold nothing but short, non-computational
+#     prompts, every one answered with a prose think span and no call. At 269-609 tokens per conversation a
+#     0.23 token share buys ~57k no-tool decisions where v2's 0.52 share bought 5k. magpie-short is deliberately
+#     absent: its conversations are multi-turn and still average 1384 tokens, so it buys almost nothing.
+#   - tool sets cut to what the skill needs (v1 had arithmetic saturated at 5.00 after ~42k tool conversations).
+#   - the math sets rebalanced so reaching for the sandbox on a word problem is the majority behaviour.
+# Target ratios, from scripts/mixture_decisions.py: short_tool : plain_no_tool about 1.5 : 1,
+# math_tool : math_no_tool about 2 : 1.
+run_name: m9_tool3_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m9_sft_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    smoltalk-smol-magpie-ultra-4k-direct: 0.295   # long-form rehearsal, keeps stage A's chat ability
+    smoltalk-openhermes-100k-4k-direct: 0.17
+    smoltalk-systemchats-30k-short: 0.15          # short prompts, prose think, never a tool call
+    smoltalk-openhermes-100k-short: 0.07
+    smoltalk-everyday-conversations-short: 0.01
+    synthetic-python-tools: 0.10                  # the permitted subset: loops, defs, strings, declared functions
+    synthetic-reasoning-tools: 0.05
+    gsm8k-tools: 0.05                             # the behaviour v1 starved: a word problem answered via the sandbox
+    metamathqa-reasoning: 0.04
+    synthetic-multiturn-tools: 0.03
+    synthetic-reasoning: 0.02
+    gsm8k-reasoning: 0.01
+    metamathqa-tools: 0.005
+  seq_len: 4096
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.2e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 120000000
+  warmup_tokens: 3000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 5
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 15000000
+  gen_every_tokens: 15000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+    - "<|user|>How many of the numbers in [4, 9, 16, 23, 42] are even?<|end|><|assistant|>"
+    - "<|user|>What is the capital of France?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  needle_source: fineweb-edu-b
+  quality_suite: true
+milestone_tokens: 15000000
+notes: "Gate for RL: tool_misfire <= 0.10 (v1 0.39-0.46, v2 0.43 at 15M, stage A 0.00) -- read it first, it is
+  what killed both earlier attempts; judged overall >= 3.40 with no category more than ~0.3 below stage A except
+  arithmetic; needle min-depth >= 80% at 4K; slm.eval.reasoning --tools with GSM8K tool-use rate well above
+  v1's 0.17, which is the ratio this mixture set out to fix."
