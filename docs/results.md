@@ -91,6 +91,7 @@ Tokenizer: 32,768 ids, sha256 `c2a7b5dbd660944b79fd5934b919dec4d22cb170cff9e5b68
 | m7_ctx8k_retrieval3_149m | context curriculum stage 1c: 8K, 20% of a 6K–8K early-fact source | stage 1b final | 300M | 2.0 h | 2.55 / 2.643 (mixture) | 8K depth 0 / 0.1: 12% → 50%, 50% → 94%; all else 100%; effective still 6000 by the strict gate; 2K loss 3.064 (base 3.076) |
 | m7_ctx8k_retrieval4_149m | context curriculum stage 1d: same recipe as 1c, +300M | stage 1c final | 300M | 2.1 h | 2.55 / 2.647 (mixture) | 8K depth 0 = 44% (plateau), depth 0.1 = 94%, all else 100%; effective 6000 by the strict gate. Depth probe: 8K needles fail only inside the first ~2% (≈160 tokens): 50/31/69/69% at depths 0/0.005/0.01/0.02, 94% at 0.05, 100% from 0.1 |
 | m8_base_stable_336m | second base, phase 1: 336M, 2K, constant LR | random | 7.5B (finished 09-19 12:48) | 2d 23h 28m | best val 2.6081 @ 7.4B (final 2.6086, ppl 13.6); needle 100% @1K, 95% @2K (n=16); judged overall 2.80 ex-bash | 30K tok/s, 13.8 GiB, 70–78 °C |
+| m8_base_4k_336m | second base, phase 2: 4K, WSD decay, chat+tool+retrieval mixed in | m8 phase 1 final | 2.5B (finished 09-20 18:18) | 1d 3h 41m | val 2.3869 (drift vs the phase-1 mixture 2.4666, from 2.6086); needle effective **4096** (min-depth 82.8% at 4K, n=64); HellaSwag 32.8 / ARC-Easy 57.9 / PIQA 66.4 (full); facts 69.1%; judged overall 3.06 (peak 3.46 @1.5B) | 26.4K tok/s, 13.8 GiB |
 | m4_sft_rehearsal_149m | instruct SFT (rehearsal on the 1B base) | m2 final | 450M (2 epochs) | 2.1 h | 1.629 / 1.878 | Pretraining-mixture val drifted 3.097 → 3.208 |
 | m5_reasoning_rehearsal_149m | reasoning SFT (rehearsal) | m4 rehearsal final | 45M (3 epochs) | 13 min | 0.554 / 0.589 | Pretraining val 3.27 → 3.31 |
 | m6_rl_arith_rehearsal_149m | GRPO stage A (rehearsal) | m5 rehearsal final | 200 steps, 259K completion tokens | 11 min | held-out acc 0.33 → 0.48 | KL ≈ 0.02, no malformed completions, no length blow-up |
@@ -124,6 +125,7 @@ lm-evaluation-harness, accuracy (acc_norm in parentheses):
 | m4_sft_149m final | 33.1 (39.6) | 50.0 (46.7) | 63.5 (61.5) | 2000 |
 | m7_ctx16k_149m final (16K extension of the base) | 32.6 (39.6) | 52.0 (46.8) | 63.8 (62.6) | 2000 |
 | m4_sft_rehearsal_149m final | 31.7 (36.5) | 43.7 (41.0) | 61.8 (59.4) | 2000 |
+| **m8_base_4k_336m final (10.0B tokens, the second base)** | **32.8 (38.3)** | **57.9 (52.5)** | **66.4 (65.7)** | full |
 
 The first 2000 HellaSwag samples are easier than the full set, so compare rows with the same limit only.
 The 16K extension costs nothing on short-context tasks (all three within ±1 point of the base at the same limit).
@@ -416,3 +418,21 @@ pass of 256 rows each aligned to start at a document boundary. Per-token loss in
   unrelated document does not hurt at this scale; the small positive delta is within what two 256-row samples can
   resolve. No case for boundary-aligned rows; document masking remains a next-base benchmark, not a fix for a
   measured problem.
+
+### Second base, final measurements (`m8_base_4k_336m` final.pt, 10.0B cumulative tokens, 2026-09-20)
+
+| measure | 336M base (10.0B) | 149M base (5.0B) |
+|---|---|---|
+| HellaSwag acc (acc_norm), full | 32.8 (38.3) | 29.3 (32.7) |
+| ARC-Easy | 57.9 (52.5) | 51.6 (45.5) |
+| PIQA | 66.4 (65.7) | 64.0 (62.5) |
+| facts probe (194 items, completion) | 69.1% | 43% |
+| needle effective context (n=64, min over 5 depths >= 80%) | **4096** | 8000 at 2K-6K, 7K strict |
+| val loss on the phase-1 pretraining mixture | 2.4666 | 2.8778 |
+
+Needle by length at n=64 (mean / worst depth): 1024 100/100, 2048 99.6/96.9, 3072 98.7/96.9, 4096 94.0/82.8.
+Facts by category: capitals 88.6%, history 83.3%, science 67.5%, culture 65%, language 60%, geography 55%, units 35%.
+
+The 336M base beats the 149M base on every benchmark and by 26 points on the facts probe, and it is a genuine
+4K model by the strict gate. Reference points: random is 25/25/50; GPT-2 small (124M, ~10B tokens) scores ~29-31
+on HellaSwag; SmolLM-135M (600B tokens) ~42.
