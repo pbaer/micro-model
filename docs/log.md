@@ -449,7 +449,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   over-inclusive `is_computational()` guard keeps "no code is needed here" off any turn that might want the
   tool — the first probe run attached it to a probability question, which would have taught the opposite
   lesson. `slm.eval.quality` now reports `tool_misfire` per checkpoint (stage A 0.00, stage B v1 0.39-0.46) so
-  routing is visible in the run page during a run. `configs/train/m9_tool2_336m.yaml` rebalances rehearsal
+  routing is visible in the run page during a run. (These rates are the corrected ones: the first cut of the
+  metric counted only spans the tool loop executed, and the loop honours markup solely inside the think span,
+  so an answer that reaches for the sandbox and runs out of tokens part-way scored zero calls. v1 reads
+  0.500-0.429, not 0.464-0.393.) `configs/train/m9_tool2_336m.yaml` rebalances rehearsal
   34% -> 52% and tool-bearing data 50% -> 33.5%, keeping 40M absolute tool tokens — v1 had the skill saturated
   after 7.5M of them.
 - 10:02 stage B v2 (`m9_tool2_336m`) launched, 120M tokens. Gate: misfire <= 0.10 first, then judged overall
@@ -459,7 +462,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 ## 2026-09-21 (later) — stage B v2 stopped at 27M; the ratio that actually governs routing
 
 - v2 (`m9_tool2_336m`, direct-think rehearsal, tool tokens 50% -> 33.5%) reported misfire **0.429** at its
-  first 15M checkpoint against v1's 0.464. Barely moved — but the outputs showed the fix working where it had
+  first 15M checkpoint against v1's 0.500. Barely moved — but the outputs showed the fix working where it had
   data: prose, python and qa were clean, with the templated think lines visible ("Let me think about what the
   user is asking for"), sandbox errors fell 16 -> 2, and the misfiring categories narrowed from five to three.
   Only short factual prompts still reached for code.
@@ -486,3 +489,15 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   everyday-conversations (225).
 - 10:25 v3 (`m9_tool3_336m`) launched, 120M tokens. Measured ratios: short_tool : plain_no_tool **1.2 : 1**
   (v2: 33.7 : 1), math_tool : math_no_tool **2.0 : 1** (v1: 0.8 : 1). Same gate, misfire read first.
+
+- Correction to the misfire metric, found on v3's first checkpoint. It counted only spans the tool loop
+  actually executed, and the loop honours `<<...>>` markup solely inside the think span (tool calls are part of
+  thinking, never of the answer). A model that reaches for the sandbox in its ANSWER span, or runs out of
+  `max_new_tokens` part-way through the program, therefore scored zero calls. That hid 6 of v3's 8 misfires.
+  `_ran_code` now also checks for the markup opener — the opener rather than the full pattern, because a
+  truncated call rarely carries its closing `>>>`. Corrected: stage A 0.000 throughout, v1 0.500 -> 0.429
+  (still flat), v2 0.429 at 15M, **v3 0.286 at 15M**.
+- v3 at 15M: needle effective **4096** (v2 read 2048 at the same point), misfiring categories down to facts and
+  pattern only, and the wanted behaviours are visible in the outputs — "List the days of the week" now draws
+  "I do not need to run anything here. Let me answer from knowledge." followed by the correct list, and
+  "17 + 25" draws a real `<<17+25=42>>` calculator call.

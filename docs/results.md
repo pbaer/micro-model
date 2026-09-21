@@ -460,7 +460,7 @@ Correctness fell 0.38, which is the base's decay trade being partly given back. 
 |---|---|---|---|
 | judged overall | **3.47** | 3.00 | 3.16 |
 | correctness / coherence / task | 3.03 / 3.56 / 3.81 | 2.38 / 3.41 / 3.22 | 2.53 / 3.50 / 3.44 |
-| **tool misfire rate** | **0.00** | **0.393** | 0.429 |
+| **tool misfire rate** | **0.00** | **0.429** | 0.429 |
 | ARC-Easy / PIQA / facts probe | 58.4 / 66.6 / 70.1% | 56.9 / 66.8 / 69.6% | — |
 | needle effective context | 4096 | **3072** (70.3% worst depth at 4K) | — |
 
@@ -472,7 +472,7 @@ Judged categories, stage A -> stage B v1 final:
 
 The targeted skill was learned and everything else paid for it. The diagnosis is one number: **every category
 that emitted a `<|python_call|>` regressed, and every category that did not held or improved.** The misfire
-rate was 0.464 at the first 15M-token checkpoint and never fell below 0.393 in 120M tokens — flat, so no amount
+rate was 0.500 at the first 15M-token checkpoint and never fell below 0.429 in 120M tokens — flat, so no amount
 of further training was going to fix it. `What is the capital of France?` produced an invented
 `city_population(...)` call (NameError) and the answer "That would be Aldershaw."
 

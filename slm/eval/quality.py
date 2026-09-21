@@ -362,13 +362,31 @@ def _mean(xs: list[float]) -> float | None:
     return round(sum(xs) / len(xs), 3) if xs else None
 
 
+def _ran_code(it: dict) -> bool:
+    """Did this item reach for the sandbox at all?
+
+    `tool_calls` counts only spans the tool loop actually executed, and the loop honours markup solely inside
+    the think span -- tool calls are part of thinking, never of the answer (slm/data/chat.py). A model that
+    emits `<<<...>>>` in the ANSWER span has still decided to compute, and arguably failed worse, but scores
+    zero calls. On M9 stage B v3's first checkpoint that hid 6 of 8 misfires (0.179 reported, 0.286 real), so
+    the markup is checked here as well.
+
+    The OPENER is what is checked, not `TOOL_MARK_RE`: an answer that reaches for the sandbox usually runs out
+    of `max_new_tokens` part-way through the program, so the closing `>>>` the full pattern needs is rarely
+    there. The cost is that a literal "<<" in prose or in C++ stream code would count as a misfire; no suite
+    prompt has produced one, and over-counting a decision we are trying to drive to zero is the safe direction.
+    """
+    return bool(it.get("tool_calls")) or "<<" in (it.get("output") or "")
+
+
 def _tool_rates(items: list[dict]) -> dict:
     """Share of eligible prompts on which the model ran code that could not help (see TOOL_DEFENSIBLE)."""
     pool = [it for it in items if it["category"] not in EXCLUDED_FROM_OVERALL and it["category"] not in TOOL_DEFENSIBLE]
-    misfires = [it for it in pool if it.get("tool_calls")]
+    misfires = [it for it in pool if _ran_code(it)]
     return {"tool_misfire": round(len(misfires) / len(pool), 3) if pool else None,
             "tool_misfire_n": len(pool),
             "tool_misfire_cats": sorted({it["category"] for it in misfires}),
+            "tool_misfire_in_answer": sum(1 for it in misfires if not it.get("tool_calls")),
             "tool_errors": sum(it.get("tool_errors", 0) for it in items)}
 
 
