@@ -398,3 +398,16 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   always lands, while a generated prompt lands in held-out 1 time in 10, so held-out sets were ~75% gsm8k;
   the drawn family is now retried instead of redrawn. `configs/train/m9_rl_336m.yaml` written (30% gsm8k /
   40% pytool / 30% constraints, group 6 x 4 prompts at 4K), not launched.
+- 18:18 M8 phase 2 FINISHED: 2.50B tokens in 1d 3h 41m, val 2.3869, drift vs the phase-1 mixture 2.4666 (from
+  2.6086 — the decay bought 0.142, more than the whole 149M->336M parameter step was worth). Needle effective
+  context **4096** by the strict gate (n=64: 1K 100/100, 2K 99.6/96.9, 3K 98.7/96.9, 4K 94.0/82.8). HellaSwag
+  32.8, ARC-Easy 57.9, PIQA 66.4 (full), facts 69.1% (149M base: 29.3 / 51.6 / 64.0 / 43%).
+- 18:30 base checkpoint chosen: `final.pt` (2.5B). 1.5B scored higher on the judged suite (3.46 vs 3.06) but
+  fails the 4K gate (worst depth 60.9%) and is 0.053 worse on drift loss; the 2.0B-2.5B judged gap (0.10) is
+  inside the measured checkpoint wobble (+-0.25) while the loss trend is monotone. The decay traded coherence
+  (3.31 -> 2.72) for correctness (3.25 -> 3.41), which is the right trade for a base: SFT reliably adds
+  coherence (149M m4: 2.11 -> 2.83) and cannot add knowledge.
+- 18:33 M9 stage A (`m9_sft_336m`) launched: chat SFT, 200M tokens, 5 SmolTalk sets at 4K with a mandatory
+  (empty for plain chat) think span so the format never changes under the model again. scripts/pipeline_m9.sh
+  chains stage B (reasoning+tools, 34% chat rehearsal) and the per-stage measurements; RL is launched by hand
+  after the gates are read.

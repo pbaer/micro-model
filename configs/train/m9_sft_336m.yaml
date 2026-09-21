@@ -1,0 +1,69 @@
+# M9 stage A: chat SFT on the second base. One concept: the chat pattern (roles, turn boundaries, stopping at
+# <|end|>, following an instruction). Every set is prepared at 4K with a MANDATORY think span, which is empty for
+# ordinary chat; stage B then teaches the model to put reasoning and tool calls inside the span it already opens,
+# so the format never changes under it.
+#
+# Weights are set so no set is over-repeated: the 149M chat SFT ran 2 epochs over a mixture whose small sets
+# looped many times and its second half scored worse than its first (judged 3.03 -> 2.61). Epochs here:
+# magpie 0.64, openhermes 1.08, systemchats 0.99, constraints 1.94, everyday 5.0 (0.4M tokens, kept small).
+run_name: m9_sft_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m8_base_4k_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1   # for extra_val_mixture (base drift) and the needle haystack
+  mixture:
+    smoltalk-smol-magpie-ultra-4k-think: 0.62
+    smoltalk-openhermes-100k-4k-think: 0.20
+    smoltalk-systemchats-30k-4k-think: 0.10
+    smoltalk-smol-constraints-4k-think: 0.07
+    smoltalk-everyday-conversations-4k-think: 0.01
+  seq_len: 4096
+  val_tokens: 2000000
+  # the phase-2 pretraining mixture: base drift is the thing SFT most easily costs us
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.5e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 200000000
+  warmup_tokens: 4000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072   # 2 x 4096 x 16 accum
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 2
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 20000000
+  gen_every_tokens: 25000000
+  gen_max_new_tokens: 96
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is the capital of France?<|end|><|assistant|>"
+    - "<|user|>Write a Python function that returns the nth Fibonacci number.<|end|><|assistant|>"
+    - "<|user|>Give me a short overview of the history of the Roman Empire.<|end|><|assistant|>"
+  # retrieval must survive SFT: we have never measured it on an SFT checkpoint before (docs/log.md 2026-09-19)
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  needle_source: fineweb-edu-b
+  quality_suite: true
+milestone_tokens: 25000000
+notes: "Gate for stage B: judged overall >= the base's, no category down more than ~0.3 except where targeted, needle min-depth >= 80% at 4K, extra_val (base drift) within ~0.05 of the base. Pick the checkpoint by judged quality, not val loss (149M m4: midpoint 3.03 beat endpoint 2.61)."

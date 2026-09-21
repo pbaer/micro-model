@@ -1,0 +1,75 @@
+# M9 stage B: reasoning and Python tool use, on top of stage A's chat model. One new concept: put work inside the
+# think span the model already opens, either as prose reasoning or as a <|python_call|> whose result comes back
+# from the sandbox.
+#
+# 34% of the mixture is stage-A chat data (rehearsal). This is the fix for the clearest regression in the 149M
+# chain: its reasoning SFT trained on narrow math only and moved judged overall 2.61 -> 2.29, gaining arithmetic
+# (2.25 -> 2.92) while losing narrative, pattern, python and facts. Rehearsal keeps stage A's ability present in
+# the gradient while the new skill is learned.
+#
+# Epochs: python-tools 1.48, metamathqa-reasoning 1.08, multiturn-tools 1.88, reasoning-tools 2.14, gsm8k-tools
+# 3.2, synthetic-reasoning 1.66, gsm8k-reasoning 1.6, metamathqa-tools 6.0 (0.2M tokens), rehearsal 0.15/0.32.
+run_name: m9_tool_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m9_sft_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    synthetic-python-tools: 0.35            # the whole permitted subset: loops, defs, strings, declared functions
+    smoltalk-smol-magpie-ultra-4k-think: 0.24   # rehearsal
+    smoltalk-openhermes-100k-4k-think: 0.10     # rehearsal
+    metamathqa-reasoning: 0.10
+    synthetic-multiturn-tools: 0.05
+    synthetic-reasoning-tools: 0.05
+    gsm8k-tools: 0.04
+    synthetic-reasoning: 0.04
+    gsm8k-reasoning: 0.02
+    metamathqa-tools: 0.01
+  seq_len: 4096
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.2e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 120000000
+  warmup_tokens: 3000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 3
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 15000000
+  gen_every_tokens: 15000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+    - "<|user|>How many of the numbers in [4, 9, 16, 23, 42] are even?<|end|><|assistant|>"
+    - "<|user|>What is the capital of France?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  needle_source: fineweb-edu-b
+  quality_suite: true
+milestone_tokens: 15000000
+notes: "Gate for RL: judged arithmetic and python up, no other category down more than ~0.3 vs stage A, tool-use rate and answer-from-tool rate measured with slm.eval.reasoning --tools, needle min-depth >= 80% at 4K."
