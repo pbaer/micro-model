@@ -90,7 +90,11 @@ export function RunDetail({ run }) {
   const sw = series.needle_sweep;
   const sweepX = sw ? sw.tokens.map((tok) => xmode === "tokens" ? tok : xmode === "update" ? nearestUpdate(t, tok) : nearestTime(t, tok)) : [];
   const qc = (quality && quality.checkpoints || []).filter((c) => c.overall != null);
-  const qualityX = qc.map((c) => xmode === "tokens" ? c.tokens : xmode === "update" ? nearestUpdate(t, c.tokens) : nearestTime(t, c.tokens));
+  const toX = (tok) => xmode === "tokens" ? tok : xmode === "update" ? nearestUpdate(t, tok) : nearestTime(t, tok);
+  const qualityX = qc.map((c) => toX(c.tokens));
+  // Tool misfire needs no judge, so it charts over every checkpoint with outputs and lands during the run.
+  const mc = (quality && quality.checkpoints || []).filter((c) => c.tool_misfire != null);
+  const misfireX = mc.map((c) => toX(c.tokens));
   const QPAL = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2", "#4d7c0f", "#be185d", "#78716c"];
   const eta = s.status === "running" ? s.eta_s : null;
   return html`<div>
@@ -144,6 +148,8 @@ export function RunDetail({ run }) {
         ...quality.rubrics.map((r, i) => ({ label: r, x: qualityX, y: qc.map((c) => c[r]), points: true, width: 1.5, color: QPAL[i] })),
         { label: "legacy 3", x: qualityX, y: qc.map((c) => c.legacy3), points: true, width: 1, dash: true, color: "#9ca3af" }]} />
       <${Chart} title="judged quality by category (overall, 1-5)" xmode=${xmode} ymin=${1} series=${quality.categories.map((cat, i) => ({ label: cat, x: qualityX, y: qc.map((c) => (c.categories[cat] || {}).overall), points: true, width: 1.5, color: QPAL[i % QPAL.length] }))} />`}
+      ${mc.length > 0 && html`<${Chart} title=${`tool misfire: share of the ${mc[0].tool_misfire_n} prompts where running code cannot help that ran code anyway (no judge needed)`} xmode=${xmode} ymin=${0} series=${[
+        { label: "misfire", x: misfireX, y: mc.map((c) => c.tool_misfire), points: true, width: 2.5, color: "#dc2626" }]} />`}
       ${!series.is_rl && html`<${Chart} title="tokens / sec" xmode=${xmode} ymin=${0} series=${[{ label: "tok/s", x: tokensX, y: t.tok_s }, { label: "ema", x: tokensX, y: t.tok_s_ema }]} />`}
       <${Chart} title="learning rate" xmode=${xmode} ymin=${0} series=${[{ label: "lr", x: tokensX, y: t.lr }]} />
       <${Chart} title="gradient norm" xmode=${xmode} ymin=${0} series=${[{ label: "grad norm", x: tokensX, y: t.grad_norm }]} />
@@ -177,6 +183,7 @@ export function RunDetail({ run }) {
           <select value=${qualityTok} onChange=${(ev) => setQualityTok(Number(ev.target.value))}>${quality.checkpoints.map((c) => html`<option value=${c.tokens}>${fmtTok(c.tokens)} tokens · ${c.checkpoint}${c.overall == null ? " (unjudged)" : ` · ${c.overall.toFixed(2)}`}</option>`)}</select>
           ${quality.checkpoints.length > 1 && html`<input type="range" min="0" max=${quality.checkpoints.length - 1} value=${Math.max(0, quality.checkpoints.findIndex((c) => c.tokens === qualityTok))} onInput=${(ev) => setQualityTok(quality.checkpoints[Number(ev.target.value)].tokens)} style="width:300px" />`}
           <span class="muted">suite ${quality.suite} · rubric ${quality.rubric} · judge ${(quality.judges || []).join(", ") || "-"}</span></div>
+        ${(() => { const c = quality.checkpoints.find((x) => x.tokens === qualityTok); return c && c.tool_misfire != null ? html`<div class="sub" style=${"margin-bottom:8px;color:" + (c.tool_misfire > 0.1 ? "#b91c1c" : "#374151")}>tool misfire ${(c.tool_misfire * 100).toFixed(0)}% of ${c.tool_misfire_n}${(c.tool_misfire_cats || []).length ? " · " + c.tool_misfire_cats.join(", ") : ""}${c.tool_errors ? ` · ${c.tool_errors} sandbox errors` : ""}</div>` : ""; })()}
         ${(() => { const c = quality.checkpoints.find((x) => x.tokens === qualityTok); return c && c.overall != null ? html`<table style="margin-bottom:10px"><tr><th>category</th><th>n</th><th>overall</th>${quality.rubrics.map((r) => html`<th>${r}</th>`)}</tr>
           <tr><td><b>all</b></td><td>${c.n_scored}/${c.n_items}</td><td><b>${fmtNum(c.overall, 2)}</b></td>${quality.rubrics.map((r) => html`<td>${fmtNum(c[r], 2)}</td>`)}</tr>
           ${quality.categories.map((cat) => { const k = c.categories[cat] || {}; return html`<tr><td>${cat}</td><td>${k.n || 0}</td><td>${fmtNum(k.overall, 2)}</td>${quality.rubrics.map((r) => html`<td>${fmtNum(k[r], 2)}</td>`)}</tr>`; })}</table>` : html`<div class="muted" style="margin-bottom:8px">outputs generated, not judged yet</div>`; })()}

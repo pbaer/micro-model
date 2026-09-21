@@ -255,7 +255,7 @@ class Trainer:
     def quality_outputs(self, checkpoint_name: str) -> None:
         """Run the judged-quality prompt suite on the live model and write quality/outputs/<tokens>.jsonl
         (the same file `slm.eval.quality generate` writes from a saved checkpoint). A few seconds on the GPU."""
-        from slm.eval.quality import generate_suite, write_outputs
+        from slm.eval.quality import generate_suite, write_outputs, write_summary
         from slm.utils.stage import run_stage, run_tools
 
         t0 = time.time()
@@ -266,7 +266,13 @@ class Trainer:
             items = generate_suite(self.model, self.tok, stage, "cuda", tools=run_tools(meta))
             p = write_outputs(self.run_dir, self.cfg.run_name, self.counters["tokens"], checkpoint_name, stage, "cuda", items, time.time() - t0)
             torch.cuda.empty_cache()
-            self.log.log("quality", tokens=self.counters["tokens"], update=self.counters["update"], msg=f"quality suite: {len(items)} prompts in {time.time() - t0:.1f}s -> {p.name}")
+            # The summary carries tool_misfire, which needs no judge: refreshing it here is what puts routing on
+            # the run page while the run is still going (M9 stage B v1 misfired on ~45% of prompts from its first
+            # checkpoint, and nobody could see it until the judging came back days later).
+            mis = (write_summary(self.run_dir).get("checkpoints") or [{}])[-1].get("tool_misfire")
+            self.log.log("quality", tokens=self.counters["tokens"], update=self.counters["update"], tool_misfire=mis,
+                         msg=f"quality suite: {len(items)} prompts in {time.time() - t0:.1f}s -> {p.name}"
+                             + ("" if mis is None else f", tool misfire {mis:.0%}"))
         except Exception as e:  # noqa: BLE001 - an eval must never take the training run down
             self.log.log("warn", tokens=self.counters["tokens"], msg=f"quality suite failed: {e!r}")
             console(f"WARNING quality suite failed: {e!r}")
