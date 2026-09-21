@@ -19,6 +19,15 @@ RUBRICS = ("correctness", "coherence", "task")
 # Categories that stay in the suite (so old and new checkpoints are scored on the same items) but are excluded from
 # `overall`: bash was dropped from every mixture after the first base on 2026-09-19 and is allowed to fade.
 EXCLUDED_FROM_OVERALL = frozenset({"bash"})
+# No prompt in this suite REQUIRES a tool call, so there is no "correct tool use" rate to read here (that lives
+# in slm.eval.reasoning --tools, on GSM8K). What the suite can measure is the opposite: a call on a prompt where
+# running code cannot help. Only arithmetic is exempt -- a call there is redundant but defensible. The `python`
+# prompts ask the model to WRITE a function, so running one is a misfire like any other.
+#
+# M9 stage B v1 (2026-09-21) misfired on ~50% of the eligible prompts at every checkpoint, and every category
+# that misfired regressed against stage A while every category that did not held or improved. The rate is
+# reported per checkpoint so the next run's routing is visible without re-deriving it from raw outputs.
+TOOL_DEFENSIBLE = frozenset({"arithmetic"})
 
 # id, category, completion prompt, chat prompt, expectation, max_new_tokens
 _P = [

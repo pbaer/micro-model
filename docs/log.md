@@ -411,3 +411,47 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (empty for plain chat) think span so the format never changes under the model again. scripts/pipeline_m9.sh
   chains stage B (reasoning+tools, 34% chat rehearsal) and the per-stage measurements; RL is launched by hand
   after the gates are read.
+
+## 2026-09-21 — M9 stage A passed, stage B failed on routing, stage B v2 launched
+
+- Stage A (`m9_sft_336m`, chat SFT, 200M tokens) passed its gate: judged overall 3.06 -> **3.47**, coherence
+  +0.84, task +0.75, needle still **4096** by the strict gate, facts 70.1%, ARC-Easy 58.4. Correctness fell
+  0.38 (the base's decay trade partly given back). Quality wobbles +-0.15 across its 8 checkpoints with no
+  trend after 50M: 200M tokens was more than this stage needed.
+- Incident: stage A crashed at its first eval with an inductor bounds check, `index out of bounds:
+  0 <= tmp4 < 32768`. Cause: chunked cross-entropy (`loss_chunk_size`, first used in SFT) under
+  `torch.compile` lowers to a kernel that gathers at the target index *before* applying the ignore mask, so
+  `IGNORE_INDEX = -100` trips the check. Pretraining never hit it because every token is a target.
+  `_chunk_loss` now masks the per-token losses instead (arithmetically identical, index-safe) and there is a
+  regression test.
+- Stage B v1 (`m9_tool_336m`, reasoning + Python tools, 120M tokens, 34% chat rehearsal) **failed its gate**.
+  It learned the targeted skill — judged arithmetic 2.83 -> 4.50 — and gave back more than it gained:
+  overall 3.47 -> 3.00, pattern -2.42, qa -2.00, definition -1.00, facts -0.62, and needle effective context
+  fell 4096 -> 3072.
+- The diagnosis is one correlation: **every judged category that emitted a `<|python_call|>` regressed, and
+  every category that did not held or improved** (narrative +0.50, prose -0.08). "What is the capital of
+  France?" produced an invented `city_population(...)` call and the answer "That would be Aldershaw."
+- Two things I had wrong until the numbers were normalised. I first read the raw call counts (17/35 -> 13/35)
+  as "more training is slowly fixing it" and planned a *shorter* v2; per-eligible-prompt the misfire rate is
+  0.464 at 15M and 0.393 at 120M — **flat**, so duration and LR were never the lever. And my first cut of the
+  metric counted a call on a `python` prompt as correct use, when those prompts ask the model to *write* a
+  function, not run one. No prompt in the suite requires a tool, so the suite can only measure misfires;
+  correct use is `slm.eval.reasoning --tools`, where the mechanism is in fact sound (arith 0.82-1.00 accuracy
+  at 0.70-1.00 tool use, 0.00 tool-error rate). GSM8K is the opposite failure: 4.5% at a 0.17 tool-use rate,
+  because real word problems are out of distribution for the synthetic grammars. Both are one thing — **the
+  model routes on surface form, not on need** — and short data-free questions share the grammars' surface form.
+- Cause: a missing case, not a missing regulariser. v1's mixture had "empty think, then answer" (rehearsal)
+  and "think with a tool call, then answer" (tools) and nothing else, so once the model moved off empty think
+  spans the only non-empty span it knew how to write contained code. Rehearsal at 34% could not teach a
+  behaviour that was absent from the data.
+- Fix, in three parts. `slm/data/direct_think.py` supplies short prose think spans that reach for no tool, and
+  `slm.data.sft --direct-think 0.45` applies them to the chat sets (`-4k-direct`); a deliberately
+  over-inclusive `is_computational()` guard keeps "no code is needed here" off any turn that might want the
+  tool — the first probe run attached it to a probability question, which would have taught the opposite
+  lesson. `slm.eval.quality` now reports `tool_misfire` per checkpoint (stage A 0.00, stage B v1 0.39-0.46) so
+  routing is visible in the run page during a run. `configs/train/m9_tool2_336m.yaml` rebalances rehearsal
+  34% -> 52% and tool-bearing data 50% -> 33.5%, keeping 40M absolute tool tokens — v1 had the skill saturated
+  after 7.5M of them.
+- 10:02 stage B v2 (`m9_tool2_336m`) launched, 120M tokens. Gate: misfire <= 0.10 first, then judged overall
+  >= 3.40 with no category more than ~0.3 below stage A except arithmetic, needle >= 80% at 4K, and generated
+  tool families no worse than v1. GSM8K is explicitly not gated here; closing it is the GRPO stage's job.

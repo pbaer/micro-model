@@ -30,7 +30,8 @@ import sys
 import time
 from pathlib import Path
 
-from slm.eval.quality_suite import CATEGORIES, EXCLUDED_FROM_OVERALL, JUDGE_INSTRUCTIONS, RUBRIC_VERSION, RUBRICS, SUITE, SUITE_VERSION
+from slm.eval.quality_suite import (CATEGORIES, EXCLUDED_FROM_OVERALL, JUDGE_INSTRUCTIONS, RUBRIC_VERSION,
+                                    RUBRICS, SUITE, SUITE_VERSION, TOOL_DEFENSIBLE)
 from slm.utils.stage import run_meta, run_stage, run_tools
 
 LEGACY3 = ("rome", "fib", "cap_france")  # the three prompts the trainer has sampled since M1: the long-history subset
@@ -361,6 +362,16 @@ def _mean(xs: list[float]) -> float | None:
     return round(sum(xs) / len(xs), 3) if xs else None
 
 
+def _tool_rates(items: list[dict]) -> dict:
+    """Share of eligible prompts on which the model ran code that could not help (see TOOL_DEFENSIBLE)."""
+    pool = [it for it in items if it["category"] not in EXCLUDED_FROM_OVERALL and it["category"] not in TOOL_DEFENSIBLE]
+    misfires = [it for it in pool if it.get("tool_calls")]
+    return {"tool_misfire": round(len(misfires) / len(pool), 3) if pool else None,
+            "tool_misfire_n": len(pool),
+            "tool_misfire_cats": sorted({it["category"] for it in misfires}),
+            "tool_errors": sum(it.get("tool_errors", 0) for it in items)}
+
+
 def summarize(run_dir: Path) -> dict:
     scores = read_scores(run_dir)
     ckpts = []
@@ -374,7 +385,8 @@ def summarize(run_dir: Path) -> dict:
         scored = [(it, sc, o) for it, sc, o in rows if it["category"] not in EXCLUDED_FROM_OVERALL]  # overall = the categories we still train for
         entry = {"tokens": h["tokens"], "checkpoint": h["checkpoint"], "stage": h["stage"], "n_items": len(items), "n_scored": len(rows),
                  "overall": _mean([o for _, _, o in scored]), "overall_all": _mean([o for _, _, o in rows]), "legacy3": _mean([o for it, _, o in rows if it["id"] in LEGACY3]),
-                 "legacy3_n": sum(1 for it, _, _ in rows if it["id"] in LEGACY3), "stopped_frac": round(sum(1 for it in items if it.get("stopped")) / max(1, len(items)), 3)}
+                 "legacy3_n": sum(1 for it, _, _ in rows if it["id"] in LEGACY3), "stopped_frac": round(sum(1 for it in items if it.get("stopped")) / max(1, len(items)), 3),
+                 **_tool_rates(items)}
         for r in RUBRICS:
             entry[r] = _mean([sc[r] for _, sc, _ in scored])
         entry["categories"] = {c: {"overall": _mean([o for it, _, o in rows if it["category"] == c]), "n": sum(1 for it, _, _ in rows if it["category"] == c),

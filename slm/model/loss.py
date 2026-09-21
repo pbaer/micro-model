@@ -15,7 +15,15 @@ IGNORE_INDEX = -100
 
 def _chunk_loss(h: torch.Tensor, weight: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
     logits = F.linear(h, weight).float()
-    return F.cross_entropy(logits, targets, ignore_index=IGNORE_INDEX, reduction="sum")
+    # Do not hand IGNORE_INDEX to cross_entropy: under torch.compile the chunked path (activation checkpointing)
+    # lowers to a kernel that gathers at the target index *before* applying the ignore mask, and inductor's bounds
+    # check fires on -100 ("index out of bounds: 0 <= tmp4 < 32768"). Pretraining never hit it because every token
+    # is a target; the first SFT run with loss_chunk_size set crashed at its first eval (M9 stage A, 2026-09-20).
+    # Masking the per-token losses instead is arithmetically identical and index-safe.
+    valid = targets != IGNORE_INDEX
+    safe = torch.where(valid, targets, torch.zeros_like(targets))
+    per_token = F.cross_entropy(logits, safe, reduction="none")
+    return (per_token * valid).sum()
 
 
 def chunked_cross_entropy(

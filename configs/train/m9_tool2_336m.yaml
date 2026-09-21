@@ -1,0 +1,95 @@
+# M9 stage B, second attempt: reasoning and Python tool use on top of stage A's chat model.
+#
+# v1 (runs/m9_tool_336m) taught the skill and broke the routing. Arithmetic went 2.83 -> 5.00 by its FIRST
+# 15M-token checkpoint, but the model then called <|python_call|> on ~45% of the judged prompts where running
+# code cannot help, at every checkpoint from 15M to 120M -- a flat rate, so more training was never going to fix
+# it. Every category that misfired regressed against stage A (pattern -2.42, qa -2.00, definition -1.00,
+# facts -0.62) and every category that did not held or improved (narrative +0.50, prose -0.08). "What is the
+# capital of France?" produced an invented city_population(...) call and the answer "That would be Aldershaw."
+#
+# The cause is a missing case, not a missing regulariser. v1's mixture contained "empty think, then answer"
+# (chat rehearsal, 34%) and "think with a tool call, then answer" (tools, 50%) and nothing else, so once the
+# model moved off empty think spans the only non-empty span it knew how to write contained code. Short,
+# question-shaped, data-free prompts look exactly like the tool grammars' prompts on the surface, which is why
+# those are the ones that broke.
+#
+# Three changes:
+#   1. Rehearsal is now the -4k-direct sets: the same public conversations, but 45% of them carry a short prose
+#      think span instead of an empty one (slm/data/direct_think.py). Prompts that plausibly want computation are
+#      excluded from that treatment, so "no code is needed here" is never attached to a turn the tool is for.
+#   2. Rehearsal 34% -> 52%, tool-bearing data 50% -> 33.5%. Absolute tool exposure is still 40M tokens, and v1
+#      had the skill saturated after 7.5M of them.
+#   3. slm.eval.quality now reports tool_misfire per checkpoint, so routing is visible in the run page during the
+#      run instead of being reconstructed afterwards. Pick the checkpoint on it as well as on judged overall.
+#
+# Epochs: python-tools 0.93, magpie 0.20, openhermes 0.62, metamathqa-reasoning 0.98, multiturn-tools 1.50,
+# reasoning-tools 1.71, gsm8k-tools 2.43, synthetic-reasoning 1.46, gsm8k-reasoning 1.59, metamathqa-tools 4.0.
+run_name: m9_tool2_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m9_sft_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    smoltalk-smol-magpie-ultra-4k-direct: 0.33    # rehearsal, 45% of it with a prose think span and no tool
+    synthetic-python-tools: 0.22                  # the whole permitted subset: loops, defs, strings, declared functions
+    smoltalk-openhermes-100k-4k-direct: 0.19      # rehearsal
+    metamathqa-reasoning: 0.09
+    synthetic-multiturn-tools: 0.04
+    synthetic-reasoning-tools: 0.04
+    synthetic-reasoning: 0.035
+    gsm8k-tools: 0.03
+    gsm8k-reasoning: 0.02
+    metamathqa-tools: 0.005
+  seq_len: 4096
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.2e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 120000000
+  warmup_tokens: 3000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 4
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 15000000
+  gen_every_tokens: 15000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+    - "<|user|>How many of the numbers in [4, 9, 16, 23, 42] are even?<|end|><|assistant|>"
+    - "<|user|>What is the capital of France?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  needle_source: fineweb-edu-b
+  quality_suite: true
+milestone_tokens: 15000000
+notes: "Gate for RL: tool_misfire <= 0.10 (v1: 0.39-0.46 flat, stage A: 0.00) -- read this one first, it is what
+  killed v1; judged overall >= 3.40 with no category more than ~0.3 below stage A except arithmetic (targeted,
+  up); needle min-depth >= 80% at 4K; slm.eval.reasoning --tools mean accuracy and tool-use rate on the generated
+  families no worse than v1 (arith 0.82-1.00 acc at 0.70-1.00 use, 0 tool errors). GSM8K is NOT gated here: v1
+  got 4.5% at a 17% tool-use rate because real word problems are out of distribution for the synthetic grammars,
+  and closing that is what the GRPO stage is for."

@@ -242,3 +242,31 @@ def test_lm_eval_wrapper_scoring(tmp_path):
     direct = sum(float(logp[len(ctx) - 1 + i, t]) for i, t in enumerate(cont))
     assert abs(direct - res[0][0]) < 1e-3
     assert lm.generate_until([types.SimpleNamespace(args=("the", {"until": ["\n"], "max_gen_toks": 5}))])[0] is not None
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_chunked_loss_with_ignored_targets_compiles():
+    """SFT targets carry IGNORE_INDEX. The chunked path under torch.compile used to gather at -100 and trip
+    inductor's bounds check at the first eval (M9 stage A); pretraining never hit it because every token is a
+    target. Chunked, unchunked and compiled must all equal the reference."""
+    import torch.nn.functional as F
+
+    from slm.model.loss import IGNORE_INDEX, chunked_cross_entropy
+
+    torch.manual_seed(0)
+    B, T, d, V = 2, 64, 32, 512
+    h = torch.randn(B, T, d, device="cuda")
+    w = torch.randn(V, d, device="cuda")
+    t = torch.randint(0, V, (B, T), device="cuda")
+    t[:, ::3] = IGNORE_INDEX
+    ref = F.cross_entropy(F.linear(h.reshape(-1, d), w).float(), t.reshape(-1), ignore_index=IGNORE_INDEX, reduction="sum")
+    n_expected = int((t != IGNORE_INDEX).sum())
+    for cs in (0, 32):
+        loss, n = chunked_cross_entropy(h, w, t, cs)
+        assert int(n) == n_expected and abs(float(loss) - float(ref)) < 1e-2
+    compiled = torch.compile(lambda hh, tt: chunked_cross_entropy(hh, w, tt, 32), dynamic=False)
+    loss, n = compiled(h, t)
+    assert int(n) == n_expected and abs(float(loss) - float(ref)) < 1e-2
+    # every target ignored: zero loss, zero valid, no NaN from an empty reduction
+    loss, n = chunked_cross_entropy(h, w, torch.full_like(t, IGNORE_INDEX), 32)
+    assert int(n) == 0 and float(loss) == 0.0

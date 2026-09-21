@@ -274,3 +274,30 @@ def test_loader_state_survives_a_mixture_change_and_a_smaller_source(tmp_path, c
     x, y = ld.next()  # reads without an IndexError
     assert x.shape == (4, 15)
     ld.close()
+
+
+def test_direct_think_never_declines_on_a_computational_prompt():
+    """The "no code needed" lines are the fix for M9 stage B's tool over-triggering; pointing one at a prompt
+    that wants computation would teach the opposite of the lesson (see slm/data/direct_think.py)."""
+    import random
+
+    from slm.data.direct_think import line
+
+    rng = random.Random(0)
+    for q in ("What is 17 + 25?", "Sort the list [3, 1, 2]", "How many of the numbers in [4, 9] are even?",
+              "What is the average of 4, 8 and 12?", "Calculate the total cost."):
+        assert line(q, rng) is None, q
+    for q in ("What is the capital of France?", "Why is the sky blue?", "Write a poem about the sea"):
+        assert line(q, rng), q
+
+
+def test_direct_think_spans_carry_no_tool_markup():
+    """A think line must never contain <<...>> markup: format_chat would turn it into a real call."""
+    import random
+
+    from slm.data.direct_think import _DECLINE, _PLAIN
+
+    for group in list(_PLAIN.values()) + [_DECLINE]:
+        for text in group:
+            assert "<<" not in text and ">>" not in text
+            assert text.strip() == text and text.endswith((".", "?"))

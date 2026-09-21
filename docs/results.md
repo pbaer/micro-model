@@ -436,3 +436,55 @@ Facts by category: capitals 88.6%, history 83.3%, science 67.5%, culture 65%, la
 The 336M base beats the 149M base on every benchmark and by 26 points on the facts probe, and it is a genuine
 4K model by the strict gate. Reference points: random is 25/25/50; GPT-2 small (124M, ~10B tokens) scores ~29-31
 on HellaSwag; SmolLM-135M (600B tokens) ~42.
+
+## 10. M9 post-training on the second base (`m9_sft_336m`, `m9_tool_336m`, 2026-09-21)
+
+### Stage A — chat SFT (200M tokens, 5 SmolTalk sets at 4K, mandatory but empty think span)
+
+| measure | base (`m8_base_4k_336m` final) | stage A final |
+|---|---|---|
+| judged overall | 3.06 | **3.47** |
+| judged correctness / coherence / task | 3.41 / 2.72 / 3.06 | 3.03 / **3.56** / **3.81** |
+| tool misfire rate (28 eligible prompts) | 0.00 | 0.00 |
+| HellaSwag (acc_norm) / ARC-Easy / PIQA, limit 2000 | — | 35.1 (42.6) / 58.4 / 66.6 |
+| facts probe (194 items) | 69.1% | 70.1% |
+| needle effective context (n=64, strict gate) | 4096 | **4096** |
+
+Stage A did what chat SFT is for: coherence +0.84 and task-following +0.75, retrieval and knowledge intact.
+Correctness fell 0.38, which is the base's decay trade being partly given back. Judged quality wobbles
++-0.15 across its 8 checkpoints with no trend after 50M, so 200M tokens was more than this stage needed.
+
+### Stage B v1 — reasoning and Python tools (120M tokens, 34% chat rehearsal) — **FAILED its gate**
+
+| measure | stage A | stage B v1 final | best stage B ckpt (105M) |
+|---|---|---|---|
+| judged overall | **3.47** | 3.00 | 3.16 |
+| correctness / coherence / task | 3.03 / 3.56 / 3.81 | 2.38 / 3.41 / 3.22 | 2.53 / 3.50 / 3.44 |
+| **tool misfire rate** | **0.00** | **0.393** | 0.429 |
+| ARC-Easy / PIQA / facts probe | 58.4 / 66.6 / 70.1% | 56.9 / 66.8 / 69.6% | — |
+| needle effective context | 4096 | **3072** (70.3% worst depth at 4K) | — |
+
+Judged categories, stage A -> stage B v1 final:
+
+| arithmetic | python | prose | narrative | definition | facts | qa | pattern |
+|---|---|---|---|---|---|---|---|
+| 2.83 -> **4.50** | 4.22 -> 3.94 | 3.25 -> 3.17 | 2.67 -> **3.17** | 4.17 -> 3.17 | 3.08 -> 2.46 | 3.50 -> **1.50** | 4.00 -> **1.58** |
+
+The targeted skill was learned and everything else paid for it. The diagnosis is one number: **every category
+that emitted a `<|python_call|>` regressed, and every category that did not held or improved.** The misfire
+rate was 0.464 at the first 15M-token checkpoint and never fell below 0.393 in 120M tokens — flat, so no amount
+of further training was going to fix it. `What is the capital of France?` produced an invented
+`city_population(...)` call (NameError) and the answer "That would be Aldershaw."
+
+The tool mechanism itself is sound where the prompt resembles the training grammars
+(`slm.eval.reasoning --tools`, stage B v1 final): arith1 1.00 acc at 0.90 tool use, arith2 0.94 at 0.81,
+arith2mul 0.82 at 0.70, arith_multi 0.99 at 1.00, word 0.89 at 0.41, all with a 0.00 tool-error rate.
+GSM8K is the opposite failure — 4.5% accuracy at a 0.17 tool-use rate and 12% malformed — because real word
+problems are out of distribution for those grammars. Both failures are the same thing: **the model routes on
+surface form, not on need.**
+
+Cause: v1's mixture contained "empty think, then answer" (chat rehearsal) and "think with a tool call, then
+answer" (tools) and no third case. Once the model moved off empty think spans, the only non-empty span it knew
+how to write contained code — and short, data-free questions look exactly like the tool grammars' prompts.
+`slm/data/direct_think.py` and `configs/train/m9_tool2_336m.yaml` are the fix; `tool_misfire` is now reported
+per checkpoint by `slm.eval.quality` so routing is visible during a run instead of after it.
