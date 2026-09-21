@@ -10,6 +10,7 @@ with the instruction (`slm.rl.tasks.prompt_messages`), so the verifier stays str
 from __future__ import annotations
 
 import random
+import ast
 import re
 
 SUFFIX = "\nThink step by step, then give the final answer on its own line as '#### <number>'."
@@ -40,7 +41,32 @@ def marker_answer(x: str) -> str:
     return f"#### {x}"
 
 
+def humanize(x: str) -> str:
+    """A list answer written the way a person writes it, not the way Python prints it.
+
+    The generated tool tasks carry their gold as the sandbox produced it, so a list answer reached the natural
+    (non-marker) templates as a repr: 6.7% of `synthetic-python-tools` read "The answer is ['tape', 'binder',
+    'stapler']." M9 stage B v3 learned exactly that and answered "List the days of the week" with
+    "So the answer is ['sunday', 'monday', ...]" -- judged `pattern` 4.00 -> 1.67, the single largest piece of
+    that stage's regression. A chat answer should never be a raw repr.
+
+    Joined with ", " and no "and": `slm.rl.rewards.exact_match` compares a list item by item on commas, and a
+    trailing "and" would fold two items into one and fail gold that is otherwise right.
+    """
+    t = x.strip()
+    if not (t.startswith("[") and t.endswith("]")):
+        return x
+    try:
+        items = ast.literal_eval(t)
+    except (ValueError, SyntaxError):
+        return x
+    if not isinstance(items, list) or not items:
+        return x
+    return ", ".join(str(i) for i in items)
+
+
 def natural_answer(x: str, rng: random.Random) -> str:
+    x = humanize(x)
     return rng.choice(_NATURAL_NUMERIC if is_numeric_answer(x) else _NATURAL_TEXT).format(x=x)
 
 

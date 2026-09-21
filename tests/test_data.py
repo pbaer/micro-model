@@ -301,3 +301,23 @@ def test_direct_think_spans_carry_no_tool_markup():
         for text in group:
             assert "<<" not in text and ">>" not in text
             assert text.strip() == text and text.endswith((".", "?"))
+
+
+def test_list_answers_are_english_not_python_reprs():
+    """A chat answer must never be a raw repr: `synthetic-python-tools` taught 'The answer is ['tape',
+    'binder', 'stapler'].' in 6.7% of its conversations, and M9 stage B v3 answered "List the days of the week"
+    with "So the answer is ['sunday', 'monday', ...]" (judged pattern 4.00 -> 1.67)."""
+    import random
+
+    from slm.data.answers import humanize, natural_answer
+    from slm.rl.rewards import exact_match
+
+    for gold in ("['tape', 'binder', 'stapler']", "[24, 27, 31]"):
+        out = natural_answer(gold, random.Random(0))
+        assert "[" not in out and "'" not in out, out
+        # the reward verifier must still accept the humanised form against the stored gold
+        assert exact_match(humanize(gold), gold), gold
+    # non-lists are untouched
+    assert humanize("42") == "42"
+    assert humanize("eraser") == "eraser"
+    assert humanize("[]") == "[]"

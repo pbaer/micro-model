@@ -96,3 +96,24 @@ arrives long before the model learns to stop (repetition loops after a correct f
 failure mode of a base model at this size, and the rubric is designed to show exactly that split). SFT should
 lift `task` and `coherence` sharply at a nearly flat `correctness`; RL on math should move `arithmetic` and
 little else. A category that drops across a stage boundary is the regression signal this exists for.
+
+## Known issue: `expect` is written for the completion form (suite v1)
+
+`expect` is a single string per prompt, shown to the judge for both the `completion` and the `chat` form. For
+`days`, `months` and `evens` it was written against the completion prompt, which starts the list part-way:
+
+| id | completion prompt | chat prompt | expect (shown for both) |
+|---|---|---|---|
+| days | `The days of the week are Monday, Tuesday,` | `List the days of the week.` | `Wednesday, Thursday, ... (in order, no extras, no repeats)` |
+| months | `... are January, February,` | `List the twelve months of the year in order.` | `March through December in order` |
+| evens | `Counting by twos: 2, 4, 6, 8, 10,` | `Continue the sequence: 2, 4, 6, 8, 10, ...` | `12, 14, 16, 18, ...` |
+
+A chat answer that correctly lists all seven days from Monday therefore reads as wrong against the stated
+expectation. Two independent judges flagged it on the same item while scoring M9 stage B v3 (2026-09-21).
+`opposites` has a milder version: "ideally keeps the Q/A format" only makes sense for the completion prompt.
+
+Not fixed yet, deliberately. Changing `expect` bumps `SUITE_VERSION` and item ids embed it, so every stored
+score stops being comparable — which would destroy the stage A / stage B comparison the M9 decision rests on.
+The defect is identical across all stages, so relative movement is still valid and only the absolute `pattern`
+numbers are depressed. Fix it at the next natural version bump by making `expect` a per-mode pair, and re-judge
+the base and SFT checkpoints under v2 at the same time.
