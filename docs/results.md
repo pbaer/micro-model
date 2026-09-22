@@ -642,3 +642,23 @@ tighter KL budget; the per-family `reward_schemes` mechanism already exists to c
 is far ahead on reasoning and tool use (mean 0.779 vs 0.701, algebra 0.99 vs 0.35), and its judged overall
 difference (-0.09) is inside the +-0.25 checkpoint wobble. `m9_tool4_336m/checkpoints/final.pt` remains the
 better choice for pure factual chat, and both are kept.
+
+## 12. MMLU: at chance, and not worth tracking (2026-09-22)
+
+First MMLU run on any checkpoint in the project (`lm_eval` `mmlu` group, 40 questions per subject, 61 subjects).
+
+| checkpoint | MMLU |
+|---|---|
+| random baseline (4 choices) | **25.0%** |
+| base, `m8_base_4k_336m` final | 24.3% |
+| stage B, `m9_tool4_336m` final | 22.9% |
+| stage C, `m9_rl2_336m` best.pt | 23.6% |
+
+All three are at or below chance and the differences between them are noise. The per-subject spread (8-42%)
+is sampling variance at 40 questions each, not signal: no subject result here should be quoted.
+
+This is the expected outcome for 336M parameters at 10B tokens — MMLU needs far more of both before it rises
+above chance — but it had been an open "known gap" and is now closed. **Conclusion: MMLU stays out of the
+regular suite.** It has no resolution at this scale, so it cannot track progress between stages. The facts
+probe (`slm.eval.facts`, 194 items, completion-style) is the knowledge metric that does: it reads 69-73%
+across these same checkpoints and moves measurably between stages.

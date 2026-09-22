@@ -545,3 +545,28 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   needs a chat rehearsal family or a tighter KL budget. `reward_schemes` already supports per-family schemes.
 - M9 output: `runs/m9_rl2_336m/checkpoints/best.pt`. `m9_tool4_336m/checkpoints/final.pt` is kept as the
   better pure-chat model.
+
+## 2026-09-22 (later) — post-M9 checks: no free checkpoint, MMLU at chance, models backed up
+
+- **The intermediate RL checkpoints do not offer a better trade, and the hypothesis behind looking was wrong.**
+  I expected the judged-facts regression (v4 2.88 -> RL 2.00) to scale with KL drift, so an earlier checkpoint
+  would keep the reasoning gain cheaply. Measured: step 50 (KL ~0.02) scores facts **1.50**, step 100 (~0.037)
+  **2.58**, step 141 (0.174) **2.00** — non-monotonic, so drift magnitude is not the mechanism. Judged overall:
+  v4 3.58, step 50 3.17, step 100 3.52, step 141 3.49; reasoning mean 0.701 / 0.739 / 0.730 / 0.779.
+- Consequently the planned follow-up — re-running RL with `kl_stop` tightened to ~0.06 — was **dropped without
+  running it**. It would have cost ~2 h to reproduce the same regression, since low KL does not protect facts.
+  Measuring the checkpoints already on disk cost 20 minutes and settled it.
+- `best.pt` stays the M9 output on the original grounds: clearly the best reasoning (mean 0.779, algebra 0.99
+  against v4's 0.35) with judged overall inside the +-0.25 checkpoint wobble of v4.
+- Also learned: `slm.eval.quality generate --run X` already covers every snapshot in the index, so the first
+  RL judging run had scored steps 50 and 100 too. Re-generating them was redundant — check `status` first.
+- **MMLU run for the first time on any checkpoint, and it is at chance**: base 24.3%, stage B 22.9%, stage C
+  23.6% against a 25.0% baseline. Expected at 336M/10B, but now measured rather than assumed. It stays out of
+  the regular suite: no resolution at this scale, so it cannot track anything. The facts probe (69-73%, moves
+  between stages) remains the knowledge metric.
+- `scripts/backup_models.sh`: curated off-drive backup of the four checkpoints that matter (0.63 GB each) with
+  their configs, metrics, eval json, judged-quality records, the tokenizer, the docs and the git SHA — 2.6 GB
+  to `C:\slm-backup\<date>`. Off-drive, **not** off-machine; a real off-site destination is still needed.
+- Operational risk for Peter: **D: is at 97%, 68 GB free**, `runs/` is 241 GB and one 336M run costs ~14 GB.
+  Superseded attempts hold ~46 GB (`m9_tool_336m`, `m9_tool2_336m`, `m9_tool3_336m`, `m9_rl_336m`); their
+  results are all in `results.md`, so only the checkpoints would be lost. Nothing deleted — his call.
