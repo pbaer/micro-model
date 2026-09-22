@@ -581,3 +581,64 @@ needle identically (worst depth 70% / 75% / 73% against the base's 84%). Per the
 is claimed only where needle holds, `m9_tool4_336m` is documented as **effective context 3072**, not 4096.
 Treat this as a property of tool SFT at this scale rather than a mixture defect; benchmark performance was
 given priority over context length (Peter, 2026-09-22).
+
+## 11. M9 stage C — GRPO (`m9_rl2_336m`, best.pt at step 141, 2026-09-22)
+
+Two attempts. Try 1 (`m9_rl_336m`) stopped at step 69 on a false-positive collapse guard and is kept only as
+the evidence for the two fixes it produced; try 2 is the run.
+
+| | pre-RL (v4) | step 50 | step 100 | step 141 (best.pt) |
+|---|---|---|---|---|
+| held-out accuracy (96 prompts) | 0.250 | 0.323 | 0.375 | **0.385** |
+| malformed | 0.15 | 0.11 | 0.09 | **0.07** |
+| mean completion length | 138 | 117 | 103 | 92 |
+
+Stopped by the KL guard on a sustained KL of 0.174 against its 0.15 budget, held-out still rising.
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate — the clearest win of the whole milestone:
+
+| | arith1 | arith2 | arith2mul | arith_multi | algebra | word | gsm8k | mean |
+|---|---|---|---|---|---|---|---|---|
+| v4 | 1.00/0.90 | 0.91/0.48 | 0.75/0.47 | 0.96/1.00 | 0.35/0.00 | 0.89/0.54 | 0.04/0.30 | 0.701 |
+| RL | 0.80/1.00 | 0.93/0.98 | 0.75/0.98 | 0.95/1.00 | **0.99/0.96** | **0.98/0.97** | 0.06/**0.78** | **0.779** |
+
+RL taught the model to actually reach for the sandbox — rates went from 0.00-0.54 to 0.96-1.00 — and algebra
+followed from 0.35 to 0.99 because linear equations are now solved in the tool instead of attempted mentally.
+**GSM8K barely moved (0.04 -> 0.06) despite tool use nearly tripling**: the bottleneck there is reading the
+problem and setting it up, not the arithmetic, and RL fixed only the routing half.
+
+Core benchmarks are unchanged, so the drift cost nothing there:
+
+| | needle (4K worst) | HellaSwag (norm) | ARC-Easy | PIQA | facts probe |
+|---|---|---|---|---|---|
+| stage A | **4096** (84%) | 35.1 (42.6) | **58.4** | 66.6 | 70.1% |
+| v4 | 3072 (73%) | 34.8 (42.8) | 57.8 | **67.2** | **72.7%** |
+| RL best.pt | 3072 (75%) | 34.5 (42.8) | 58.0 | 66.6 | 71.1% |
+
+Judged, and this is where RL costs something:
+
+| | overall | corr | coh | task | misfire | arith | defin | facts | narra | patte | prose | pytho | qa |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| stage A | 3.47 | 3.03 | 3.56 | **3.81** | **0.000** | 2.83 | 4.17 | 3.08 | 2.67 | **4.00** | 3.25 | 4.22 | 3.50 |
+| v4 | **3.58** | **3.22** | 3.84 | 3.69 | 0.250 | 4.42 | 4.17 | 2.88 | **4.00** | 2.50 | 3.33 | 4.22 | 4.50 |
+| RL | 3.49 | 3.06 | **3.94** | 3.47 | 0.321 | **4.67** | 3.50 | **2.00** | 3.50 | 3.25 | **3.58** | **4.28** | **5.00** |
+
+Overall is flat within checkpoint noise (3.58 -> 3.49), with arithmetic, pattern, prose, python and qa all up
+and coherence the best of any checkpoint in the project. Two regressions are real and have the same cause:
+
+- **judged facts 2.88 -> 2.00**, far more than the facts *probe* moved (72.7% -> 71.1%). In chat mode the RL
+  policy answers knowledge questions with terse verifier-shaped templates: "Who wrote Hamlet?" -> "So the
+  answer is 2.", "What is the chemical symbol for gold?" -> "So the answer is True.", "Name the seven
+  continents." -> "That would be China."
+- **tool misfire 0.250 -> 0.321.** `reward_scheme: tool` pays 1.0 for correct-with-a-call against 0.5 for
+  correct-without, so the policy was rewarded for reaching for the sandbox unconditionally.
+
+Both follow from RL having seen only math, tool and constraint families: with no chat or knowledge task in the
+mixture and nothing but a KL term anchoring it, the whole policy moved toward tool-and-terse. The fix for a
+future run is a rehearsal family of ordinary chat prompts scored on something other than a verifier, or a
+tighter KL budget; the per-family `reward_schemes` mechanism already exists to carry it.
+
+**Which checkpoint is the M9 output.** `m9_rl2_336m/checkpoints/best.pt`. It ties v4 on every core benchmark,
+is far ahead on reasoning and tool use (mean 0.779 vs 0.701, algebra 0.99 vs 0.35), and its judged overall
+difference (-0.09) is inside the +-0.25 checkpoint wobble. `m9_tool4_336m/checkpoints/final.pt` remains the
+better choice for pure factual chat, and both are kept.

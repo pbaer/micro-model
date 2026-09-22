@@ -67,8 +67,8 @@ class RlTrainer:
         self.step = 0
         self.tokens = 0  # completion tokens optimized so far
         self.stop_requested = False
-        self._ent_hist: deque[float] = deque(maxlen=c.guard_window)
-        self._kl_hist: deque[float] = deque(maxlen=c.guard_window)
+        self._ent_hist: deque[float] = deque(maxlen=cfg.guard_window)
+        self._kl_hist: deque[float] = deque(maxlen=cfg.guard_window)
         self.session_start = time.time()
         self.elapsed_before = 0.0
         latest = self.ckpt_dir / "latest.pt"

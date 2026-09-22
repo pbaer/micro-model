@@ -501,3 +501,47 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   pattern only, and the wanted behaviours are visible in the outputs — "List the days of the week" now draws
   "I do not need to run anything here. Let me answer from knowledge." followed by the correct list, and
   "17 + 25" draws a real `<<17+25=42>>` calculator call.
+
+## 2026-09-22 — M9 stage B settled on v4, stage C (GRPO) run, milestone complete
+
+- Stage B v4 (`m9_tool4_336m`) is the stage B output: judged 3.58 at its last checkpoint against stage A's
+  3.47, python fully recovered to 4.22 by restoring `smoltalk-smol-constraints` (exactly the predicted effect),
+  qa/narrative/prose all above stage A. Read as level-with-stage-A rather than better — v4's per-checkpoint
+  mean is 3.44 against stage A's 3.49, and 3.58 is both its last point and its maximum. The capability came
+  free: arithmetic 2.83 -> 4.42 and working tool use at no net cost.
+- The `humanize()` fix worked partially: pattern 1.67 -> 2.50. Python reprs in generated answers fell 6.7% ->
+  0.51% and the model stopped answering "List the days of the week" with a list repr, but the broader habit of
+  answering short prompts with a terse template survived. I had attributed most of the pattern collapse to the
+  reprs; that was only part of it.
+- Retrieval: three mixtures with very different balances all eroded 4K needle the same way (worst depth 70% /
+  75% / 73% against the base's 84%), so the post-SFT model is documented as a **3072** model. Peter's call
+  (2026-09-22): benchmarks over context length, cap it if needed.
+- Stage C try 1 (`m9_rl_336m`) stopped at step 69 with "collapse guard: entropy 2.54". **It was not a
+  collapse.** Over 69 steps entropy ran 0.00-2.54, stdev 0.63, corr with step -0.13 — stationary noise from a
+  24-rollout step — while KL to the reference sat at 0.0003. A policy that has not moved cannot have collapsed.
+  The guard compared a single step against its limit; m6 try 1, the failure it was written for, went 0.8 -> 5
+  and stayed. It now tests the mean over `guard_window` (10) steps and cannot fire before the window fills.
+- The same log showed the real problem, and it is the more useful lesson: **KL averaged 0.00028 against a 0.15
+  budget — 0.2% of the movement the run was allowed.** That is why reward was flat over 50 steps and held-out
+  moved 0.250 -> 0.271 (two prompts of 96). The KL budget, not the learning rate, is the safety mechanism, and
+  it was going unused. lr 8e-7 -> 4e-6 and prompts_per_step 4 -> 8.
+- Try 2 (`m9_rl2_336m`) then learned cleanly: held-out 0.250 -> 0.323 -> 0.375 -> **0.385**, malformed
+  0.15 -> 0.07, train reward rising monotonically from step 20 while try 1 had wandered. Stopped at step 141 by
+  the KL guard (0.174 vs 0.15), held-out still climbing. KL had accelerated — I extrapolated it linearly to
+  ~0.12 by step 250 and it reached 0.174 by 141.
+- Before launching, `scripts/rl_signal_probe.py` measured what GRPO actually depends on: the share of groups
+  whose rollouts do not all score the same (a group with no spread has zero advantage). It found the config's
+  40% `pytool` share was the worst-spent part of the budget — those families sit at 0.56-0.94 pass with
+  0.85-1.00 tool use — while `constraints` yields spread in 62% of groups at only 0.12 pass, because the
+  `fraction` scheme gives partial credit. Reweighted to 40/30/20/10 constraints/gsm8k/pytool_numbers/
+  pytool_declared, raising the signal-weighted share of useful updates from 0.36 to 0.45. The trainer already
+  logs `no-signal groups` per step, so the probe's value was in measuring it *per family before committing*.
+- Stage C result: reasoning mean 0.701 -> 0.779, algebra **0.35 -> 0.99**, tool-use rates 0.00-0.54 -> 0.96-1.00,
+  core benchmarks flat. GSM8K barely moved (0.04 -> 0.06) despite tool use tripling to 0.78 — the bottleneck is
+  comprehension and setup, not arithmetic.
+- The cost, and it has one cause: judged facts 2.88 -> 2.00 and tool misfire 0.250 -> 0.321. RL saw only math,
+  tool and constraint families, so with nothing but a KL term anchoring it the whole policy moved toward
+  tool-and-terse; in chat mode it now answers "Who wrote Hamlet?" with "So the answer is 2." A future RL run
+  needs a chat rehearsal family or a tighter KL budget. `reward_schemes` already supports per-family schemes.
+- M9 output: `runs/m9_rl2_336m/checkpoints/best.pt`. `m9_tool4_336m/checkpoints/final.pt` is kept as the
+  better pure-chat model.
