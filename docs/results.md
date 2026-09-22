@@ -488,3 +488,96 @@ answer" (tools) and no third case. Once the model moved off empty think spans, t
 how to write contained code — and short, data-free questions look exactly like the tool grammars' prompts.
 `slm/data/direct_think.py` and `configs/train/m9_tool2_336m.yaml` are the fix; `tool_misfire` is now reported
 per checkpoint by `slm.eval.quality` so routing is visible during a run instead of after it.
+
+### Stage B v3 — conversation-balanced mixture (`m9_tool3_336m`, 120M tokens) — best of the three, still short
+
+| measure | stage A | v1 | **v3** |
+|---|---|---|---|
+| judged overall | **3.47** | 3.00 | 3.24 |
+| correctness / coherence / task | 3.03 / 3.56 / 3.81 | 2.38 / 3.41 / 3.22 | **3.06** / 3.22 / 3.44 |
+| tool misfire (mean over checkpoints) | 0.000 | 0.459 | **0.259** |
+| needle effective context (n=64, 7 depths) | **4096** (84% worst) | 3072 (70%) | 3072 (75%) |
+| HellaSwag (norm) / ARC-Easy / PIQA | 35.1 (42.6) / 58.4 / 66.6 | 35.1 (42.4) / 56.9 / 66.8 | 34.8 (**42.9**) / 57.6 / 66.8 |
+| facts probe | 70.1% | 69.6% | **71.1%** |
+
+Judged categories, stage A -> v1 -> v3:
+
+| arithmetic | definition | qa | facts | narrative | prose | python | pattern |
+|---|---|---|---|---|---|---|---|
+| 2.83 -> 4.50 -> **4.58** | 4.17 -> 3.17 -> **4.33** | 3.50 -> 1.50 -> **4.00** | 3.08 -> 2.46 -> 2.92 | 2.67 -> 3.17 -> 3.17 | 3.25 -> 3.17 -> 2.92 | 4.22 -> 3.94 -> **3.44** | 4.00 -> 1.58 -> **1.67** |
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate:
+
+| | arith2 | arith2mul | word | algebra | gsm8k |
+|---|---|---|---|---|---|
+| v1 | 0.94 / 0.81 | 0.82 / 0.70 | 0.89 / 0.41 | **0.44** / 0.00 | 0.045 / 0.17 |
+| v3 | **0.99 / 0.94** | **0.92 / 0.91** | **0.93 / 0.64** | **0.22** / 0.02 | 0.060 / **0.28** |
+
+The `math_tool : math_no_tool` rebalance (0.8 : 1 -> 2.0 : 1) did what it was for — every tool-use rate rose and
+the accuracies with it — but cutting the prose-reasoning math sets halved algebra, which uses no tool at all
+(0.02 rate). Mean accuracy is unchanged (0.730 vs 0.732) because the two cancel.
+
+Two measurement corrections came out of this run, both of which changed conclusions:
+
+- **The misfire metric undercounted.** It counted only spans the tool loop executed, and the loop honours
+  `<<...>>` markup solely inside the think span, so an answer that reaches for the sandbox — or runs out of
+  `max_new_tokens` mid-program — scored zero calls. That hid 6 of v3's 8 misfires at 15M (0.179 reported
+  against 0.286 real). `_ran_code` now checks the markup opener too.
+- **The in-run needle eval is optimistic.** It uses 5 depths; the full eval uses 7. v3's 30M snapshot read
+  "effective 4096" in-run and 3072 under `slm.eval.long_context`. Do not read a gate from the in-run number.
+
+The 30M snapshot scored judged 3.58, above stage A, but measured identically to the final on every hard
+number (needle 3072, ARC-E 57.5, facts 70.6%, algebra 0.19, gsm8k 0.03). With judged scores wobbling +-0.25
+across eight checkpoints, that peak is selection noise, not a better model.
+
+Where the remaining gap sits (n = 32 scored items, bash excluded): recovering `pattern` is worth +0.29 of
+overall and `python` +0.15 — 84% of the 0.23 shortfall. Recovering all four below-stage-A categories would
+give 3.76.
+
+### Stage B v4 — the stage B output (`m9_tool4_336m`, 120M tokens, 2026-09-21)
+
+Judged, final checkpoint of each run:
+
+| | stage A | v1 | v3 | **v4** |
+|---|---|---|---|---|
+| overall | 3.47 | 3.00 | 3.24 | **3.58** |
+| correctness / coherence / task | 3.03 / 3.56 / 3.81 | 2.38 / 3.41 / 3.22 | 3.06 / 3.22 / 3.44 | **3.22 / 3.84** / 3.69 |
+| tool misfire (mean over 8 checkpoints) | 0.000 | 0.459 | 0.259 | 0.255 |
+| arithmetic | 2.83 | 4.50 | 4.58 | 4.42 |
+| python | 4.22 | 3.94 | 3.44 | **4.22** |
+| pattern | 4.00 | 1.58 | 1.67 | 2.50 |
+| qa / narrative / prose | 3.50 / 2.67 / 3.25 | 1.50 / 3.17 / 3.17 | 4.00 / 3.17 / 2.92 | **4.50 / 4.00 / 3.33** |
+| facts | 3.08 | 2.46 | 2.92 | 2.88 |
+| needle effective (4K worst depth) | **4096** (84%) | 3072 (70%) | 3072 (75%) | 3072 (73%) |
+| ARC-Easy / PIQA / HellaSwag(norm) | 58.4 / 66.6 / 42.6 | 56.9 / 66.8 / 42.4 | 57.6 / 66.8 / 42.9 | 57.8 / **67.2** / 42.8 |
+| facts probe | 70.1% | 69.6% | 71.1% | **72.7%** |
+
+**Read the overall figure carefully.** 3.58 is v4's last checkpoint and also its maximum; its per-checkpoint
+curve is 3.38 / 3.30 / 3.47 / 3.40 / 3.37 / 3.51 / 3.50 / 3.58, mean **3.44**, against stage A's mean of 3.49.
+The honest claim is that v4 is *level with stage A on general quality while adding arithmetic 2.83 -> 4.42 and
+working tool use* — the capability came free, not that v4 is a better chat model.
+
+What each v4 change bought, against the prediction made before the run:
+
+| change | predicted | measured |
+|---|---|---|
+| `humanize()` list answers (reprs 6.7% -> 0.51%) | pattern recovers | 1.67 -> 2.50, partial |
+| restore `smoltalk-smol-constraints` (0.06) | python recovers to ~4.22 | 3.44 -> **4.22**, exact |
+| restore `synthetic-reasoning` in full | algebra 0.22 -> ~0.44 | 0.22 -> 0.35, partial |
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate:
+
+| | arith2 | arith2mul | word | algebra | gsm8k |
+|---|---|---|---|---|---|
+| v1 (math_tool:math_no_tool 0.8:1) | 0.94 / 0.81 | 0.82 / 0.70 | 0.89 / 0.41 | **0.44** / 0.00 | 0.045 / 0.17 |
+| v3 (2.0:1) | 0.99 / **0.94** | 0.92 / **0.91** | 0.93 / 0.64 | 0.22 / 0.02 | 0.060 / 0.28 |
+| v4 (1.3:1) | 0.91 / 0.48 | 0.75 / 0.47 | 0.89 / 0.54 | 0.35 / 0.00 | 0.040 / **0.30** |
+
+The `math_tool : math_no_tool` conversation ratio controls tool use on math almost proportionally, and it
+trades against algebra, which uses no tool at all (rate 0.00-0.02). v4 deliberately sits between v1 and v3.
+
+**Retrieval: the post-SFT model is a 3K model.** Three mixtures with completely different balances eroded 4K
+needle identically (worst depth 70% / 75% / 73% against the base's 84%). Per the project rule that long context
+is claimed only where needle holds, `m9_tool4_336m` is documented as **effective context 3072**, not 4096.
+Treat this as a property of tool SFT at this scale rather than a mixture defect; benchmark performance was
+given priority over context length (Peter, 2026-09-22).
