@@ -1,0 +1,92 @@
+# M9 stage C: GRPO on the 336M tool model, over three kinds of reward at once.
+#
+# The 149M RL runs optimized arithmetic only, so the policy got better at the one corner of the sandbox it was
+# already using. This mix is the whole permitted subset plus an ability nothing has rewarded so far:
+#   gsm8k        real word problems (train split, 90/10 hash split; the test split stays untouched)
+#   pytool       the grammars of slm.rl.synth_python (pipelines, strings, number theory, simulations,
+#                run-this-code, declared functions) - gold answers are often a list, a word or a boolean
+#   constraints  writing prompts with 1-3 machine-checkable instructions (slm.rl.constraints)
+# Weighting is by repetition in `tasks`: 40% constraints, 30% gsm8k, 20% pytool_numbers, 10% pytool_declared.
+# That is not the obvious split, and scripts/rl_signal_probe.py is why. GRPO advantages are group-relative, so
+# a group whose six rollouts all score the same has zero std and contributes nothing; pass rate alone cannot
+# say whether a family is worth training on, because always-fail and always-pass are equally useless. Measured
+# on the stage B output (runs/m9_rl_336m/signal_probe.json, 8 prompts x 6 rollouts per family):
+#
+#   family            pass   groups with spread
+#   constraints       0.12   0.62   <- partial credit from `fraction` creates spread even when nobody succeeds
+#   pytool_numbers    0.79   0.50
+#   pytool_pipeline   0.94   0.38
+#   gsm8k             0.04   0.25
+#   pytool_declared   0.56   0.25
+#   pytool_runcode    0.73   0.25
+#   pytool_sim        0.85   0.12
+#   pytool_strings    0.60   0.12
+#
+# The generic `pytool` families are saturated -- 0.56-0.94 pass at 0.85-1.00 tool use -- so the original 40%
+# share bought the least gradient of any part of the budget. Re-probing at temperature 1.0 moved nothing
+# systematically (the differences are inside the probe's 0.125 resolution at 8 prompts), so diversity is not
+# the lever and temperature stays at 0.8. This split raises the signal-weighted share of useful updates from
+# 0.36 to 0.45. gsm8k keeps 30% despite weak signal: it is the benchmark this stage exists to move, and RL on
+# a verifiable reward is the only mechanism left that can move it.
+#
+# Per-family reward schemes are the point of `reward_schemes`: constraint tasks have no tool to use, so under
+# `tool` they could never score above 0.5 and the policy would learn nothing from them. They get `fraction`
+# (the share of instructions satisfied), which also gives gradient long before an answer is fully obedient.
+#
+# prompts_per_step 8 (try 1 used 4): 48 rollouts per update instead of 24, which halves the gradient noise and
+# the per-step entropy variance that stopped try 1. Steps ran 12-20s there, so this stays well inside budget.
+#
+# VRAM: 336M at 4K trains at ~13.8 GiB with microbatch 2, and RL also holds a reference copy and generates.
+# Hence max_seq_len 4096, group_size 6 (KV cache ~48 KiB/token/row), microbatch 2 and a teacher-forced pass
+# over one group at a time. Watch vram_reserved_gib in the run page; > ~14.5 GiB is a failure, not a warning.
+# Wall clock: ~24 rollouts/step at a few hundred generated tokens each -> roughly 2 min/step, so ~8-10 h for
+# 250 steps plus five held-out evals. Checkpoints every 15 min, resume by default, best.pt keeps the best policy.
+run_name: m9_rl2_336m  # try 1 is runs/m9_rl_336m, stopped at step 69 by the pre-window collapse guard
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  max_seq_len: 4096  # the rollout KV cache is sized from this; the run is a 4K run
+init_from: runs/m9_tool4_336m/checkpoints/final.pt
+tools: true
+max_tool_calls: 6
+tasks: [constraints, constraints, constraints, constraints, gsm8k, gsm8k, gsm8k, pytool_numbers, pytool_numbers, pytool_declared]
+n_train_prompts: 6000
+n_heldout_prompts: 96   # every eval greedy-decodes all of them; pytool prompt lengths vary, so batches are small
+group_size: 6
+prompts_per_step: 8
+max_new_tokens: 512     # a tool call, its result, and a written answer all have to fit
+temperature: 0.8
+top_p: 0.95
+think_required: true
+reward_scheme: tool     # default: 1.0 correct AND the answer came out of a Python call, 0.5 correct without one
+reward_schemes:
+  gsm8k: tool
+  pytool: tool          # matches every pytool_* family by its group prefix
+  constraints: fraction # the share of instructions satisfied; there is no tool to use here
+lr: 4.0e-6              # try 1 (2026-09-22) ran 75 steps at 8e-7 and moved the policy almost not at all:
+                        # KL to the reference averaged 0.00028 against the 0.15 budget -- 0.2% of it -- with
+                        # reward flat over 50 steps and held-out 0.250 -> 0.271 (+2 prompts of 96, inside
+                        # noise). The KL budget, not the learning rate, is the safety mechanism here, and it
+                        # was going unused. 5x lr should land KL near 0.008, still ~20x under the limit.
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.05           # m6 try1 collapsed at 0.01 (entropy 0.8 -> 5 by step 150)
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 2
+total_steps: 250
+entropy_stop: 2.5       # collapse guards: stop, checkpoint, keep best.pt -- judged on `guard_window` means
+kl_stop: 0.15
+guard_window: 10        # try 1 was stopped at step 75 by ONE step touching entropy 2.54. Over its 69 steps
+                        # entropy ran 0.00-2.54, stdev 0.63, with no trend (corr with step -0.13) while KL
+                        # stayed at 0.0003: noise from a 24-rollout step, not a diverging policy. Collapse is
+                        # sustained (m6 try1 went 0.8 -> 5 and stayed), so the window mean is what is tested.
+eval_every_steps: 50
+eval_max_new_tokens: 512
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 9
+notes: "RL over the full tool subset plus instruction constraints. Per-family schemes (tool / fraction). Use best.pt (held-out) for evals; check tool_use_rate, answer_from_tool_rate and score_mean per family in the rollout dumps."

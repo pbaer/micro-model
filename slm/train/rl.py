@@ -18,6 +18,7 @@ import random
 import signal
 import sys
 import time
+from collections import deque
 from pathlib import Path
 
 import torch
@@ -66,6 +67,8 @@ class RlTrainer:
         self.step = 0
         self.tokens = 0  # completion tokens optimized so far
         self.stop_requested = False
+        self._ent_hist: deque[float] = deque(maxlen=c.guard_window)
+        self._kl_hist: deque[float] = deque(maxlen=c.guard_window)
         self.session_start = time.time()
         self.elapsed_before = 0.0
         latest = self.ckpt_dir / "latest.pt"
@@ -223,8 +226,20 @@ class RlTrainer:
                 console(f"step {self.step} | reward {rs['reward_mean']:.3f} succ {rs['success_rate']:.2f} | len {rs['len_mean']:.0f} | malformed {rs['malformed_rate']:.2f} | "
                         f"kl {os_['kl']:.4f} ent {os_['entropy']:.2f} clip {os_['clip_frac']:.2f} | gn {os_['grad_norm']:.2f} | no-signal groups {rs['groups_no_signal']:.2f} | "
                         f"rollout {t1 - t0:.0f}s opt {time.time() - t1:.0f}s")
-                if (c.entropy_stop and os_["entropy"] > c.entropy_stop) or (c.kl_stop and os_["kl"] > c.kl_stop):
-                    msg = f"collapse guard: entropy {os_['entropy']:.2f} (limit {c.entropy_stop}) kl {os_['kl']:.3f} (limit {c.kl_stop}); stopping, best.pt keeps the best held-out policy"
+                # Judge the guard on a smoothed value, never one step. A step is only `prompts_per_step` x
+                # `group_size` rollouts, so per-step entropy is extremely noisy: on 2026-09-22 the m9 run
+                # measured entropy 0.00-2.54 with stdev 0.63 and NO trend (corr with step -0.13) while KL sat
+                # at 0.0003 against a 0.15 budget, and a single step touching 2.54 stopped a policy that had
+                # barely moved from the reference. Collapse is a sustained condition -- m6 try1 went 0.8 -> 5
+                # and stayed there -- so it is the window mean that has to cross the limit.
+                self._ent_hist.append(os_["entropy"])
+                self._kl_hist.append(os_["kl"])
+                ent_avg = sum(self._ent_hist) / len(self._ent_hist)
+                kl_avg = sum(self._kl_hist) / len(self._kl_hist)
+                full = len(self._ent_hist) == self._ent_hist.maxlen
+                if full and ((c.entropy_stop and ent_avg > c.entropy_stop) or (c.kl_stop and kl_avg > c.kl_stop)):
+                    msg = (f"collapse guard: entropy {ent_avg:.2f} (limit {c.entropy_stop}) kl {kl_avg:.3f} (limit {c.kl_stop}), "
+                           f"means over the last {self._ent_hist.maxlen} steps; stopping, best.pt keeps the best held-out policy")
                     console(f"*** {msg} ***")
                     self.log.log("warn", tokens=self.tokens, update=self.step, msg=msg)
                     self.stop_requested = True

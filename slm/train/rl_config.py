@@ -27,6 +27,7 @@ class RlConfig:
     # Collapse guards (0 = off): stop the run (checkpoint + report) when the rollout entropy or the KL to the
     # reference exceeds these, which is what a diverging policy looks like before it produces garbage.
     entropy_stop: float = 0.0
+    guard_window: int = 10  # collapse is judged on the mean of this many steps, never one (see slm/train/rl.py)
     kl_stop: float = 0.0
     gpu_warn_temp_c: float = 80.0
     # tasks / curriculum
