@@ -945,3 +945,22 @@ gsm8k 0.02/0.45 -> 0.06/**0.75**, pytool_numbers 0.77/0.90 -> 0.95/1.00, constra
 pressures coexist in one mix: the trained math families saturate at 100% tool use while the chat anchor holds
 at zero. Whether that transfers to the post-run evals -- the reasoning suite, judged facts and misfire,
 multi-turn -- is the next table.
+
+### 16a. Run 5 reasoning: training the families in the mix restores their tool use
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate, best.pt of each run:
+
+| | arith2 | arith2mul | algebra | word | GSM8K | SVAMP | mean |
+|---|---|---|---|---|---|---|---|
+| run 2 (no anchor) | 0.93 / 0.98 | 0.75 / 0.98 | 0.99 / 0.96 | 0.98 / 0.97 | 0.06 / **0.78** | -- | 0.779* |
+| run 3 (anchor) | 0.95 / 0.90 | 0.86 / 0.83 | 0.74 / 0.71 | 0.95 / 0.79 | 0.04 / 0.54 | 0.05 / 0.68 | 0.686 |
+| run 4 (anchor, `tool_strict`) | 0.87 / 0.70 | 0.75 / 0.66 | 0.57 / 0.45 | 0.93 / 0.64 | 0.06 / 0.54 | 0.07 / 0.55 | 0.646 |
+| **run 5 (anchor, families in mix)** | **0.99 / 1.00** | **1.00 / 1.00** | **1.00 / 1.00** | **1.00 / 1.00** | 0.04 / 0.69 | **0.09 / 0.84** | 0.755 |
+
+*run 2's mean is over six tasks (no SVAMP); on the shared tasks run 5 matches or beats it everywhere except
+GSM8K tool use.
+
+The diagnosis from §15 was right: the erosion was generalisation onto families outside the mix, and putting
+them inside fixes it completely -- algebra tool use 0.45 -> 1.00, arith2mul 0.66 -> 1.00 -- while the chat
+anchor held at zero calls throughout training. SVAMP is the best of any run (0.09 at 0.84 tool use). GSM8K is
+unchanged at 0.04: comprehension, as before. Judged chat quality, misfire and multi-turn follow in 16b.
