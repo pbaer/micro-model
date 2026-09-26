@@ -24,6 +24,7 @@ import argparse
 import hashlib
 import json
 import random
+import re
 import sys
 import time
 from collections import Counter
@@ -49,19 +50,79 @@ def svamp_train_tasks(n: int, seed: int):
     return out
 
 
+THINK_PREFIX = "Looking at the attempts: "  # every think opens with the same tokens: see think_line
+
+
 def think_line(groups, gold_key: str, k: int) -> str:
-    """What the pool showed, stated plainly. Deterministic; it is the answer's justification, not a rationale."""
+    """What the pool showed, stated plainly. Deterministic; it is the answer's justification, not a rationale.
+
+    Every line opens with the same fixed prefix. The first version opened with the support count ("2 of 8
+    attempts...") and greedy decoding never produced it: the probability of the first think token was spread
+    over the digits while the empty think span -- one token, `<|/think|>` -- stayed the argmax, so the model
+    learned the set (target loss 2.95 -> 1.08) and still answered in its old style. A fixed opening token is
+    the argmax after very little training, and the rest follows it."""
     g = next((g for g in groups if g.key == gold_key), None)
     if g is None:
-        return f"None of the {k} attempts reached the right answer; I will work it out myself."
+        return THINK_PREFIX + f"none of the {k} attempts reached the right answer; I will work it out myself."
     top = groups[0]
     if g is top:
         why = f"computed with code in {g.verified} of them" if g.verified else "the most agreed on"
-        return f"{g.support} of {k} attempts reached {g.answer}, {why}. I will go with that."
+        return THINK_PREFIX + f"{g.support} of {k} attempts reached {g.answer}, {why}. I will go with that."
     if g.verified and not top.verified:
-        return (f"{top.support} attempts said {top.answer} but none computed it; {g.support} reached {g.answer} and "
-                f"{g.verified} of those computed it with code. The computed one is more trustworthy. I will go with {g.answer}.")
-    return f"{g.support} of {k} attempts reached {g.answer}; checking it, that is the one that holds. I will go with {g.answer}."
+        return THINK_PREFIX + (f"{top.support} attempts said {top.answer} but none computed it; {g.support} reached {g.answer} and "
+                               f"{g.verified} of those computed it with code. The computed one is more trustworthy. I will go with {g.answer}.")
+    return THINK_PREFIX + f"{g.support} of {k} attempts reached {g.answer}; checking it, that is the one that holds. I will go with {g.answer}."
+
+
+_ANSWER_LINE = re.compile(r"^- Answer: (.+?) \(agreed by (\d+) attempts?; (?:computed with code in (\d+)|not computed with code)\)$")
+
+
+def groups_from_prompt(prompt: str):
+    """Recover the groups (answer, support, verified) from a rendered selection prompt, in prompt order --
+    enough to rebuild the SFT targets from `select_pool.jsonl` without re-sampling."""
+    from slm.swarm import Group, answer_key
+
+    out = []
+    for line in prompt.splitlines():
+        m = _ANSWER_LINE.match(line)
+        if m:
+            ans, sup, ver = m.group(1), int(m.group(2)), int(m.group(3) or 0)
+            out.append(Group(key=answer_key(ans), answer=ans, support=sup, verified=ver, members=[], rationale=""))
+    return out
+
+
+def rebuild(pool_path: str, name: str, tokenizer: str, k: int) -> dict:
+    """Write a fresh SFT set (same prompts, current think template) from an existing pool file. No model."""
+    from slm.data.chat import format_chat
+    from slm.data.tokenizer import SlmTokenizer
+    from slm.swarm import answer_key
+
+    tok = SlmTokenizer.load(tokenizer)
+    out = SFT_DIR / Path(tokenizer).name / name
+    writers = {"train": SftShardWriter(out / "train"), "val": SftShardWriter(out / "val")}
+    stats = Counter()
+    for line in Path(pool_path).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        gold_key = answer_key(str(r["gold"]))
+        groups = groups_from_prompt(r["prompt"])
+        if not any(g.key == gold_key for g in groups):
+            stats["no_correct"] += 1
+            continue
+        assistant = {"role": "assistant", "think": think_line(groups, gold_key, k), "content": f"#### {r['gold']}"}
+        enc = format_chat(tok, [{"role": "user", "content": r["prompt"]}, assistant], think_required=True, tools=True)
+        writers[r["split"]].add(enc.ids, enc.loss_mask)
+        stats[f"sft:{r['split']}"] += 1
+    for w in writers.values():
+        w.flush()
+    (out / "select_pool.jsonl").write_bytes(Path(pool_path).read_bytes())
+    m = {"name": name, "source": "synth_select.rebuild", "pool": str(pool_path), "tokenizer_sha256": tok.sha256, "k": k, "think_prefix": THINK_PREFIX,
+         "think_required": True, "tools": True, "counts": dict(stats),
+         "train_examples": writers["train"].total_examples, "train_tokens": writers["train"].total_tokens, "train_targets": writers["train"].total_targets,
+         "val_examples": writers["val"].total_examples, "val_tokens": writers["val"].total_tokens, "val_targets": writers["val"].total_targets}
+    (out / "manifest.json").write_text(json.dumps(m, indent=1), encoding="utf-8")
+    return m
 
 
 def build(checkpoint: str, tokenizer: str, name: str, n_gsm8k: int, n_svamp: int, n_synth: int, k: int, seed: int,
@@ -136,7 +197,8 @@ def build(checkpoint: str, tokenizer: str, name: str, n_gsm8k: int, n_svamp: int
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--rebuild-from", default=None, help="an existing select_pool.jsonl: rewrite the SFT set from it with the current think template (no model)")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--name", default="select-sft")
     ap.add_argument("--n-gsm8k", type=int, default=800)
@@ -149,6 +211,11 @@ def main() -> None:
     ap.add_argument("--max-new", type=int, default=512)
     ap.add_argument("--device", default="cuda")
     a = ap.parse_args()
+    if a.rebuild_from:
+        print(json.dumps(rebuild(a.rebuild_from, a.name, a.tokenizer, a.k), indent=1))
+        return
+    if not a.checkpoint:
+        ap.error("--checkpoint is required unless --rebuild-from is given")
     m = build(a.checkpoint, a.tokenizer, a.name, a.n_gsm8k, a.n_svamp, a.n_synth, a.k, a.seed, a.budget, a.temperature, a.max_new, device=a.device)
     print(json.dumps(m, indent=1))
 

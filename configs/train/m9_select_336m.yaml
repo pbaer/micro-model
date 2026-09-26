@@ -23,7 +23,7 @@ data:
   sft_root: C:\slm-data\sft\v1
   tokenized_root: C:\slm-data\tokenized\v1
   mixture:
-    select-sft: 0.05
+    select-sft2: 0.05                             # rebuilt with the fixed-prefix think (v1 learned the set, greedy never opened the think)
     smoltalk-smol-magpie-ultra-4k-direct: 0.25
     smoltalk-openhermes-100k-4k-direct: 0.17
     smoltalk-systemchats-30k-short: 0.12
@@ -67,4 +67,4 @@ eval:
   report_every_minutes: 5
   prompts:
     - "<|user|>What is 17 + 25?<|end|><|assistant|>"
-notes: "Selection-format SFT on the M9 output; the base for RL run 6 (select family)."
+notes: "Selection-format SFT on the M9 output; the base for RL run 6 (select family). v2: select-sft2 (fixed-prefix think); v1 on select-sft reached target loss 1.08 but greedy decoding still emitted an empty think."
