@@ -39,7 +39,10 @@ def main() -> None:
                     w.add(toks[s:e].tolist())
         w.flush()
         stats[split] = {"tokens": w.total_tokens, "docs": w.total_docs, "shards": w.shard_idx}
-    (out / "manifest.json").write_text(json.dumps({"source": a.out, "from_sft": a.sources, **stats}, indent=1), encoding="utf-8")
+    # The portal and the data page read prepare.py's flat keys (train_tokens, train_docs, ...); without them a
+    # converted source shows no volume and, until 2026-09-26, turned the overview's token total into NaN.
+    flat = {f"{split}_{k}": v for split, d in stats.items() if isinstance(d, dict) for k, v in d.items()}
+    (out / "manifest.json").write_text(json.dumps({"source": a.out, "from_sft": a.sources, **stats, **flat}, indent=1), encoding="utf-8")
     print(json.dumps(stats))
 
 
