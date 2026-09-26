@@ -639,3 +639,23 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   3.65) is real but costs 0.12 of reasoning mean and tool use in every family, plus multi-turn recall 0.578 ->
   0.516; benchmarks and needle are identical. Checking the hard suite before the judged argmax changed the
   answer this time. Pushed to GitHub.
+
+## 2026-09-26 (night) — RL run 4: the reward-gap hypothesis is wrong; run 3 stands
+
+- Run 4 = run 3 with `tool_strict` on the math/tool families (correct-without-a-call 0.25 instead of 0.5),
+  chat anchor unchanged. Hypothesis: the mental route at half credit let the anchor's "call less" pressure win
+  on math; widening the gap would tip it back. Stopped by the KL guard at 150 like run 3; held-out 0.344 ->
+  0.427, malformed 0.22 -> 0.05.
+- **Wrong.** Reasoning mean 0.686 -> 0.646, tool use down in every family (algebra 0.71 -> 0.45, arith2 0.90
+  -> 0.70), multi-turn recall 0.578 -> 0.422; benchmarks unchanged. Opposite to the prediction across the
+  board, which one-seed variance does not explain.
+- Why, visible only afterwards: `tool_strict` acts on the families RL trains on, where tool use was already
+  0.9-1.0, so it had nothing to push. The families that dropped -- algebra, arith2, word -- are not in the RL
+  mix at all; their tool use is generalisation, and the anchor's "short question -> do not call" generalises to
+  short questions with numbers. No reward change inside the mix reaches that. What would: add `algebra`,
+  `arith2`, `word` to the mix under a tool scheme so the contested surface form is trained, not inferred.
+- Decision: `m9_rl3_336m/checkpoints/best.pt` stays the M9 output. Run 4 is the ablation that closes off the
+  reward-gap explanation. Whether the next run is the mix change above, or whether the goal-5 swarm discussion
+  changes what RL should optimise for, is Peter's call.
+- Peter also asked for the command center to get "?" info cards on every chart and diagram (learning project);
+  an Opus subagent is doing that on the portal files only.

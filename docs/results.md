@@ -867,3 +867,16 @@ is learned rather than inferred. Whether that is the next run, or whether the sw
 what RL should optimise for, is Peter's call. Until then run 3's `best.pt` remains the M9 output: run 4's
 judged and hard-suite numbers follow below, but a 0.04 drop in reasoning mean is not what any judged gain
 could buy back given the goals.
+
+### 15a. Run 4 hard suite: the decision does not need the judges
+
+| | needle | HellaSwag(n) | ARC-E | PIQA | LAMBADA | OBQA(n) | SciQ | facts probe | mt recall | mt format | mt misfire | tok/turn |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| RL run 3 | 3072 (72%) | 43.0 | 58.0 | 66.6 | 32.9 | 31.6 | 83.3 | 72.7% | **0.578** | 0.906 | 0.047 | 35 |
+| RL run 4 | 3072 (72%) | 43.4 | 58.1 | 67.1 | 32.9 | 31.2 | 83.2 | 72.2% | 0.422 | **0.938** | **0.000** | 31 |
+
+Benchmarks, needle and the facts probe are identical within noise. Multi-turn recall fell 0.578 -> 0.422 (ten
+fewer of 64) while format and misfire improved slightly -- the same direction as the reasoning table: run 4
+answers more cleanly and knows less of what to do with the question. **Run 3's `best.pt` remains the M9
+output**; run 4 is kept as the ablation that rules out the reward-gap explanation. Judged scores and pass@k
+for run 4 are appended below when scored, for the record rather than for the decision.
