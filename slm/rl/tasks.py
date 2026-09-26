@@ -140,6 +140,43 @@ def _pytool(rng: random.Random, family: str | None = None):
     return gen_pytool(rng, family)
 
 
+_CHAT_POOL = None
+
+
+def chat_pool() -> list[Task]:
+    """Ordinary chat prompts as RL anchors, from the SmolTalk chat sets: the first user turn, short, without
+    code, and not something the tool could serve (slm.data.direct_think.is_computational, the same gate the
+    SFT rehearsal sets use). They carry no gold; `plain`/`verify_plain` rewards answering like a chatbot with
+    no tool call. Stage C without them drifted the whole policy toward verifier-shaped output on knowledge
+    questions (judged facts 2.88 -> 2.00, misfire 0.25 -> 0.32), and a tighter KL was measured not to help."""
+    global _CHAT_POOL
+    if _CHAT_POOL is None:
+        import pyarrow.parquet as pq
+
+        from slm.data.direct_think import is_computational
+        from slm.data.sources import SOURCES
+
+        pool, seen = [], set()
+        for name in ("smoltalk-openhermes-100k", "smoltalk-systemchats-30k", "smoltalk-everyday-conversations"):
+            src = SOURCES.get(name)
+            if src is None or not src.local_dir.exists():
+                continue
+            for p in sorted(src.local_dir.rglob("*.parquet")):
+                for r in pq.read_table(p, columns=["messages"]).to_pylist():
+                    first = next((m["content"] for m in r["messages"] if m["role"] == "user"), "")
+                    q = " ".join(first.split())
+                    if not (15 <= len(q) <= 200) or "```" in q or is_computational(q) or q in seen:
+                        continue
+                    seen.add(q)
+                    pool.append(Task(id=f"chat-{len(pool)}", prompt=q, answer="", task="chat",
+                                     meta={"verifier": "plain", "answer_style": "free"}))
+        _CHAT_POOL = pool
+    return _CHAT_POOL
+
+
+POOLED = {"gsm8k": gsm8k_pool, "chat": chat_pool}  # families drawn from a fixed pool rather than a generator
+
+
 def _constraints(rng: random.Random):
     from slm.rl.constraints import gen_constraints  # lazy: constraints imports this module
 
@@ -172,8 +209,11 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
     out: list[Task] = []
     seen: set[str] = set()
     attempts = 0
-    pool = [t for t in gsm8k_pool() if _split_of(t.prompt, holdout_permille) == split] if "gsm8k" in names else []
-    rng.shuffle(pool)
+    pools = {}
+    for fam, fn in POOLED.items():
+        if fam in names:
+            pools[fam] = [t for t in fn() if _split_of(t.prompt, holdout_permille) == split]
+            rng.shuffle(pools[fam])
     while len(out) < n and attempts < n * 50:
         attempts += 1
         name = rng.choice(names)
@@ -182,10 +222,10 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
         # bucket about one time in ten, while the gsm8k pool is pre-filtered and always lands: redrawing would
         # make the held-out set almost all gsm8k and hide every other family from the eval that picks best.pt.
         for _ in range(60):
-            if name == "gsm8k":
-                if not pool:
+            if name in pools:
+                if not pools[name]:
                     break
-                t = pool.pop()
+                t = pools[name].pop()
             else:
                 t = GENERATORS[name](rng)
                 if t is None:  # a grammar-based generator whose draw did not work out

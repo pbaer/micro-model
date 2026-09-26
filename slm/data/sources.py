@@ -45,6 +45,11 @@ SOURCES: dict[str, Source] = {
             notes="14 files, ~28.5 GB, ~10B GPT-2 tokens of educational web text (English-filtered).",
         ),
         Source(
+            "svamp", "ChilleD/SVAMP", "data/*.parquet", kind="math_qa", license="MIT",
+            notes="1000 simple arithmetic word problems (700 train / 300 test): the resolution band between our "
+                  "saturated synthetic word problems and GSM8K at the floor. Evaluated through slm.eval.reasoning.",
+        ),
+        Source(
             "cosmopedia", "HuggingFaceTB/smollm-corpus", "cosmopedia-v2/*.parquet", kind="prose", license="ODC-By",
             notes="104 files x ~1.17 GB, synthetic textbooks/stories. Use a few files only.",
         ),

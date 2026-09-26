@@ -120,6 +120,28 @@ def verify_constraints(answer_text: str, gold: str) -> Verdict:
     return Verdict(ok == len(specs), f"{ok}/{len(specs)} satisfied", reason, ok / len(specs))
 
 
+# The natural-answer templates from slm.data.answers, as a chat answer must NOT look. "So the answer is 2." to
+# "Who wrote Hamlet?" is what M9 stage C produced after RL had seen only math, tool and constraint families:
+# the whole policy drifted toward verifier-shaped output. A one-sentence answer that is nothing but a template
+# opener and a short filler is that drift; real prose that happens to start "It is ..." runs longer than this.
+_TEMPLATE_RE = re.compile(
+    r"^\s*(so the answer is|the answer is|that gives|that makes|so it comes to|the result is|it is|that would be|so it's)"
+    r"\b[^.\n]{0,40}\.?\s*$", re.I)
+
+
+def verify_plain(answer_text: str) -> Verdict:
+    """An ordinary chat answer: present, not a `####` line, not a verifier template. There is no gold -- the
+    reward is for answering like a chatbot, and the `plain` scheme adds "and without calling the tool"."""
+    a = answer_text.strip()
+    if not a:
+        return Verdict(False, None, "empty answer")
+    if "####" in a:
+        return Verdict(False, a[:60], "verifier marker in a chat answer")
+    if _TEMPLATE_RE.match(a):
+        return Verdict(False, a[:60], "verifier-shaped template in a chat answer")
+    return Verdict(True, a[:60], "plain chat answer")
+
+
 def verify_answer(answer_text: str, gold: str, kind: str = "auto", strict: bool = True) -> Verdict:
     """The single entry point the rollout path uses. "auto" dispatches on the gold's shape: a numeric gold
     gets the numeric comparison it always had, anything else the exact one."""
@@ -127,6 +149,8 @@ def verify_answer(answer_text: str, gold: str, kind: str = "auto", strict: bool 
 
     if kind == "constraints":
         return verify_constraints(answer_text, gold)
+    if kind == "plain":
+        return verify_plain(answer_text)
     if kind == "numeric" or (kind == "auto" and is_numeric_answer(gold)):
         return verify_numeric(answer_text, gold, strict)
     if kind not in ("auto", "exact"):
@@ -172,12 +196,14 @@ def resolve_scheme(task: str, schemes: dict[str, str] | None, default: str = "bi
     return default
 
 
-def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", from_tool: bool = False) -> float:
+def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", from_tool: bool = False, n_calls: int = 0) -> float:
     """binary: 1/0. signed: +1/-1. shaped: 1 correct, 0 wrong-but-parsable, -0.5 malformed/unparsable.
     tool: 1 if correct AND the answer came out of a Python call, 0.5 if correct without one, 0 otherwise —
     the incentive to compute with the tool rather than in the head.
     fraction: the verdict's partial credit (constraints: the share of instructions satisfied), so an answer
-    that obeys 2 of 3 rules is worth more than one that obeys none, long before any of them is perfect."""
+    that obeys 2 of 3 rules is worth more than one that obeys none, long before any of them is perfect.
+    plain: 1 if the answer is an ordinary chat answer (verify_plain) AND no tool was called, else 0 -- the
+    anchor that keeps RL on math and tools from turning every reply into a tool call and a template."""
     if scheme == "binary":
         return 1.0 if v.correct else 0.0
     if scheme == "fraction":
@@ -188,6 +214,8 @@ def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", fro
         if malformed:
             return 0.0  # includes tool calls outside the think span
         return (1.0 if from_tool else 0.5) if v.correct else 0.0
+    if scheme == "plain":
+        return 0.0 if (malformed or n_calls) else (1.0 if v.correct else 0.0)
     if scheme == "signed":
         return 1.0 if v.correct else -1.0
     if scheme == "shaped":

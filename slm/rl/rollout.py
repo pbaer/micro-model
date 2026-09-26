@@ -127,7 +127,7 @@ def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, 
     return Rollout(
         prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
         text=render_tools(tok, c), think=parsed["think"], answer=parsed["answer"], parsed=v.parsed, correct=v.correct,
-        reward=reward_from_verdict(v, malformed, reward_scheme, aft), verifier=v.reason, malformed=malformed,
+        reward=reward_from_verdict(v, malformed, reward_scheme, aft, n_calls=(tc.n_calls if tc is not None else 0)), verifier=v.reason, malformed=malformed,
         termination="stop" if parsed["terminated"] else (tc.termination if tc is not None else "length"), n_tokens=len(c), old_logprobs=old_lp,
         ref_logprobs=ref_lp, gen_mask=(tc.gen_mask if tc is not None else []), tool_calls=(tc.n_calls if tc is not None else 0),
         tool_errors=(tc.n_errors if tc is not None else 0), tool_results=[list(x) for x in calls], answer_from_tool=aft,

@@ -46,6 +46,23 @@ def gsm8k_tasks(n: int) -> list[Task]:
     return out
 
 
+def svamp_tasks(n: int) -> list[Task]:
+    """SVAMP test problems (300): one-step arithmetic word problems. The resolution band between our synthetic
+    word problems, which post-training saturates, and GSM8K, where a 336M model sits near the floor."""
+    src = SOURCES["svamp"]
+    files = [p for p in src.local_dir.rglob("*.parquet") if "test" in p.name]
+    if not files:
+        return []
+    rows = pq.read_table(files[0]).to_pylist()
+    rows = rows if n < 0 else rows[:n]
+    out = []
+    for i, r in enumerate(rows):
+        gold = str(r["Answer"]).strip()
+        gold = gold[:-2] if gold.endswith(".0") else gold
+        out.append(Task(id=f"svamp-test-{i}", prompt=r["question_concat"].strip(), answer=gold, task="svamp"))
+    return out
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--checkpoint", required=True)
@@ -53,6 +70,7 @@ def main() -> None:
     ap.add_argument("--tasks", nargs="+", default=["arith1", "arith2", "arith2mul", "arith_multi", "algebra", "word"])
     ap.add_argument("--n", type=int, default=100, help="held-out problems per task")
     ap.add_argument("--gsm8k", type=int, default=0, help="number of GSM8K test problems (0 = skip, -1 = all 1319)")
+    ap.add_argument("--svamp", type=int, default=0, help="number of SVAMP test problems (0 = skip, -1 = all 300)")
     ap.add_argument("--tools", action="store_true", help="calculator tool available during generation")
     ap.add_argument("--max-tool-calls", type=int, default=8)
     ap.add_argument("--dump", default=None, help="jsonl of every problem with the model's trace, answer and tool stats")
@@ -80,6 +98,10 @@ def main() -> None:
             r = greedy_accuracy(model, tok, gsm8k_tasks(a.gsm8k), a.max_new, tools=a.tools, max_tool_calls=a.max_tool_calls, keep=keep)
             res["per_task"]["gsm8k_test"] = r
             line("gsm8k_test", r)
+        if a.svamp:
+            r = greedy_accuracy(model, tok, svamp_tasks(a.svamp), a.max_new, tools=a.tools, max_tool_calls=a.max_tool_calls, keep=keep)
+            res["per_task"]["svamp_test"] = r
+            line("svamp_test", r)
     if a.dump:
         Path(a.dump).parent.mkdir(parents=True, exist_ok=True)
         with open(a.dump, "w", encoding="utf-8") as f:

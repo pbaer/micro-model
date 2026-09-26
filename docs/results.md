@@ -662,3 +662,30 @@ above chance — but it had been an open "known gap" and is now closed. **Conclu
 regular suite.** It has no resolution at this scale, so it cannot track progress between stages. The facts
 probe (`slm.eval.facts`, 194 items, completion-style) is the knowledge metric that does: it reads 69-73%
 across these same checkpoints and moves measurably between stages.
+
+## 13. Benchmark revision: what has resolution at 336M (2026-09-26)
+
+The criterion (Peter, 2026-09-26): benchmarks we will not easily saturate and are not at chance on, covering
+basic world knowledge and problem solving. Every lm-eval candidate available in the harness was run on the
+base, the stage B output and the stage C output at `--limit 1000` (300 for the generation tasks). What
+matters is not where the base sits but whether a task *moves between stages* and has room on both sides.
+
+| task | chance | base | stage B (v4) | stage C (RL) | verdict |
+|---|---|---|---|---|---|
+| LAMBADA (openai) | ~0 | 32.1 | 33.1 | 33.0 | **keep** — solid resolution; a base-quality signal, and it should barely move under post-training, which it does not |
+| OpenBookQA (acc_norm) | 25 | 32.4 | 31.6 | 31.4 | **keep** — resolution on the normalised metric; raw `acc` is at chance |
+| SciQ | 25 | 81.5 | 82.8 | 83.5 | **keep** — easy but not saturated (frontier ~97), and it moves with post-training |
+| HellaSwag / ARC-Easy / PIQA | 25 / 25 / 50 | (unchanged, §10-11) | | | keep — the existing three |
+| BoolQ | 50 | 61.2 | 58.0 | 58.5 | **drop** — BoolQ's majority class is 62.2% of the validation set; every checkpoint is at or below it, so the model is not reading the passage |
+| WinoGrande | 50 | 53.0 | 52.9 | 51.9 | **drop** — chance |
+| ARC-Challenge | 25 | 24.2 / 26.8n | 25.3 / 26.1n | 24.9 / 26.8n | **drop** — chance on both metrics, like MMLU |
+| TriviaQA (exact match) | ~0 | 1.7 | 2.7 | 3.0 | **drop** — at the floor; the facts probe covers recall with resolution |
+| ASDiv | ~0 | 0.3 | 0.0 | 0.0 | **drop from lm-eval** — a harness mismatch, not capability: it scores free generation against a fixed answer format, and our models answer with a think span and `#### n`. The stage C model scores 0.98 on our word problems. SVAMP through our own reasoning eval is the honest version of this benchmark |
+
+Standard set from here: HellaSwag, ARC-Easy, PIQA, LAMBADA, OpenBookQA, SciQ (`scripts/measure_stage.sh`),
+plus SVAMP and GSM8K through `slm.eval.reasoning --tools`, plus the homebrew evals (facts probe, judged suite,
+needle, multi-turn). Not tracked: MMLU, ARC-Challenge, WinoGrande, BoolQ, TriviaQA, ASDiv.
+
+Two of the standard tasks are only usable on a normalised metric (OpenBookQA) or sit near where small models
+plateau (SciQ), so the homebrew evals carry more of the weight than the standard ones — which is the intended
+balance: standard benchmarks for comparability, homebrew ones for resolution on what this project is for.
