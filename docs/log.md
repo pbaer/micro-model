@@ -666,3 +666,6 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   selection artefact, so the M9 output choice between run 3 and run 4 goes to him. The anchor's facts/misfire
   gains hold across both runs; the open problem is tool use on out-of-mix families, and training them in the
   mix is the next run.
+- Peter's call on the run 3 / run 4 trade: **run 5 first, then decide** -- run 3's config plus `algebra`,
+  `arith2`, `word` in the RL mix under `tool`, so the out-of-mix families whose tool use the anchor eroded are
+  trained rather than inferred. Queued behind run 4's pass@k. Run 4 stands as interim output meanwhile.
