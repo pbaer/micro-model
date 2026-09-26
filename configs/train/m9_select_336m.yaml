@@ -9,9 +9,14 @@
 # candidate, so overriding the pool is learned there rather than imitated here.
 #
 # The rest of the mixture is rehearsal of the run 5 recipe so nothing measured on the M9 output moves: the
-# chat sets that anchored judged quality, the tool sets, constraints. 16M tokens at a low LR: only ~35% of
-# k=8 pools hold a correct candidate, so the select set is ~380 examples / ~0.25M tokens, and 0.05 of the mix
-# is about three epochs of it -- enough for a fixed template, not enough to bend the model around it.
+# chat sets that anchored judged quality, the tool sets, constraints.
+#
+# v1/v2 (16M tokens, lr 6e-6, select at 0.05 = ~5 epochs) did not install the format: the set's target loss
+# fell 2.95 -> 1.08 but the first think token still sat at ~8 nats on the *training* examples (argmax
+# <|/think|>), and RL run 6 launched on that base could earn no `select` reward (no '####' line). 123 updates
+# at 6e-6 is ~25x less lr*steps than the tool SFT. v3: 40M tokens at 1.5e-5 with the set at 0.15 (~6M tokens
+# over ~200 prompts: many epochs, deliberately -- installing a format, not teaching content), on HALF of the
+# correct pools; the other half and every no-correct pool are the RL family's, disjoint by prompt.
 run_name: m9_select_336m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_336m.yaml
@@ -23,9 +28,9 @@ data:
   sft_root: C:\slm-data\sft\v1
   tokenized_root: C:\slm-data\tokenized\v1
   mixture:
-    select-sft2: 0.05                             # rebuilt with the fixed-prefix think (v1 learned the set, greedy never opened the think)
-    smoltalk-smol-magpie-ultra-4k-direct: 0.25
-    smoltalk-openhermes-100k-4k-direct: 0.17
+    select-sft2: 0.15                             # the format set (half of the correct pools; see above)
+    smoltalk-smol-magpie-ultra-4k-direct: 0.20
+    smoltalk-openhermes-100k-4k-direct: 0.12
     smoltalk-systemchats-30k-short: 0.12
     synthetic-python-tools: 0.10
     smoltalk-openhermes-100k-short: 0.06
@@ -38,15 +43,15 @@ data:
   val_tokens: 1000000
   extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
 optim:
-  lr: 6.0e-6
+  lr: 1.5e-5
   betas: [0.9, 0.95]
   eps: 1.0e-8
   weight_decay: 0.1
   grad_clip: 1.0
 schedule:
   type: cosine
-  total_tokens: 16000000
-  warmup_tokens: 1000000
+  total_tokens: 40000000
+  warmup_tokens: 2000000
   min_lr_ratio: 0.1
 batch:
   microbatch: 2
@@ -59,12 +64,12 @@ runtime:
 ckpt:
   every_minutes: 10
 eval:
-  every_tokens: 8000000
-  gen_every_tokens: 8000000
+  every_tokens: 10000000
+  gen_every_tokens: 10000000
   gen_max_new_tokens: 128
   gen_temperature: 0.8
   gen_top_p: 0.95
   report_every_minutes: 5
   prompts:
     - "<|user|>What is 17 + 25?<|end|><|assistant|>"
-notes: "Selection-format SFT on the M9 output; the base for RL run 6 (select family). v2: select-sft2 (fixed-prefix think); v1 on select-sft reached target loss 1.08 but greedy decoding still emitted an empty think."
+notes: "Selection-format SFT on the M9 output; the base for RL run 6 (select family). v3: 40M tokens at 1.5e-5, select-sft2 at 0.15 on half the correct pools. v1/v2 (16M, 6e-6, 0.05) learned the set to loss 1.08 and greedy still emitted an empty think."

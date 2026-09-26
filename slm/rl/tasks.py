@@ -175,7 +175,7 @@ def chat_pool() -> list[Task]:
 
 
 _SELECT_POOL = None
-SELECT_POOL_FILE = "select-sft/select_pool.jsonl"  # under SFT_DIR/<tokenizer tag>; written by slm.rl.synth_select
+SELECT_POOL_FILE = "select-sft2/select_pool_rl.jsonl"  # under SFT_DIR/<tokenizer tag>; written by slm.rl.synth_select --rebuild-from (disjoint from its SFT prompts)
 
 
 def select_pool(path=None) -> list[Task]:

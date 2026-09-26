@@ -91,8 +91,13 @@ def groups_from_prompt(prompt: str):
     return out
 
 
-def rebuild(pool_path: str, name: str, tokenizer: str, k: int) -> dict:
-    """Write a fresh SFT set (same prompts, current think template) from an existing pool file. No model."""
+def rebuild(pool_path: str, name: str, tokenizer: str, k: int, sft_permille: int = 500) -> dict:
+    """Write a fresh SFT set (same prompts, current think template) from an existing pool file. No model.
+
+    The pools with a correct group are split by prompt hash: `sft_permille` of them become the SFT set, the rest
+    plus every no-correct pool go to `select_pool_rl.jsonl`, the RL family's file. Disjoint on purpose: the
+    format SFT repeats its few hundred prompts many times (that is what it takes to move the first think token,
+    see think_line), and a memorised gold must not be what RL rewards on the same prompt."""
     from slm.data.chat import format_chat
     from slm.data.tokenizer import SlmTokenizer
     from slm.swarm import answer_key
@@ -101,14 +106,17 @@ def rebuild(pool_path: str, name: str, tokenizer: str, k: int) -> dict:
     out = SFT_DIR / Path(tokenizer).name / name
     writers = {"train": SftShardWriter(out / "train"), "val": SftShardWriter(out / "val")}
     stats = Counter()
+    rl_f = open(out / "select_pool_rl.jsonl", "w", encoding="utf-8")
     for line in Path(pool_path).read_text(encoding="utf-8").splitlines():
         if not line.strip():
             continue
         r = json.loads(line)
         gold_key = answer_key(str(r["gold"]))
         groups = groups_from_prompt(r["prompt"])
-        if not any(g.key == gold_key for g in groups):
-            stats["no_correct"] += 1
+        bucket = int.from_bytes(hashlib.sha1(("sft:" + r["prompt"]).encode()).digest()[:4], "little") % 1000
+        if not any(g.key == gold_key for g in groups) or bucket >= sft_permille:
+            stats["rl_pool"] += 1
+            rl_f.write(json.dumps(r, ensure_ascii=False) + "\n")
             continue
         assistant = {"role": "assistant", "think": think_line(groups, gold_key, k), "content": f"#### {r['gold']}"}
         enc = format_chat(tok, [{"role": "user", "content": r["prompt"]}, assistant], think_required=True, tools=True)
@@ -116,8 +124,9 @@ def rebuild(pool_path: str, name: str, tokenizer: str, k: int) -> dict:
         stats[f"sft:{r['split']}"] += 1
     for w in writers.values():
         w.flush()
+    rl_f.close()
     (out / "select_pool.jsonl").write_bytes(Path(pool_path).read_bytes())
-    m = {"name": name, "source": "synth_select.rebuild", "pool": str(pool_path), "tokenizer_sha256": tok.sha256, "k": k, "think_prefix": THINK_PREFIX,
+    m = {"name": name, "source": "synth_select.rebuild", "sft_permille": sft_permille, "pool": str(pool_path), "tokenizer_sha256": tok.sha256, "k": k, "think_prefix": THINK_PREFIX,
          "think_required": True, "tools": True, "counts": dict(stats),
          "train_examples": writers["train"].total_examples, "train_tokens": writers["train"].total_tokens, "train_targets": writers["train"].total_targets,
          "val_examples": writers["val"].total_examples, "val_tokens": writers["val"].total_tokens, "val_targets": writers["val"].total_targets}
@@ -210,9 +219,10 @@ def main() -> None:
     ap.add_argument("--temperature", type=float, default=0.8)
     ap.add_argument("--max-new", type=int, default=512)
     ap.add_argument("--device", default="cuda")
+    ap.add_argument("--sft-permille", type=int, default=500, help="rebuild: share of correct pools that go to SFT; the rest are the RL pool")
     a = ap.parse_args()
     if a.rebuild_from:
-        print(json.dumps(rebuild(a.rebuild_from, a.name, a.tokenizer, a.k), indent=1))
+        print(json.dumps(rebuild(a.rebuild_from, a.name, a.tokenizer, a.k, a.sft_permille), indent=1))
         return
     if not a.checkpoint:
         ap.error("--checkpoint is required unless --rebuild-from is given")
