@@ -102,3 +102,22 @@ def test_sft_trainer_epochs(tmp_path, tok):
     assert kinds.count("milestone") == 2 and "finish" in kinds
     losses = [r["loss"] for r in recs if r["kind"] == "train"]
     assert losses[-1] < losses[0]
+
+
+def test_sft_stream_tiles_a_split_shorter_than_one_window(tmp_path):
+    """A rebuilt selection set had a 9-example val split (3,180 tokens) and the 4,097-token val window came back
+    short, which killed the trainer at startup (2026-09-26). Short splits are tiled to full-shape windows."""
+    import numpy as np
+
+    from slm.data.sft import SftShardWriter, SftStream
+
+    w = SftShardWriter(tmp_path / "val")
+    w.add([5, 6, 7, 8, 9], [0, 1, 1, 1, 1])
+    w.flush()
+    s = SftStream(tmp_path / "val")
+    t, m = s.next_window_masked(12)
+    assert t.shape == (12,) and m.shape == (12,)
+    assert t.tolist() == [5, 6, 7, 8, 9, 5, 6, 7, 8, 9, 5, 6] and m.tolist() == [0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1]
+    assert s.epoch == 3, "three tilings of a 5-token stream for a 12-token window"
+    t2, _ = s.next_window_masked(12)
+    assert t2.shape == (12,), "and again on the next call"

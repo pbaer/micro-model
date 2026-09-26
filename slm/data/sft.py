@@ -180,6 +180,15 @@ class SftStream(TokenStream):
         self.shard = self.offset = self.epoch = 0
 
     def next_window_masked(self, n: int) -> tuple[np.ndarray, np.ndarray]:
+        if self.total < n:
+            # a split shorter than one window (a nine-example val set): tile the whole stream, mask alongside,
+            # so every window has the full shape. Counts as one epoch per tiling.
+            reps = -(-n // self.total)
+            t = np.concatenate([np.asarray(x) for x in self.mm] * reps)[:n]
+            m = np.concatenate([np.asarray(x) for x in self.mask_mm] * reps)[:n]
+            self.offset = 0
+            self.epoch += reps
+            return t, m
         if self.offset + n > self.sizes[self.shard]:
             self.shard += 1
             self.offset = 0
