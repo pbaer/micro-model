@@ -1,6 +1,6 @@
 """The swarm's pure parts: grouping, evidence, majority rules and the selection prompt's budget (no model)."""
 
-from slm.swarm import Candidate, answer_key, collapse, majority, selector_messages, verified_majority
+from slm.swarm import Candidate, answer_key, collapse, display_answer, majority, selector_messages, verified_majority
 
 
 def cand(i, parsed, think="reasoning " * 20, from_tool=False, errors=0, calls=None):
@@ -14,6 +14,8 @@ def test_answer_key_groups_numbers_by_value_and_text_by_case():
     assert answer_key("2.5") == answer_key("2.50")
     assert answer_key("Paris.") == answer_key("paris") == "paris"
     assert answer_key(None) is None and answer_key("   ") is None
+    huge = "9" * 400  # a runaway sample; float() overflows, and the eval must not die on it
+    assert answer_key(huge) == huge and display_answer(huge) == huge
 
 
 def test_collapse_orders_verified_support_first_and_picks_a_verified_rationale():

@@ -99,7 +99,10 @@ def answer_key(parsed: str | None) -> str | None:
 
     v = _to_number(parsed)
     if v is not None:
-        return str(int(v)) if float(v).is_integer() else repr(float(v))
+        try:
+            return str(int(v)) if float(v).is_integer() else repr(float(v))
+        except (OverflowError, ValueError):  # a runaway number (the eval met one that overflowed float)
+            return str(v)
     t = " ".join(parsed.split()).strip(" .").lower()
     return t or None
 
@@ -109,7 +112,10 @@ def display_answer(parsed: str) -> str:
 
     v = _to_number(parsed)
     if v is not None:
-        return str(int(v)) if float(v).is_integer() else str(float(v))
+        try:
+            return str(int(v)) if float(v).is_integer() else str(float(v))
+        except (OverflowError, ValueError):
+            return str(v)
     return " ".join(parsed.split()).strip(" .")
 
 
