@@ -1043,3 +1043,32 @@ judged argmax" rule: the first found noise (run 2's 30M snapshot), the second a 
 this one an upgrade.
 
 **`runs/m9_rl5_336m/checkpoints/step_00200.pt` is the M9 output.** best.pt (step 150) is kept beside it.
+
+## 17. Goal 5, the swarm: baseline on the M9 output (`scripts/swarm_eval.py`, step 200, k=16, n=50 each, 2026-09-26)
+
+The pipeline (`slm/swarm.py`, `docs/design.md` "Swarm inference"): sample k, collapse by parsed answer with sandbox
+evidence, then one greedy pass of the *same* model over a selection prompt. Measured before any selection training,
+so `selector` here is the model reading a prompt format it has never seen. Ceilings from the same 16 samples:
+`oracle` = a correct sample exists (pass@16), `oracle_verified` = a correct *sandbox-verified* sample exists,
+`in_prompt` = the correct group survived into the selector prompt.
+
+| set | greedy | majority | verified maj. | **selector** | oracle | oracle verified | in prompt | groups / verified per 16 |
+|---|---|---|---|---|---|---|---|---|
+| GSM8K | 0.00 | 0.06 | 0.08 | **0.06** | 0.30 | 0.20 | 0.30 | 12.0 / 9.3 |
+| SVAMP | 0.10 | 0.14 | 0.12 | **0.10** | 0.58 | 0.50 | 0.54 | 11.7 / 11.8 |
+
+What it says:
+- The pool has the answer far more often than anything picks it: 0.30 / 0.58 at k=16 against 0.00 / 0.10 greedy. The
+  budget throws away almost nothing (in_prompt = oracle on GSM8K, 0.54 vs 0.58 on SVAMP), so the selection prompt
+  is not the bottleneck.
+- Verification is weaker than hoped as a filter: 9-12 of 16 candidates are "verified" (the answer came out of a
+  call that ran), because a wrong setup computed correctly is still verified. `verified_majority` gains +0.02 on
+  GSM8K and loses 0.02 on SVAMP -- noise. Provenance says "the arithmetic was done", not "the setup was right".
+- The untrained selector is at majority level and picked the right group in 3 of 15 (GSM8K) and 5 of 27 (SVAMP)
+  of the prompts that contained it, never calling the tool (0.00). Its disagreements with majority cancel
+  (1:1 and 0:2). So `in_prompt - selector` = 0.24 / 0.44 is the whole opportunity, and it is a training question:
+  the `select` SFT set and RL family (§18 when run 6 lands).
+- Cost: ~12 s per problem for 16 samples + selection (605 s / 431 s per 50), against ~1 s greedy.
+
+Crash note: the first attempt died at GSM8K problem 50 when a runaway sample produced a 400-digit number and
+`float()` overflowed in `answer_key` (9b038ce guards it). The eval's numbers above are from the rerun.
