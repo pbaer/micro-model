@@ -688,5 +688,6 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Two fixes: the slice site now raises a readable `ToolError` for a non-integer start/stop/step (and a zero
   step), and `run_tool` -- the harness boundary -- now converts *any* escaping exception into an `error:`
   result, because the class of bug is "the sandbox missed a case" and no program the model writes may take
-  the trainer down. Regression tests added. Relaunched; the trainer resumes from `latest.pt` (~step 60), so
-  the run continues rather than restarts. Crash log kept as `runs/m9_rl5_336m/train_crash_step60.log`.
+  the trainer down. Regression tests added. Relaunched; the trainer resumed full state (model, optimizer, counters,
+  RNG) from `latest.pt`, which the 15-minute cadence had written at step 51, so steps 52-60 were replayed --
+  nine steps lost, not the run. (I first read the console as "continued at 60"; it was my grep filter.) Crash log kept as `runs/m9_rl5_336m/train_crash_step60.log`.
