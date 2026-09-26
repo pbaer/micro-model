@@ -742,3 +742,18 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Chain running (`scripts/after_swarm_eval.sh`): baseline eval → build `select-sft` (600 GSM8K-train + 250
   SVAMP-train + 250 synthetic, k=8) → `m9_select_336m` (16M-token format SFT, rehearsal mix) → `m9_rl6_336m`
   (run 5's mix + `select` ×3/20, binary reward, seed 13). Then measure_stage + swarm_eval on the result.
+- The selection SFT took three tries, and the lesson is worth the log. v1 (16M tokens, lr 6e-6, the set at
+  0.05 = ~5 epochs of 400 examples) reached target loss 2.95 -> 1.08 on the set and greedy decoding still opened
+  the think with `<|/think|>` and answered "The answer is N." -- on its own *training* prompts. I guessed the
+  template's first token (a digit, so its mass was spread) and rebuilt with a fixed prefix (v2, no model needed:
+  `synth_select --rebuild-from` parses the groups back out of the prompt); same result. Per-token loss then
+  showed the truth: the first think token still cost ~8 nats on training examples; the 1.08 was all cheap
+  conditional tokens. 123 updates at 6e-6 is ~25x less lr*steps than the tool SFT, and a 400-example set at 5%
+  of the mix cannot move a first-token decision the other 95% keeps reinforcing. v3: 40M tokens at 1.5e-5,
+  the set at 0.15, on half of the correct pools (185 prompts, deliberately many epochs -- installing a format,
+  not content); the other half plus every no-correct pool became the RL family's `select_pool_rl.jsonl`, so a
+  memorised gold is never what RL rewards. Greedy on unseen pools now produces the template and `####` every
+  time, 2 of 3 solvable picks right. Also fixed on the way: `SftStream` tiles a split shorter than one window
+  (the 9-example val split crashed the trainer at startup). RL run 6 launched twice on the failed bases (each
+  killed within minutes: without a `####` line the `select` reward is always 0, so the family would have
+  taught nothing), then for real at 15:27 on v3.
