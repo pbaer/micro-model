@@ -722,3 +722,23 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   **M9 output is now `runs/m9_rl5_336m/checkpoints/step_00200.pt`.** The judged-argmax check has now found
   noise once, a trade once and an upgrade once; it stays. Prune script taught to keep that file; runs 3-5's
   remaining intermediates pruned; backup refreshed; pushed.
+
+## 2026-09-26 (evening) — goal 5: the swarm is built, the selector is being trained
+
+- Design settled with Peter: k parallel samples of one prompt, collapse by answer with sandbox evidence, then the
+  *same* model picks from a compact selection prompt (thinking omitted; the prompt fits the 3072 effective
+  context). One model, per goal 1 -- a separate selector would be a second model to train and defend.
+- Built `slm/swarm.py` (sample → collapse → verify → select, every stage returns its state), `scripts/swarm_eval.py`
+  (greedy / majority / verified_majority / selector against the oracle, oracle_verified and in_prompt ceilings)
+  and `slm/rl/synth_select.py` (selection SFT set + RL `select` pool from the model's own k=8 pools on the
+  train splits; no teacher). Design in `docs/design.md` "Swarm inference".
+- The first baseline eval died at problem 50: a runaway sample produced a 400-digit number and `float()` overflowed
+  in `answer_key`. Guarded (text key), test added, relaunched. Lesson filed with the sandbox one: anything that
+  parses model output must survive the model's worst output.
+- Portal: a `swarm` mode on the inference page (Opus subagent, f37bb73): `/api/model/swarm` streams one event per
+  stage, the page shows the final answer with its provenance, the groups table with expandable samples, the
+  selector's prompt/think/answer, a ceilings table when an expected answer is given, and eight info cards.
+  Verified through the live portal on a CPU slot (149M, k=4) after a restart.
+- Chain running (`scripts/after_swarm_eval.sh`): baseline eval → build `select-sft` (600 GSM8K-train + 250
+  SVAMP-train + 250 synthetic, k=8) → `m9_select_336m` (16M-token format SFT, rehearsal mix) → `m9_rl6_336m`
+  (run 5's mix + `select` ×3/20, binary reward, seed 13). Then measure_stage + swarm_eval on the result.
