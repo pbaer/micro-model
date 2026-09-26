@@ -905,3 +905,8 @@ What both runs agree on: the chat anchor's gains on facts and misfire survive ac
 settled is tool use on families outside the RL mix, and the roadmap's next run -- train `algebra`, `arith2`
 and `word` in the mix -- is the candidate to keep run 4's chat quality without its reasoning cost. The
 choice of M9 output between run 3 and run 4 is Peter's.
+
+Run 4 pass@k (k=32, n=30 each), for the record: GSM8K pass@1 0.020 -> pass@32 **0.367**, majority 0.033,
+22.5 distinct answers per problem; SVAMP 0.035 -> **0.533**, majority 0.067, 23.5 distinct. Within noise of
+run 3 (0.333 / 0.533). The pass@k ceiling and the failure of voting are properties of the model, not of the RL
+variant -- a verifier-based swarm has the same raw material whichever run it is built on.
