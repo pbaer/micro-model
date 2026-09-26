@@ -1011,3 +1011,20 @@ recovering facts and misfire, at a cost in tool use on families outside the mix;
 -gap problem -- widening the gap made it worse; (5) it is a coverage problem -- training the families in the
 mix restores their tool use completely with the anchor intact. The mechanism is: verifiable rewards for every
 behaviour you want, including the negative ones, and every contested surface form inside the mix.
+
+### 16d. Run 5 pass@k: a better sampler raises the swarm's ceiling
+
+| best.pt, k=32, n=30 | pass@1 | pass@8 | pass@16 | **pass@32** | majority vote | distinct answers / 32 |
+|---|---|---|---|---|---|---|
+| GSM8K, run 3 / run 4 | 0.021 / 0.020 | 0.133 / 0.167 | 0.233 / 0.267 | 0.333 / 0.367 | 0.033 / 0.033 | 22.4 / 22.5 |
+| **GSM8K, run 5** | 0.025 | 0.067 | 0.233 | **0.467** | 0.067 | 23.8 |
+| SVAMP, run 3 / run 4 | 0.035 / 0.035 | 0.167 / 0.200 | 0.367 / 0.467 | 0.533 / 0.533 | 0.167 / 0.067 | 24.0 / 23.5 |
+| **SVAMP, run 5** | 0.049 | 0.200 | 0.533 | **0.733** | 0.133 | 22.7 |
+
+§14a called the pass@k ceiling a property of the model rather than of the RL variant. Runs 3 and 4 supported
+that; run 5 refutes it. Training the math families in the mix lifted pass@32 by about +0.10-0.13 on GSM8K and
++0.20 on SVAMP (n=30, so about +-0.09 each; the SVAMP move is well outside it) while pass@1 barely moved. So a
+policy that calls the tool reliably produces a *more diverse-and-correct* pool even when its greedy answer is
+no better -- and majority vote still recovers almost none of it (0.07 / 0.13), with ~23 distinct answers per
+32 samples. For goal 5 that means two things: selection is still the whole problem, and the ceiling a
+selector is aiming at is now 0.47 / 0.73 rather than 0.33 / 0.53.
