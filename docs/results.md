@@ -964,3 +964,17 @@ The diagnosis from §15 was right: the erosion was generalisation onto families 
 them inside fixes it completely -- algebra tool use 0.45 -> 1.00, arith2mul 0.66 -> 1.00 -- while the chat
 anchor held at zero calls throughout training. SVAMP is the best of any run (0.09 at 0.84 tool use). GSM8K is
 unchanged at 0.04: comprehension, as before. Judged chat quality, misfire and multi-turn follow in 16b.
+
+### 16b. Run 5 hard suite
+
+| | needle | HellaSwag(n) | ARC-E | PIQA | LAMBADA | OBQA(n) | SciQ | facts probe | mt recall | mt format | mt misfire | tok/turn |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| RL run 3 | 3072 (72%) | 43.0 | 58.0 | 66.6 | 32.9 | 31.6 | 83.3 | 72.7% | **0.578** | 0.906 | 0.047 | 35 |
+| RL run 4 | 3072 (72%) | 43.4 | 58.1 | 67.1 | 32.9 | 31.2 | 83.2 | 72.2% | 0.422 | 0.938 | 0.000 | 31 |
+| **RL run 5** | 3072 (**75%**) | 43.0 | 57.6 | 67.0 | 33.0 | 30.6 | 83.1 | 71.6% | 0.484 | **0.969** | **0.000** | 40 |
+
+Benchmarks, needle and the facts probe are within noise of each other across the three runs (the standard
+tasks move by less than a point; the facts probe by ~1). Multi-turn format is the best of any checkpoint and
+misfire on conversational turns is zero; recall sits between run 4's and run 3's. So on the hard suite run 5
+gives up nothing against run 3 except six multi-turn recalls in 64, and adds the reasoning result of 16a.
+Judged chat quality follows in 16c.
