@@ -7,7 +7,7 @@ reasonable factual knowledge. Priority 2: extend context only as far as it costs
 great 2K/4K model beats a mediocre 8K one. The machine is dedicated; use the VRAM by growing the model, not the
 microbatch. Pretraining may include chat/tool data that would otherwise only appear in SFT.
 
-## The second base: M8 (running since 2026-09-16 13:07)
+## The second base: M8 — **done** (2026-09-20)
 
 `base_336m` (24 × 1024, 16q/8kv, d_ff 3072, RoPE base 500K, 336M params), chosen from the size sweep in `results.md` §1.
 `scripts/pipeline_m8.sh` chains the phases and the measurements; each phase resumes from `latest.pt` if relaunched.
@@ -21,10 +21,21 @@ microbatch. Pretraining may include chat/tool data that would otherwise only app
 Sanity rule for phase 1: loss below the 149M curve at matching token counts from ~200M on, or stop. Python data: `python-edu` was
 enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so the 5% share is 0.85 epochs, not 3.6.
 
+## Status, 2026-09-26
+
+M8 (the 336M base) and M9 (its post-training chain) are complete. The current model is
+`runs/m9_rl2_336m/checkpoints/best.pt`; `runs/m9_tool4_336m/checkpoints/final.pt` is kept as the better
+pure-chat model. Numbers in `results.md` §10-12, narrative in `log.md`.
+
+Known state: judged quality 3.49, HellaSwag 34.5 (42.8 norm), ARC-Easy 58.0, PIQA 66.6, facts probe 71.1%,
+MMLU at chance (23.6% vs 25.0 baseline — it has no resolution at this size and is not tracked),
+effective context **3072**, reasoning mean 0.779, GSM8K 0.06.
+
 ## After the base (in order)
 
-1. Post-training on the 336M base: instruct SFT (multi-turn kept), tool-use reasoning SFT, GRPO with the Python tool
-   (`tool` reward scheme, collapse guards, best.pt), all with the multi-turn/REPL evals from the command center.
+1. ~~Post-training on the 336M base~~ **done (M9)**: chat SFT -> reasoning/tool SFT -> GRPO. Four stage-B
+   attempts were needed; what they taught is in `log.md` (2026-09-21/22) and is the most transferable part
+   of this project so far.
 2. Context: 8K only through the gated retrieval curriculum, and only if short-context evals stay within 5%. The 149M
    curriculum reached 7K effective (window-edge failures beyond ~7.5K); 16K/32K are off the table unless 8K is clean.
 3. RL stage C (code with unit tests, logic puzzles) and a factual-recall probe so knowledge is measured.
@@ -50,7 +61,7 @@ the ablation/reference model.
 - Milestone write-ups in `results.md` after M3b, M6 and M7 (what the numbers say, what was learned).
 - Keep `docs/log.md` current; add a `docs/results.md` entry whenever a run finishes.
 
-## Decisions pending (Peter)
+## Decisions pending (historical, 149M era; 1, 2 and 4 were all answered by M8)
 
 1. **Extend M3a beyond 3.4B tokens?** The stable phase can simply continue (the data supports ~5B
    tokens before repeating) and would be the cheapest way to a stronger base; costs ~4.5 h per extra
@@ -62,7 +73,7 @@ the ablation/reference model.
 4. **A larger model** (e.g. 300–400M) as a second base once the 149M pipeline is fully validated, at the
    cost of iteration speed.
 
-## Context curriculum (current focus, 2026-09-14 evening)
+## Context curriculum (historical, 149M era: planned 2026-09-14, superseded)
 
 Long context is only claimed where needle retrieval holds. Gate at every stage: `needle_min_<L>` ≥ 0.8
 (worst depth, real-text haystack) at every length up to the stage length, and no short-context regression
@@ -90,7 +101,7 @@ longer improve with data. Options: (a) proceed to 16K with the gate redefined to
 (documented as a known blind spot), (b) stop the curriculum at 8K, (c) investigate the blind spot first (attention-sink
 mitigation such as a few pad/sink tokens after `<|bos|>` in the eval, or training rows that put facts in that zone).
 
-## Tool use track (queued behind the context curriculum, 2026-09-14 evening)
+## Tool use track (historical, 149M era: planned 2026-09-14, delivered in M9 on the 336M base)
 
 Goal: push GSM8K by letting the model offload arithmetic. Built and tested: sandboxed Python subset interpreter
 (`slm/tools/pysandbox.py`), calculator, tool protocol on the reserved tokens, batched tool-aware generation, SFT
@@ -101,14 +112,34 @@ masks, RL masks, evals with `--tools`, GSM8K-train prompts as RL tasks, tool SFT
 stretch; with tools 15–25% is plausible. Later: redo the post-training chain (M4→M5 tools→M6 tools) from the
 context-extended base once the curriculum settles.
 
-## Next candidates (after the decisions below)
+## Next candidates (historical, 149M era)
 
 - RL curriculum fix: stage B learned nothing from arith_multi (no correct samples). Add intermediate tasks
   (two-step expressions, small numbers), partial credit, or a reward for a correct intermediate line; then
   stage C (code with unit tests, logic puzzles).
 - M7 speed: try microbatch 2 without gradient checkpointing (4.3 GiB peak leaves room).
 
+## Open, highest value first (2026-09-26)
+
+1. **GSM8K comprehension.** 0.06 and the weakest number we have. GRPO raised the tool-use rate on it from
+   0.17 to 0.78 without moving accuracy, which localises the bottleneck: reading the problem and setting it
+   up, not the arithmetic. Needs better multi-step reasoning data, and the payoff is uncertain.
+2. **RL without the chat-quality cost.** GRPO cost judged facts 2.88 -> 2.00 and raised tool misfire
+   0.250 -> 0.321, because it saw only math/tool/constraint families with nothing but a KL term anchoring it.
+   *Not* fixable by a tighter KL — measured: the regression is not drift-proportional (log.md 2026-09-22).
+   Wants a rehearsal family scored on something other than a verifier.
+3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
+   an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
+   (the current base has never seen long-form fiction).
+4. **Suite v1 `expect` defect** for `days`/`months`/`evens`, written against the completion prompt so a
+   correct chat answer reads as wrong (`quality_eval.md`). Fixing it bumps `SUITE_VERSION` and invalidates
+   every stored score, so it waits for a moment when re-judging the chain is acceptable.
+5. Unit-test and logic-puzzle RL families; 26M ablations; portal P1/P2.
+
 ## Known gaps
 
-- MMLU subsets not run yet on any checkpoint.
-- `runs/` is untracked; there is no off-machine backup of checkpoints.
+- ~~MMLU subsets not run~~ done 2026-09-22: at chance on every checkpoint, deliberately not tracked.
+- `runs/` is untracked. The four checkpoints that matter are backed up off-drive by
+  `scripts/backup_models.sh`; Peter's call (2026-09-26) is that off-machine backup of data and models is not
+  needed, since everything is reproducible from public sources plus this repo.
+- No long-form fiction in any mixture; narrative is the weakest judged category on the base.

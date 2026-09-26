@@ -13,3 +13,6 @@ artifacts/scratch/
 
 # run outputs are data, not source (metrics, logs, reports, samples, checkpoints)
 runs/
+
+# portal render cache (regenerated on demand)
+artifacts/portal-cache/

@@ -5,8 +5,8 @@ initialization on one consumer GPU**, using the same state-of-the-art recipe tha
 solid, hands-on intuition for how those models work. Every stage of the modern pipeline is implemented
 in-house and instrumented for inspection:
 
-    pretraining (2K → 8K context) → instruction SFT → reasoning SFT (think spans) →
-    RL with verifiable rewards (GRPO) → context extension (8K → 16K → 32K, RoPE scaling)
+    pretraining (2K → 4K/8K context) → instruction SFT → reasoning and tool-use SFT (think spans,
+    a sandboxed Python tool) → RL with verifiable rewards (GRPO) → context extension (RoPE scaling)
 
 The code is deliberately small (about 10K lines of Python plus a no-build web UI), config-driven,
 tested, and written to be read. The Python package is `slm`; the project name is a placeholder and is
@@ -37,6 +37,7 @@ templated and correct by construction). No paid APIs.
 | M6 | `m6_rl_arith_149m` (+ stages B/C, `m6_rl_gsm_tools_149m`) | GRPO with programmatic verifiers, no critic, no reward model; later with a sandboxed Python tool (`slm/tools`) | Group-relative advantages, clipped ratios, KL to a reference, reward hacking, held-out generalization |
 | M7 | `m7_ctx16k_149m`, `m7_ctx8k_retrieval*_149m` | YaRN RoPE scaling; a gated retrieval curriculum (templated needle documents, gate = worst-depth retrieval ≥ 80%) | Configured vs effective context, needle-in-a-haystack, why the window edge fails, short-context regression checks |
 | M8 | `m8_base_stable_336m` → `m8_base_4k_336m` | The second base: 336M, 10B tokens, 2K then 4K rows, chat and tool-call conversations mixed into the decay phase | Scaling the model instead of the microbatch, size/throughput trade-offs, pretraining the chat format |
+| M9 | `m9_sft_336m` → `m9_tool4_336m` → `m9_rl2_336m` | Post-training the second base: chat SFT, then reasoning and Python-tool SFT, then GRPO over tool, math and instruction-following tasks | When a capability regresses everything around it, why mixture weights are token shares but behaviours are learned per conversation, and how to tell a collapsed RL policy from a noisy one |
 
 Everything is measured. Each run writes a self-contained `runs/<run>/report.html`, a JSONL metrics log,
 bf16 snapshots every 100M tokens, and the command center renders all of it live.
@@ -173,6 +174,18 @@ log-probs are recomputed teacher-forced after sampling so the ratio is honest. E
 generalization is measured on problems the policy never saw. Curriculum: A arithmetic → B multi-step
 and algebra → C code with unit tests and logic puzzles.
 
+**Post-training the second base (M9)** ran the same three stages against `base_336m` and is where most of
+what this project knows about SFT was learned. Chat SFT lifted judged quality 3.06 → 3.47. Reasoning and
+tool SFT then took four attempts: the first three taught the tool and broke everything around it — the model
+answered "What is the capital of France?" with an invented Python call — because the mixture contained
+"empty think, then answer" and "think with a tool call, then answer" and no third case, and because mixture
+weights are token shares while the decision to reach for a tool is made once per conversation (a tool
+conversation is ~180 tokens against a chat conversation's ~1400, so a 33% token share was 34:1 in
+conversations). `scripts/mixture_decisions.py` prints that ratio for a candidate config. GRPO then lifted
+tool use from 0.00–0.54 to 0.96–1.00 and algebra from 0.35 to 0.99, at the cost of terser answers to
+knowledge questions. Numbers in [docs/results.md](docs/results.md) §10–11, the full narrative in
+[docs/log.md](docs/log.md).
+
 ## 7. Context extension
 
 Context length changes no parameters. It changes the RoPE table, the attention cost, activation memory
@@ -215,7 +228,9 @@ primary interface. Details: [docs/command_center.md](docs/command_center.md).
 
 ## 10. Running it
 
-Setup (Windows, native; see [docs/runbook.md](docs/runbook.md) for the full operations guide):
+**A fresh clone starts at [docs/setup.md](docs/setup.md)**: prerequisites, how to acquire and prepare every
+dataset from public sources, and how to reproduce a specific model. No data or checkpoints are versioned here.
+[docs/runbook.md](docs/runbook.md) is the day-to-day operations guide. The short version (Windows, native):
 
 ```bash
 pip install uv
@@ -288,11 +303,13 @@ docs/                  see below
 
 | File | Contents |
 |---|---|
+| [docs/setup.md](docs/setup.md) | **Start here on a fresh clone**: prerequisites, acquiring and preparing every dataset from public sources, running on Linux/macOS, reproducing a specific model |
 | [docs/design.md](docs/design.md) | Implementation internals: config system, model math, tokenizer, data formats, trainer loop, checkpoint and metrics schemas, RL objective, context extension, evaluation |
 | [docs/runbook.md](docs/runbook.md) | Operations: environment, data preparation, launching/monitoring/stopping runs, phase changes, pre-launch checklist, Windows gotchas, troubleshooting |
 | [docs/results.md](docs/results.md) | Measured numbers: benchmarks, data volumes, every run's outcome, evaluations, diagnostics, sample quality |
 | [docs/command_center.md](docs/command_center.md) | The web UI: architecture, pages, API, worker, tests, backlog |
 | [docs/roadmap.md](docs/roadmap.md) | Remaining work with time estimates and open decisions |
+| [docs/quality_eval.md](docs/quality_eval.md) | The judged prompt suite: rubric, blind packet protocol, how to read the chart, known suite defects |
 | [docs/log.md](docs/log.md) | Dated project log: what happened, incidents, decisions |
 
 ## 14. For agents joining the project
