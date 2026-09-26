@@ -9,6 +9,7 @@ import { DataPage } from "./pages/data.js";
 import { TokenizerPage } from "./pages/tokenizer.js";
 import { ArchPage } from "./pages/arch.js";
 import { ModelPage } from "./pages/model.js";
+import { EvalsPage } from "./pages/evals.js";
 
 const html = htm.bind(h);
 
@@ -66,6 +67,7 @@ function App() {
   else if (page === "runs" && parts[1]) body = html`<${RunDetail} run=${decodeURIComponent(parts[1])} key=${parts[1]} />`;
   else if (page === "runs") body = html`<${Home} />`;
   else if (page === "data") body = html`<${DataPage} parts=${parts.slice(1)} />`;
+  else if (page === "evals") body = html`<${EvalsPage} />`;
   else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
   else if (page === "arch") body = html`<${ArchPage} />`;
   else if (page === "inference" || page === "model") body = html`<${ModelPage} />`;

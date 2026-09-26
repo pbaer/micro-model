@@ -627,4 +627,157 @@ export const CARDS = {
   cadence: { t: "Cadence", b: html`
     <p>How often a run evaluates, samples, snapshots and saves a resumable checkpoint. Often enough to see a problem early
       and lose little on a crash; rarely enough that evaluation does not eat the throughput.</p>` },
+
+  // ------------------------------------------------------------------ evals page (one card per column, plus the table and its colouring)
+  ev_table: { t: "The eval table", b: html`
+    <p>Every checkpoint that has at least one result file, against every benchmark and homebrew eval the project runs.
+      A cell is the score that eval gave that checkpoint; <b>n/a</b> means the eval was never run on it (older runs
+      predate most homebrew evals), not that it scored zero.</p>
+    <p>Two kinds of columns. <b>Public benchmarks</b> make the model comparable with other people's models but saturate
+      or sit at chance for a few-hundred-million-parameter model. <b>Homebrew evals</b> are built for resolution on what
+      this project is for: facts, tool-using reasoning, multi-turn chat, long context, answer quality, selection.</p>
+    <p>A cell's number is only comparable within its column, and even there check the hover text: sample counts and
+      limits differ between older and newer rows.</p>
+    <p class="see">Built from <code>runs/&lt;run&gt;/*.json</code> by <code>slm/portal/services/evals.py</code>; discussion of every number in <code>docs/results.md</code>.</p>` },
+  ev_colour: { t: "Cell colours", b: html`
+    <p>Each column is coloured on its own: the best score in the column is green, the worst red, and every other cell
+      sits on a straight line between the two by value (through amber at the midpoint). For columns marked ↓
+      (misfire) lower is better, so the minimum is green.</p>
+    <p>The colour says where a checkpoint ranks among the ones measured, not whether the score is good in absolute
+      terms: a column where every checkpoint is near chance still has a green and a red cell. A column with a single
+      value (or all values equal) is all amber. Grey is n/a.</p>
+    <p class="see">Differences inside the noise of an eval (e.g. ±1 point on HellaSwag at 2000 samples, ±0.09 at n=30) still
+      get different colours; read the numbers before reading the colours.</p>` },
+  ev_hellaswag: { t: "HellaSwag", b: html`
+    <p>Commonsense sentence completion: a short scene (from video captions and how-to articles) and four possible
+      endings, three of them machine-written traps. The model is not asked to generate; lm-evaluation-harness scores
+      each ending by its log-likelihood and the most likely one is the answer.</p>
+    <p><b>acc_norm</b> (shown) divides each ending's log-likelihood by its length in bytes, so long endings are not
+      penalised for having more tokens. Chance is 25%; GPT-2 small scores ~30, SmolLM-135M ~42.</p>
+    <p class="see">Rows here use a 2000-sample limit where one exists; the first 2000 items are easier than the full
+      set, so a full-set number (see hover) is lower.</p>` },
+  ev_arc_easy: { t: "ARC-Easy", b: html`
+    <p>Grade-school science questions (AI2 Reasoning Challenge, easy split), four options, scored by log-likelihood of
+      each option. Shown: raw accuracy. Chance is 25%.</p>
+    <p>Mostly a knowledge test: the answer has to be in the weights. It moves with pretraining tokens and barely with
+      post-training. The hard split (ARC-Challenge) is at chance at this size and is not tracked.</p>` },
+  ev_piqa: { t: "PIQA", b: html`
+    <p>Physical commonsense: a goal ("keep a pan from sticking") and two solutions, one of which would not work. Scored
+      by log-likelihood of each solution; shown: raw accuracy. Chance is 50%, so 65% is further above chance than it looks.</p>
+    <p>A base-model signal: post-training should leave it where the base put it, and a drop is a sign of forgetting.</p>` },
+  ev_lambada: { t: "LAMBADA", b: html`
+    <p>Predict the last word of a passage where the word is only guessable from the whole passage, not the last
+      sentence. Scored as exact match of the greedy last word (accuracy); perplexity of that word is in the hover.</p>
+    <p>Chance is about zero, so every point is real. It measures long-range reading of prose and should hardly move in
+      post-training, which makes it a good forgetting detector.</p>` },
+  ev_openbookqa: { t: "OpenBookQA", b: html`
+    <p>Elementary science questions that need one science fact plus some common knowledge, four options, scored by
+      log-likelihood. Shown: <b>acc_norm</b> (length-normalised), because raw accuracy is at chance (25%) for models
+      this size while the normalised metric still separates them.</p>
+    <p>500 test questions, so ±2 points is noise.</p>` },
+  ev_sciq: { t: "SciQ", b: html`
+    <p>Crowd-sourced science exam questions with a supporting paragraph, four options, scored by log-likelihood; shown:
+      raw accuracy. Easy (frontier models ~97%) but not saturated at this size, and it moves with post-training.</p>
+    <p>1000 test questions: ±1.5 points is noise.</p>` },
+  ev_facts: { t: "Facts probe", b: html`
+    <p>194 short, unambiguous factual questions (capitals, science basics, history dates, authors, units, language),
+      answered greedily and scored by whole-word match against accepted answers. Base checkpoints get a completion prompt
+      ("The capital of France is"), chat checkpoints the question as a user turn.</p>
+    <p>It reads knowledge stored in the weights directly, where multiple-choice benchmarks only reach it through
+      likelihoods. Watch it across post-training: a drop means a stage overwrote knowledge the base had.</p>
+    <p class="see"><code>slm.eval.facts</code>; the hover has the per-category split.</p>` },
+  ev_r_arith2: { t: "Reasoning: arith2", b: html`
+    <p>Two-digit addition and subtraction ("What is 57 - 23?") from our task generator's held-out split. The model must
+      think, may call the Python sandbox, and must end with <code>#### &lt;answer&gt;</code>; the parsed answer is
+      compared to the exact result. Shown: accuracy; tool-use rate in the hover.</p>
+    <p>With the tool, this should be 1.00; below that the model either did not call the tool or misread the call's result.</p>` },
+  ev_r_arith2mul: { t: "Reasoning: arith2mul", b: html`
+    <p>Like arith2 but the operator may also be ×, so products up to four digits: hard to do "in the head" for a small
+      model, trivial through the sandbox. The gap between this and arith2 is a direct read of how reliably the model
+      delegates arithmetic.</p>` },
+  ev_r_algebra: { t: "Reasoning: algebra", b: html`
+    <p>One linear equation ("Solve for x: 7x - 12 = 23"), integer solution. The model has to rearrange the equation
+      before any arithmetic, then report x after <code>####</code>. Scored by exact match on x.</p>
+    <p>It is the family that showed a stage suppressing the tool: tool SFT dropped it from 1.00 to 0.30 and RL
+      restored it.</p>` },
+  ev_r_word: { t: "Reasoning: word", b: html`
+    <p>Templated one-step word problems (buys more, gives away, boxes of items each) with small numbers. Synthetic and
+      easy: it checks that the model maps a sentence to the right operation, not deep comprehension; SVAMP and GSM8K do that.</p>` },
+  ev_r_gsm8k: { t: "Reasoning: GSM8K", b: html`
+    <p>Grade-school math word problems (OpenAI, test split, 200 problems here), 2-8 steps each, answer after
+      <code>####</code>, exact match. The standard public math benchmark; run through our own harness with the tool
+      loop, because the lm-eval version expects a different answer format.</p>
+    <p>At this model size it sits near the floor: the bottleneck is reading the problem and setting it up, not the
+      arithmetic, which the sandbox already does. pass@k and the swarm columns show that correct answers are sampled
+      far more often than greedy decoding finds them.</p>` },
+  ev_r_svamp: { t: "Reasoning: SVAMP", b: html`
+    <p>300 one-step arithmetic word problems built to trip up pattern matching (irrelevant numbers, reordered sentences).
+      Public, one difficulty step below GSM8K, and the band where progress on comprehension shows first.</p>
+    <p>n/a on rows measured before it was added to the reasoning suite.</p>` },
+  ev_r_mean: { t: "Reasoning: mean", b: html`
+    <p>The reasoning eval's own mean accuracy over every task in that file (arith1, arith_multi and the families shown
+      here). The task list grew over time (SVAMP was added later), so means of old and new rows are over different sets:
+      the hover lists the tasks. Compare it only between rows with the same list.</p>` },
+  ev_r_tool_use: { t: "Reasoning: tool use", b: html`
+    <p>The share of reasoning answers that called the Python sandbox, averaged over the tasks in the file, for checkpoints
+      evaluated with the tool enabled.</p>
+    <p>On these tasks calling the tool is the right move, so higher is better here. Its mirror is <i>misfire</i>: calling
+      it where it cannot help. A good model is high on this column and near zero on the misfire columns.</p>` },
+  ev_mt_recall: { t: "Multi-turn: recall", b: html`
+    <p>Scripted three-turn conversations: the user states a fact ("My cat is called Biscuit"), asks something unrelated,
+      then asks a question that needs the fact. Recall is the share of third answers that contain it. 64 conversations,
+      greedy, scored without a judge.</p>
+    <p>Every other eval is single-turn; this is the one that checks the model uses the conversation it is in. n=64,
+      so ±0.06 is noise.</p>` },
+  ev_mt_format: { t: "Multi-turn: format", b: html`
+    <p>The share of the multi-turn conversations in which every assistant turn ended properly with <code>&lt;|end|&gt;</code>
+      instead of running into the token limit or the next turn. A chat model that does not stop is unusable no matter
+      what it says.</p>` },
+  ev_mt_misfire: { t: "Multi-turn: misfire", b: html`
+    <p>The share of assistant turns in the multi-turn conversations that called the Python tool. These are plain chat
+      turns, so any call is a misfire: <b>lower is better</b>, 0 is the target.</p>` },
+  ev_needle: { t: "Needle: effective context", b: html`
+    <p>A six-digit secret is hidden in real validation text at several depths of a prompt of each length, and the model
+      is asked for it. Effective context is the longest length at which the <i>worst</i> depth still retrieves at
+      least 80% (and every shorter length passes too). Shown in tokens.</p>
+    <p>A model trained at 4K rows can accept 4K tokens; this says how much of them it can actually use. The first
+      failing length and its worst-depth accuracy are in the hover.</p>
+    <p class="see">Project rule: context is claimed only where this gate holds on the real-text haystack with n ≥ 16.</p>` },
+  ev_judged: { t: "Judged quality", b: html`
+    <p>35 fixed prompts in nine categories (facts, prose, python, arithmetic, pattern, definition, narrative, qa, bash)
+      answered greedily; a judge model scores each answer 1-5 on correctness, coherence and task fit, blind to which
+      checkpoint wrote it. Overall is the mean of the three rubrics over all categories except bash.</p>
+    <p>It catches what the automatic evals cannot (a correct answer followed by a loop, a wrong format), at the price of
+      noise: ±0.25 between neighbouring checkpoints is normal.</p>
+    <p class="see"><code>docs/quality_eval.md</code>; the run page's quality tab shows every answer and score.</p>` },
+  ev_judged_misfire: { t: "Judged suite: tool misfire", b: html`
+    <p>On the judged suite, the share of prompts where running code cannot help on which the model reached for the Python
+      sandbox anyway. No judge needed. <b>Lower is better</b>; the tool-SFT gate was ≤ 0.10.</p>
+    <p>n/a on base and early chat checkpoints, which were scored before this was tracked or could not call a tool.</p>` },
+  ev_pass_at_k: { t: "pass@k", b: html`
+    <p>Sample k answers per problem at temperature 0.8 and count a problem as solved if <i>any</i> of them is right
+      (k=32 here). It is the ceiling for any method that picks one answer from k samples:
+      voting, a verifier, the swarm's selector.</p>
+    <p>30 problems per set, so ±0.09. The gap between this and greedy accuracy is the opportunity; majority voting
+      (in the hover) usually recovers little of it because the samples rarely agree.</p>
+    <p class="see"><code>scripts/pass_at_k.py</code>.</p>` },
+  ev_sw_greedy: { t: "Swarm: greedy", b: html`
+    <p>The swarm eval's baseline: one greedy answer per problem, the way every other reasoning column is measured, on
+      the same 50 problems as the other swarm columns. Everything else in the group should beat it.</p>` },
+  ev_sw_majority: { t: "Swarm: majority", b: html`
+    <p>Sample k answers, group them by parsed final answer, and take the most common one (self-consistency). Costs k
+      samples and no extra judgement. It works when errors are scattered and the right answer is the mode; for a small
+      model on hard problems it usually is not.</p>` },
+  ev_sw_verified_majority: { t: "Swarm: verified majority", b: html`
+    <p>Majority counting only answers that came out of a Python call that ran (verified). Tests whether "the arithmetic
+      was actually done" is a useful filter. It cannot tell a wrong setup computed correctly from a right one, so the
+      gain over plain majority is small.</p>` },
+  ev_sw_selector: { t: "Swarm: selector", b: html`
+    <p>The full swarm: k samples collapsed into distinct answers with their support and evidence, then one greedy pass of
+      the same model over a selection prompt picks the final answer. The score of the whole pipeline.</p>
+    <p>Compare with the oracle column: oracle minus selector is what better selection could still gain.</p>` },
+  ev_sw_oracle: { t: "Swarm: oracle", b: html`
+    <p>The share of problems where a correct answer is among the k samples (pass@k at the swarm's k). No selection
+      method can exceed it, so it is the ceiling for the other swarm columns. The verified oracle and "in prompt"
+      ceilings are in the hover.</p>` },
 };

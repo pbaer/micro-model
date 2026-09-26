@@ -115,3 +115,29 @@ nav .info:hover,nav .info.on{color:#fff}
 .swarm-cand{border:1px solid var(--border);border-radius:8px;padding:6px 8px;margin:6px 0;background:var(--bg);white-space:normal}
 pre.swarm-answer{margin:4px 0 0;padding:4px 8px;max-height:160px}
 .swarm-rationale{font-size:12px;color:#374151}
+
+/* evals page (pages/evals.js): one scroll box with a sticky header block and a sticky first column; cell colour is set inline */
+.evals{--na-bg:#eceef1}
+.ev-wrap{overflow:auto;max-height:calc(100vh - 190px);border:1px solid var(--border);border-radius:8px;background:var(--panel)}
+.ev-table{border-collapse:separate;border-spacing:0;width:auto;min-width:100%}
+.ev-table th,.ev-table td{border:0;border-right:1px solid var(--border);border-bottom:1px solid var(--border);padding:3px 7px}
+.ev-table thead{position:sticky;top:0;z-index:3}
+.ev-table thead th{background:#f3f4f6;text-align:center;font-size:12px}
+.ev-table th.ev-col{font-weight:600;min-width:58px}
+.ev-table th.ev-super{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.ev-table th.ev-super.public,.ev-table th.ev-group.public{background:#e0e7ff}
+.ev-table th.ev-group{font-weight:600;color:#374151}
+.ev-table th.ev-super>span,.ev-table th.ev-group>span{position:sticky;left:250px;right:6px}  /* a wide group keeps its label in view while the table scrolls sideways */
+.ev-table .ev-first{position:sticky;left:0;z-index:2;background:var(--panel);text-align:left;white-space:nowrap;min-width:230px;box-shadow:1px 0 0 var(--border)}
+.ev-table thead .ev-first{z-index:4;background:#f3f4f6;vertical-align:bottom}
+.ev-table td{font-variant-numeric:tabular-nums;text-align:right;color:#111827}
+.ev-table td.ev-first{color:var(--text)}
+.ev-table td.ev-na{background:var(--na-bg);color:#9ca3af;text-align:center;font-size:11px}
+.ev-table tr.ev-sep td{background:#111827;color:#e5e7eb;font-weight:600;font-size:12px;text-align:left;padding:4px 8px}
+.ev-table tr.ev-sep td span{position:sticky;left:8px}
+.ev-table tbody tr:hover td:not(.ev-first){filter:brightness(.95)}
+.ev-src{font-size:10px;color:#4b5563;font-family:var(--mono);text-align:right;white-space:nowrap}
+.ev-legend{margin-bottom:8px;align-items:center}
+.ev-swatch{display:inline-block;width:34px;height:11px;border-radius:3px;vertical-align:-1px;border:1px solid var(--border)}
+.ev-grad{background:linear-gradient(90deg,hsl(0,62%,80%),hsl(60,62%,80%),hsl(120,62%,80%))}
+.stage-badge.base{background:#e5e7eb;color:#374151}.stage-badge.tool{background:#ede9fe;color:#5b21b6}

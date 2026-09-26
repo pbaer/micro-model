@@ -34,6 +34,7 @@ portal never launches training.
 |---|---|
 | Overview | Header with GPU memory/utilization/temperature/power/throttle state; live-run cards (progress, loss, ETA); the pipeline table (stage → runs with status, tokens this run and cumulative, progress, loss, result, tok/s, elapsed + ETA, started + git, init chain); data readiness. Click a run to open it. |
 | Run detail (`#/runs/<run>`) | Tiles (progress, ETA, elapsed vs initial estimate, tok/s, losses or RL reward/held-out/KL/length, LR, grad norm, VRAM, GPU °C/W with run max, step timing); charts with x in tokens/updates/time and log-y (loss, validation incl. pretraining-mixture drift, tok/s, LR, grad norm, step time, VRAM, GPU temperature/power, RL charts); milestones table; samples timeline (per 100M tokens, greedy vs sampled); needle chart overlays `needle_sweep.json` (every snapshot re-measured at one n) as heavy lines when present; judged quality (chart of overall / per-rubric / legacy-3 scores and a per-category chart when `quality/summary.json` exists; the `quality` tab lists every prompt's output for a checkpoint with its three scores and the judge's note, plus a category table); checkpoints with exact tokens; events (start/resume/stop/finish/checkpoint/warn); config. Live tail via SSE. |
+| Evals (`#/evals`) | One table: rows = every checkpoint with at least one result file, columns = the public benchmarks (lm-eval) and the homebrew evals (facts, reasoning families, multi-turn, needle, judged, pass@k, swarm) under group headers; cells coloured per column from red (worst) to green (best), grey n/a. Details in "Eval tab" below. |
 | Data (`#/data`) | **Recipes** (default): one row per training config and per run, by stage, with a marker where the yaml no longer matches what the run started with. A recipe (`#/data/recipes/<id>`, id = `run:<name>` or `config:<path>`) is the mixture table with weight, planned and available tokens, epochs (red above 1.5), the loader's own per-source consumption when the checkpoint records carry it, the `extra_val_mixture` drift set, and for RL a prompt/reward panel with the deterministic prompt list (rendered as the exact generation prompt) and, for a run, a rollouts viewer (step selector, prompt + completion chips, reward, parsed answer, malformed flag). Clicking a mixture row opens the inspector: **raw** (a parquet row of the source it was prepared from, with a *trace* that re-runs the preparation filters and reports kept/dropped and the split), **prepared** (the stored document, or the stored SFT example with green loss-mask chips), **row** (a training row of exactly `seq_len + 1` tokens with red document — or SFT example — boundaries and the target count). **Compare** (`#/data/compare/<a>/<b>`, client-side from two recipe payloads): header diff and the union of sources with weight A / B, the delta in percentage points, planned tokens and epochs; a run's default pairing is its `init_from` parent. **Chain** (`#/data/chain/run:<name>`): the `init_from` walk back to the root, one row per stage with tokens used and per-source tokens (the loader's own counters where the run logged them, `tokens x weight` otherwise — the row says which), a totals row and a stacked bar. **Catalog** (`#/data/catalog`) lists every raw, tokenized and chat-formatted set, with unused and `*-v1` sets behind a "show unused" toggle; `#/data/source/<name>` carries raw files, prepared artifacts per tag, provenance both ways, the recipes that use it with their weights, and a **browse** panel with the old documents browser (tokenizer tag / source / split / shard or parquet file / row group; text, tokens or ids; `window`; `stats` with length percentiles and long-doc counts). The list and preview fill the viewport. |
 | Tokenizer | Playground: encode text in document or chat mode, coloured chips with offsets and ids, vocabulary lookup. |
 | Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, raw-text vs tokens view (reserved tokens stay visible), prompt scoring, cancel, release GPU. |
@@ -60,7 +61,7 @@ there is no room below) and rendered only while open, so it never shifts the lay
 ## API (all under `/api`)
 
 `GET /meta`, `GET /system/gpu` · runs: `GET /runs`, `/runs/{run}`, `/runs/{run}/series`, `/events`,
-`/checkpoints`, `/samples`, `/samples/{tokens}`, `/quality`, `/quality/{tokens}`, `/rollouts?step=`, `/report`, `/live` (SSE) · data: `/data/sources`,
+`/checkpoints`, `/samples`, `/samples/{tokens}`, `/quality`, `/quality/{tokens}`, `/rollouts?step=`, `/report`, `/live` (SSE) · `GET /evals` · data: `/data/sources`,
 `/data/configs`, `/data/recipes`, `/data/recipe?id=`, `/data/chain?run=`, `/data/source/{name}`,
 `/data/rl/prompts?id=&split=`, `/data/mixture` (legacy shape, kept for one release),
 `/data/raw/{source}/files|docs|doc|sample`, `POST /data/raw/{source}/trace`,
@@ -74,6 +75,8 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 ## Tests and checks
 
 - `tests/test_portal_runs.py`: API on synthetic runs; every JS module must parse (`node --check`).
+- `tests/test_portal_evals.py`: the eval table on a synthetic runs tree (attribution, file priority, quality rows by token
+  count, colour positions, mtime cache), `/api/evals`, an info card for every column, `node --check` of the page.
 - `tests/test_portal_live.py`: SSE tail against a real uvicorn server.
 - `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU.
 - `tests/test_portal_swarm.py`: `/api/model/swarm` validation and SSE shape against a stub worker, `Harness.swarm` stages
@@ -143,3 +146,36 @@ same pipeline `scripts/swarm_eval.py` measures, stage for stage and with the sam
   seconds; on a GPU shared with a training run, keep k and max new modest.
 - Info cards: `swarm`, `swarm_k`, `swarm_suffix`, `swarm_support`, `swarm_majority`, `swarm_selector`, `swarm_budget`,
   `swarm_oracle`.
+
+## Eval tab (2026-09-26)
+
+`#/evals` (`pages/evals.js`), `GET /api/evals` (`api/evals.py`), `services/evals.py` (`EvalIndex`). One table of every
+evaluated checkpoint against every eval the project runs, so a stage's gains and costs read across one row and a
+capability's history down one column.
+
+- **Sources** (all under `runs/<run>/`): `lm_eval*.json` (HellaSwag and OpenBookQA as acc_norm, ARC-Easy, PIQA, LAMBADA
+  and SciQ as acc, following `docs/results.md`; both metrics are in the hover), `bench_ll.json` (LAMBADA / OBQA / SciQ at
+  limit 1000, used only where no lm-eval file has them), `facts*.json`, `reasoning_eval*.json` / `reasoning_s*.json` /
+  `reasoning_svamp.json` (per-family accuracy, the file's mean, mean tool-use rate), `multiturn*.json` (recall, format,
+  misfire), `needle_v2.json` / `needle_s*.json` (effective context = longest length whose every shorter length also has
+  min-over-depths >= the threshold; real-text haystack only; v1 `needle.json`, the filler control and the depth probes
+  are ignored), `quality/summary.json` (judged overall and tool misfire), `pass_at_k.json`, `swarm_eval*.json`.
+  MMLU and the dropped benchmark-revision tasks (§13 of results.md) are not shown.
+- **Attribution**: a file belongs to the run whose directory holds it (some `checkpoint` fields name a run's pre-rename
+  directory; the hover says so) and to the checkpoint named by the file name in its `checkpoint` field (`_s200` style
+  suffixes are the fallback). Checkpoints of one run with the same token count in `checkpoints/index.json` are the same
+  weights and share a row (`best.pt = step_00150.pt`). Judged-quality points attach to those rows; a run with no other
+  result file gets one row for its last judged checkpoint. When two files fill one cell, lm-eval prefers limit 2000 over
+  the full set over limit 1000 and reasoning prefers the tool-enabled main file over the no-tool one over
+  `reasoning_svamp.json`; the loser is listed in the hover ("also measured").
+- **Rows** are ordered by model size (largest first), then stage (base, sft, reasoning / tool, rl), run name and tokens.
+  Each shows the stage, the checkpoint and its aliases, and cumulative tokens along the `init_from` chain (this run's
+  share in parentheses).
+- **Colour**: per column, t = (value - min) / (max - min), flipped for `higher_is_better: false` columns (misfire), mapped
+  to a hue from red (0) to green (120); a column with one distinct value is amber, n/a is grey. The server computes `t`,
+  the page only paints it.
+- **Page**: sticky header block and first column inside one scroll box, group toggles, a "show sources" toggle that
+  prints `run/file` under every number, hover text with the file, n / k and the eval's details, and a "?" card per
+  column (`ev_*` in `cards.js`) plus `ev_table` and `ev_colour`.
+- **Cache**: rebuilt only when a matching file's mtime or size changes (also `run.json` and `checkpoints/index.json`);
+  a rebuild reads ~100 small JSON files in well under a second.
