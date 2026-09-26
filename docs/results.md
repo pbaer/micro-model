@@ -838,3 +838,32 @@ whose tool use is meant to be a core capability, and the judged gap is concentra
 **`runs/m9_rl3_336m/checkpoints/best.pt` is the M9 output.** Second time the rule has paid for itself: check
 the hard suite before the judged argmax (run 2's 30M snapshot was the first, where the check showed noise;
 here it showed a trade).
+
+## 15. M9 stage C, run 4: `tool_strict` does not recover math tool use (2026-09-26)
+
+One change from run 3: math and tool families scored under `tool_strict` (correct-without-a-call earns 0.25
+instead of 0.5), the chat anchor unchanged. Hypothesis: with the mental route worth half a tool answer, the
+anchor's "call less" pressure had tipped the balance on math, and widening the gap would tip it back.
+Stopped by the KL guard at step 150 like run 3; held-out 0.344 -> 0.427 (+8 of 96), malformed 0.22 -> 0.05.
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate:
+
+| | arith2 | arith2mul | algebra | word | GSM8K | SVAMP | mean |
+|---|---|---|---|---|---|---|---|
+| run 2 (no anchor) | 0.93 / 0.98 | 0.75 / 0.98 | **0.99 / 0.96** | 0.98 / 0.97 | 0.06 / **0.78** | 0.09 / 0.86 | **0.779** |
+| run 3 (anchor, `tool`) | 0.95 / 0.90 | 0.86 / 0.83 | 0.74 / 0.71 | 0.95 / 0.79 | 0.04 / 0.54 | 0.05 / 0.68 | 0.686 |
+| run 4 (anchor, `tool_strict`) | 0.87 / 0.70 | 0.75 / 0.66 | 0.57 / 0.45 | 0.93 / 0.64 | 0.06 / 0.54 | 0.07 / 0.55 | 0.646 |
+
+**The hypothesis was wrong.** Tool use fell further in every family, opposite to the prediction across the
+board -- more than one-seed variance explains. The reason is visible after the fact: `tool_strict` only acts
+on the families RL trains on, where tool use was already 0.9-1.0 (§14, rollout stats), so it had almost
+nothing to push. The families that dropped -- algebra, arith2, word -- are not in the RL mix. Their tool use
+is generalisation, and the chat anchor's "short question -> do not call" generalises to short questions that
+contain numbers. No reward change inside the mix reaches that.
+
+What would: train the contested surface form directly. `algebra`, `arith2` and `word` are generators already
+in `GENERATORS`, cheap to add to the mix under a tool scheme, so that "short question with numbers -> call"
+is learned rather than inferred. Whether that is the next run, or whether the swarm discussion (§14a) changes
+what RL should optimise for, is Peter's call. Until then run 3's `best.pt` remains the M9 output: run 4's
+judged and hard-suite numbers follow below, but a 0.04 drop in reasoning mean is not what any judged gain
+could buy back given the goals.
