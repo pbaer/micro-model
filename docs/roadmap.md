@@ -128,8 +128,10 @@ context-extended base once the curriculum settles.
    up, not the arithmetic. Needs better multi-step reasoning data, and the payoff is uncertain.
 2. ~~RL without the chat-quality cost~~ **done (run 3)**: a verifiable `plain` chat reward recovered facts
    2.00 -> 2.79 and halved misfire. Remaining dial: the anchor over-generalised "call the tool less" (algebra
-   tool use 0.96 -> 0.71); a softer version (penalise only failing calls, or only prompts with no numbers) is
-   the obvious next run.
+   tool use 0.96 -> 0.71). Run 4 tested widening the tool reward gap instead (`tool_strict`) and made it
+   worse: the drop is on families outside the RL mix, i.e. generalisation, which no in-mix reward change
+   reaches. Next run, if any: add `algebra`, `arith2`, `word` to the mix under a tool scheme so "short
+   question with numbers -> call" is trained rather than inferred.
 2b. **Goal 5, the swarm.** pass@32 is 15-16x pass@1 on GSM8K/SVAMP but 22-24 distinct answers per 32 samples
    means voting fails; the design is parallel sampling + a verifier (sandbox re-derivation, setup checks).
    Discussion with Peter pending; he has thoughts.
