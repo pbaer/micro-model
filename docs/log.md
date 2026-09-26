@@ -659,3 +659,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   changes what RL should optimise for, is Peter's call.
 - Peter also asked for the command center to get "?" info cards on every chart and diagram (learning project);
   an Opus subagent is doing that on the portal files only.
+- Correction, same night: run 4's judged scores came in at **3.97** overall, misfire **0.000**, facts 3.75 --
+  the best chat model of the project by a wide margin, with every checkpoint above run 3's best. My "the
+  decision does not need the judges" was wrong: run 4 traded reasoning (0.686 -> 0.646) and multi-turn recall
+  (0.578 -> 0.422) for a large chat-quality gain. That is a trade between two of Peter's goals, not a
+  selection artefact, so the M9 output choice between run 3 and run 4 goes to him. The anchor's facts/misfire
+  gains hold across both runs; the open problem is tool use on out-of-mix families, and training them in the
+  mix is the next run.

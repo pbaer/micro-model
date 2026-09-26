@@ -880,3 +880,28 @@ fewer of 64) while format and misfire improved slightly -- the same direction as
 answers more cleanly and knows less of what to do with the question. **Run 3's `best.pt` remains the M9
 output**; run 4 is kept as the ablation that rules out the reward-gap explanation. Judged scores and pass@k
 for run 4 are appended below when scored, for the record rather than for the decision.
+
+### 15b. Run 4 judged: the trade is real, and 15a overstated the decision
+
+| | overall | corr | coh | task | misfire | arith | defin | facts | narra | patte | prose | pytho | qa |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| RL run 3 best | 3.65 | 3.41 | 3.88 | 3.66 | 0.143 | 4.58 | 5.00 | 2.79 | 3.67 | 3.42 | 3.33 | 4.11 | 3.50 |
+| **RL run 4 best** | **3.97** | **3.44** | **4.22** | **4.25** | **0.000** | 4.67 | 4.67 | **3.75** | **4.50** | **3.75** | 3.42 | 3.89 | 4.00 |
+
+Run 4 per checkpoint: step 50 4.00 / facts 4.08 / misfire 0.07; step 100 3.66 / 3.50 / 0.00; step 150 3.97 /
+3.75 / 0.00 -- every checkpoint above run 3's best, misfire at zero on two of three. This is the best judged
+chat model of the project by a wide margin, and facts at 3.75 is higher than any checkpoint including stage A.
+
+**15a said the decision did not need the judges. That was wrong.** The hard suite showed run 4 giving up
+reasoning (0.686 -> 0.646) and multi-turn recall (0.578 -> 0.422); the judges show what it bought with them.
+That is not a checkpoint-selection artefact of the kind the "hard suite before judged argmax" rule guards
+against -- it is a genuine trade between goal 3 (a coherent chatbot: run 4, clearly) and goal 4 (tool use as a
+core capability: run 3, clearly), with goal 2 (benchmarks) a tie and multi-turn memory, part of goal 3, on
+run 3's side. One seed each, so the size of the judged gap is uncertain; its existence (+0.32, misfire 0.14 ->
+0.00, facts +0.96) is not within the suite's +-0.25 wobble.
+
+What both runs agree on: the chat anchor's gains on facts and misfire survive across seeds and schemes
+(run 3 2.79 / 0.14, run 4 3.75 / 0.00 against run 2's 2.00 / 0.32). The mechanism is settled. What is not
+settled is tool use on families outside the RL mix, and the roadmap's next run -- train `algebra`, `arith2`
+and `word` in the mix -- is the candidate to keep run 4's chat quality without its reasoning cost. The
+choice of M9 output between run 3 and run 4 is Peter's.
