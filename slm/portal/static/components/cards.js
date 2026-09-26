@@ -221,8 +221,8 @@ export const CARDS = {
       group std is the better gauge of how much the rewards actually differ.</p>` },
   policy_objective: { t: "Policy objective", b: html`
     <p>The clipped GRPO surrogate −Σ min(ρA, clip(ρ, 1±ε)A), summed over completion tokens and divided by the
-      token count. Advantages are centred within each group per <em>sequence</em>, but the sum is per
-      <em>token</em>, so sequences with more tokens weigh more.</p>
+      token count. Advantages are centred within each group per <em>sequence</em>, but the sum is per <em>token</em>,
+      so sequences with more tokens weigh more.</p>
     <p>That is why it is usually not zero. A wrong rollout tends to run to the length limit while a right one stops
       early, so negative-advantage tokens outnumber positive ones and the value sits above zero -- around +0.2 to
       +0.5 in the M9 runs. A drop toward zero or below means wrong answers are getting shorter or right ones
