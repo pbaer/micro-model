@@ -171,7 +171,9 @@ class Trainer:
         ck = ckpt.load_full(self.latest_path, self.model, self.optimizer)
         self.loader.load_state_dict(ck["loader"])
         self.counters.update(ck["counters"])
-        self.log.log("resume", msg=f"resumed from {self.latest_path.name} at {fmt_tokens(self.counters['tokens'])} tokens, update {self.counters['update']}")
+        dropped = self.log.truncate_after("update", self.counters["update"])  # the updates after the checkpoint are about to be replayed
+        self.log.log("resume", msg=f"resumed from {self.latest_path.name} at {fmt_tokens(self.counters['tokens'])} tokens, update {self.counters['update']}"
+                     + (f"; dropped {dropped} records past it" if dropped else ""))
         console(f"[{self.cfg.run_name}] resumed at {fmt_tokens(self.counters['tokens'])} tokens (update {self.counters['update']}), elapsed so far {fmt_duration(self.counters['elapsed_s'])}")
 
     def _on_sigint(self, *_) -> None:

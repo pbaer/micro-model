@@ -113,7 +113,7 @@ export function RunDetail({ run }) {
         <${Tile} k="held-out accuracy" info="heldout_acc" v=${s.heldout_acc != null ? (s.heldout_acc * 100).toFixed(1) + "%" : "-"} s="greedy, unseen prompts" />
         <${Tile} k="KL to reference" info="kl_ref" v=${fmtNum(s.rl.kl, 4)} s=${`entropy ${fmtNum(s.rl.entropy, 2)} · clip ${(s.rl.clip_frac * 100).toFixed(0)}%`} />
         <${Tile} k="completion length" info="completion_len" v=${fmtNum(s.rl.len_mean, 0)} s=${`malformed ${(s.rl.malformed_rate * 100).toFixed(0)}% · no-signal groups ${(s.rl.groups_no_signal * 100).toFixed(0)}%`} />
-        <${Tile} k="policy objective" info="policy_objective" v=${fmtNum(s.loss, 4)} s="≈0 by construction (zero-mean advantages)" />`
+        <${Tile} k="policy objective" info="policy_objective" v=${fmtNum(s.loss, 4)} s="token-weighted; > 0 when wrong rollouts run longer than right ones" />`
       : html`
         <${Tile} k="train loss" info="train_loss" v=${fmtNum(s.loss, 4)} s=${"update " + fmtInt(s.update)} />
         <${Tile} k="val loss" info="val_loss" v=${fmtNum(s.val_loss, 4)} s=${s.val_loss != null ? `best ${fmtNum(s.best_val, 4)} · ppl ${fmtNum(s.val_ppl, 1)}` : ""} />`}
@@ -131,7 +131,7 @@ export function RunDetail({ run }) {
         <button class=${logy ? "active" : ""} onClick=${() => setLogy(!logy)}>log y</button>`}
     </div>
     ${tab === "charts" && html`<div class="charts">
-      <${Chart} title=${series.is_rl ? "policy objective (≈0 by construction; advantages are zero-mean per group)" : "train / val loss"} info=${series.is_rl ? "policy_objective" : "loss_chart"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
+      <${Chart} title=${series.is_rl ? "policy objective (token-weighted clipped surrogate; not zero-mean -- see ?)" : "train / val loss"} info=${series.is_rl ? "policy_objective" : "loss_chart"} xmode=${xmode} logy=${logy} series=${series.is_rl ? [{ label: "objective", x: tokensX, y: t.loss }] : [{ label: "train", x: tokensX, y: t.loss }, { label: "val", x: evalX, y: e.val_loss, points: true, width: 2 }]} />
       ${!series.is_rl && html`<${Chart} title=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "validation loss (task) vs pretraining-mixture val (drift)" : "validation loss"} info=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? "val_drift" : "val_loss"} xmode=${xmode} logy=${logy} series=${e.val_pt_loss && e.val_pt_loss.some((v) => v != null) ? [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }, { label: "pretrain val", x: evalX, y: e.val_pt_loss, points: true, width: 2, color: "#9333ea" }] : [{ label: "val", x: evalX, y: e.val_loss, points: true, width: 2, color: "#dc2626" }]} />`}
       ${((series.needle_keys && series.needle_keys.length > 0) || sw) && html`<${Chart} title=${"needle retrieval accuracy by context length (solid = mean over depths, dashed = minimum over depths" + (sw ? `; heavy lines = sweep of every snapshot at n=${sw.n}` : "") + ")"} info="needle_chart" xmode=${xmode} ymin=${0} series=${(() => {
         const palette = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];

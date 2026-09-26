@@ -83,7 +83,8 @@ class RlTrainer:
             st = ckpt.load_full(latest, self.model, self.optimizer)
             self.step, self.tokens, self.elapsed_before = st["counters"]["step"], st["counters"]["tokens"], st["counters"]["elapsed_s"]
             self.rng.setstate(st["counters"]["py_rng"])
-            self.log.log("resume", tokens=self.tokens, msg=f"resumed at step {self.step}")
+            dropped = self.log.truncate_after("step", self.step)  # the steps after the checkpoint are about to be replayed
+            self.log.log("resume", tokens=self.tokens, msg=f"resumed at step {self.step}" + (f"; dropped {dropped} records past it" if dropped else ""))
         else:
             meta = {"run_name": cfg.run_name, "stage": "grpo", "config": to_dict(cfg), "model_config": to_dict(self.mcfg), "n_params": self.model.num_params(),
                     "env": ckpt.env_info(), "started": time.strftime("%Y-%m-%d %H:%M:%S"), "tokenizer_sha256": self.tok.sha256}

@@ -9,6 +9,21 @@ from pathlib import Path
 from slm.utils import metrics as M
 
 
+def _dedupe_train(records: list[dict]) -> list[dict]:
+    """Keep the LAST train record per update/step. A run resumed from a checkpoint older than its crash replays
+    the steps in between; the trainers now truncate the log on resume, but runs logged before that fix
+    (m9_sft_336m, m1) carry the crashed segment, and their token counter runs backwards mid-file, so every
+    chart drew the line back over itself. Order is preserved; non-train records pass through."""
+    last = {}
+    for i, r in enumerate(records):
+        if r.get("kind") == "train":
+            k = r.get("update", r.get("step"))
+            if k is not None:
+                last[k] = i
+    return [r for i, r in enumerate(records)
+            if r.get("kind") != "train" or last.get(r.get("update", r.get("step")), i) == i]
+
+
 class RunReader:
     def __init__(self, run_dir: Path) -> None:
         self.dir = Path(run_dir)
@@ -51,7 +66,7 @@ class RunReader:
 
     def series(self, max_points: int = 1500) -> dict:
         self.refresh()
-        out = M.series(self.records, max_points)
+        out = M.series(_dedupe_train(self.records), max_points)
         sw = self.needle_sweep()
         if sw and sw.get("checkpoints"):
             from slm.eval.needle_sweep import series as sweep_series  # torch-free at import

@@ -25,6 +25,45 @@ class MetricsLogger:
     def close(self) -> None:
         self._f.close()
 
+    def truncate_after(self, key: str, value: int) -> int:
+        """Drop every record from the first `train` record whose `key` exceeds `value` to the end, and reopen
+        for append. Called on resume, so a run that crashed after its last checkpoint does not keep the records
+        of the steps it is about to replay: without this the token counter runs backwards mid-file and every
+        chart draws the line back over itself (M9 stage C run 5, 2026-09-26; also m9_sft_336m and m1).
+        Returns the number of records dropped."""
+        self._f.close()
+        try:
+            recs = self.read(self.path)
+            cut = next((i for i, r in enumerate(recs) if r.get("kind") == "train" and r.get(key, -1) > value), len(recs))
+            dropped = len(recs) - cut
+            if dropped:
+                with open(self.path, "w", encoding="utf-8") as f:
+                    for r in recs[:cut]:
+                        f.write(json.dumps(r, default=_default) + "\n")
+            return dropped
+        finally:
+            self._f = open(self.path, "a", encoding="utf-8")  # noqa: SIM115
+
+    @classmethod
+    def repair(cls, path: Path, key: str) -> int:
+        """Offline repair of a finished run's log: keep the LAST occurrence of each `key` (the replayed segment)
+        and drop the earlier crashed one, preserving order. For live runs use truncate_after via the trainer."""
+        recs = cls.read(path)
+        seen, keep = {}, []
+        for i, r in enumerate(recs):
+            if r.get("kind") == "train" and key in r:
+                seen[r[key]] = i
+        for i, r in enumerate(recs):
+            if r.get("kind") == "train" and key in r and seen[r[key]] != i:
+                continue
+            keep.append(r)
+        dropped = len(recs) - len(keep)
+        if dropped:
+            with open(path, "w", encoding="utf-8") as f:
+                for r in keep:
+                    f.write(json.dumps(r, default=_default) + "\n")
+        return dropped
+
     @staticmethod
     def read(path: Path) -> list[dict]:
         out = []
