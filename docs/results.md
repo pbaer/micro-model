@@ -978,3 +978,36 @@ tasks move by less than a point; the facts probe by ~1). Multi-turn format is th
 misfire on conversational turns is zero; recall sits between run 4's and run 3's. So on the hard suite run 5
 gives up nothing against run 3 except six multi-turn recalls in 64, and adds the reasoning result of 16a.
 Judged chat quality follows in 16c.
+
+### 16c. Run 5 judged, and the M9 output
+
+| | overall | corr | coh | task | misfire | arith | defin | facts | narra | patte | prose | pytho | qa |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| stage A | 3.47 | 3.03 | 3.56 | 3.81 | 0.000 | 2.83 | 4.17 | 3.08 | 2.67 | 4.00 | 3.25 | 4.22 | 3.50 |
+| stage B (v4) | 3.58 | 3.22 | 3.84 | 3.69 | 0.250 | 4.42 | 4.17 | 2.88 | 4.00 | 2.50 | 3.33 | 4.22 | 4.50 |
+| RL run 3 | 3.65 | 3.41 | 3.88 | 3.66 | 0.143 | 4.58 | 5.00 | 2.79 | 3.67 | 3.42 | 3.33 | 4.11 | 3.50 |
+| RL run 4 | **3.97** | 3.44 | **4.22** | **4.25** | **0.000** | 4.67 | 4.67 | **3.75** | **4.50** | 3.75 | 3.42 | 3.89 | 4.00 |
+| **RL run 5** (best.pt, s150) | 3.84 | **3.56** | 3.97 | 4.00 | 0.036 | 4.50 | 4.50 | 3.38 | 2.67 | **4.67** | 2.83 | **4.39** | 3.67 |
+
+Run 5 per checkpoint: s50 3.68 / facts 4.00 / misfire 0.18; s100 3.95 / 3.88 / 0.04; **s150 3.84 / 3.38 / 0.04**;
+s200 4.07 / 3.88 / 0.00; s250 3.88 / 3.42 / 0.07. Five-checkpoint mean **3.88 -- identical to run 4's** (4.00,
+3.66, 3.97). Correctness 3.56 and pattern 4.67 are the highest of any checkpoint in the project; python 4.39
+the highest of any post-training checkpoint. Where run 4 still leads -- narrative (n=2), prose (n=4),
+facts (n=8) -- are the smallest categories.
+
+**Decision: `runs/m9_rl5_336m/checkpoints/best.pt` (step 150) is the M9 output.** This is not the trade of
+§15b any more. Run 5 has run 4's chat quality (judged means level, misfire ~0, correctness better), run 2's
+tool use (100% on the trained families, the best SVAMP), multi-turn format and recall better than run 4's,
+and benchmarks and needle tied. Against run 3 it gives up six multi-turn recalls in 64 and nothing else. Every
+one of the five goals is served by the same checkpoint, which is what goal 1 asks for.
+
+Step 200 scored 4.07 judged with misfire 0.00 -- within the suite's wobble of best.pt. Per the rule, it is
+measured on the hard suite (§16e) before anything is read into it; if it holds reasoning and multi-turn, it
+is a free upgrade, and if it does not, best.pt stands.
+
+**What the four RL runs settled**, in order: (2) RL restores and extends tool use but drifts the whole policy
+toward tool-and-terse when it sees only verifiable families; (3) a verifiable `plain` chat reward anchors it,
+recovering facts and misfire, at a cost in tool use on families outside the mix; (4) that cost is not a reward
+-gap problem -- widening the gap made it worse; (5) it is a coverage problem -- training the families in the
+mix restores their tool use completely with the anchor intact. The mechanism is: verifiable rewards for every
+behaviour you want, including the negative ones, and every contested surface form inside the mix.

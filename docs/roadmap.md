@@ -24,14 +24,11 @@ enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so
 ## Status, 2026-09-26
 
 M8 (the 336M base) and M9 (its post-training chain) are complete. The current model is
-**`runs/m9_rl3_336m/checkpoints/best.pt`** (GRPO with a chat anchor, 2026-09-26). Numbers in `results.md`
+**`runs/m9_rl5_336m/checkpoints/best.pt`** (GRPO with a chat anchor and the math families trained in the mix,
+2026-09-26; `results.md` §16). Numbers in `results.md`
 §10-14, narrative in `log.md`.
 
-Known state: judged quality **3.65** (correctness 3.41, both project bests), tool misfire 0.14, HellaSwag 43.0
-(norm), ARC-Easy 58.0, PIQA 66.6, LAMBADA 32.9, OpenBookQA 31.6 (norm), SciQ 83.3, facts probe 72.7%,
-multi-turn recall 0.578 / format 0.906, effective context **3072**, reasoning mean 0.686, SVAMP 0.05,
-GSM8K 0.04 greedy but **0.33 pass@32** (SVAMP 0.53) with majority vote recovering almost nothing -- the
-swarm question is selection by a verifier, not by a vote. MMLU at chance and not tracked.
+Known state: judged quality **3.84** (correctness 3.56, pattern 4.67 -- project bests), tool misfire 0.04, HellaSwag 43.0 (norm), ARC-Easy 57.6, PIQA 67.0, LAMBADA 33.0, OpenBookQA 30.6 (norm), SciQ 83.1, facts probe 71.6%, multi-turn recall 0.484 / format 0.969, effective context **3072**, reasoning mean 0.755 with **100% tool use** on algebra/arith/word, SVAMP 0.09 (0.84 tool use), GSM8K 0.04 greedy but 0.33-0.37 pass@32 with majority vote near useless -- the swarm question is selection by a verifier. MMLU at chance and not tracked.
 
 ## After the base (in order)
 
@@ -126,12 +123,10 @@ context-extended base once the curriculum settles.
 1. **GSM8K comprehension.** 0.06 and the weakest number we have. GRPO raised the tool-use rate on it from
    0.17 to 0.78 without moving accuracy, which localises the bottleneck: reading the problem and setting it
    up, not the arithmetic. Needs better multi-step reasoning data, and the payoff is uncertain.
-2. ~~RL without the chat-quality cost~~ **done (run 3)**: a verifiable `plain` chat reward recovered facts
-   2.00 -> 2.79 and halved misfire. Remaining dial: the anchor over-generalised "call the tool less" (algebra
-   tool use 0.96 -> 0.71). Run 4 tested widening the tool reward gap instead (`tool_strict`) and made it
-   worse: the drop is on families outside the RL mix, i.e. generalisation, which no in-mix reward change
-   reaches. Next run, if any: add `algebra`, `arith2`, `word` to the mix under a tool scheme so "short
-   question with numbers -> call" is trained rather than inferred.
+2. ~~RL without the chat-quality cost~~ **done (runs 3-5)**: a verifiable `plain` chat reward anchors chat
+   quality (run 3); widening the tool reward gap does not fix the tool-use cost (run 4); training the
+   out-of-mix families in the mix does, completely (run 5). Recipe settled: verifiable rewards for every
+   behaviour you want including the negative ones, and every contested surface form inside the mix.
 2b. **Goal 5, the swarm.** pass@32 is 15-16x pass@1 on GSM8K/SVAMP but 22-24 distinct answers per 32 samples
    means voting fails; the design is parallel sampling + a verifier (sandbox re-derivation, setup checks).
    Discussion with Peter pending; he has thoughts.

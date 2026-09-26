@@ -701,3 +701,19 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (2) The label "≈0 by construction" was wrong: the surrogate is summed per token while advantages are
   zero-mean per sequence, so with wrong rollouts running long and right ones stopping early it sits at +0.2 to
   +0.5. The chart title, tile and info card now say what it measures and how to read a move (cb71bb5).
+
+## 2026-09-26 (late) — run 5 is the M9 output
+
+- `m9_rl5_336m` finished all 250 steps (the only stage C run to), KL never near the guard, and survived the
+  sandbox crash at step 60 by resuming from step 51. best.pt = step 150, held-out 0.438 -> 0.625.
+- Reasoning: algebra / arith2 / arith2mul / word all **1.00 accuracy at 1.00 tool use**, SVAMP 0.09 / 0.84 (best),
+  mean 0.755. The §15 diagnosis was right: the erosion was generalisation onto families outside the mix, and
+  training them inside fixes it completely while the chat anchor holds at zero calls.
+- Judged: 3.84 at best.pt, five-checkpoint mean 3.88 identical to run 4's, misfire 0.036, correctness 3.56 and
+  pattern 4.67 the highest in the project. Hard suite tied with runs 3/4 on benchmarks and needle; multi-turn
+  format 0.969 (best), misfire 0, recall 0.484 (run 3: 0.578, run 4: 0.422).
+- **Decision: `runs/m9_rl5_336m/checkpoints/best.pt` is the M9 output.** Not a trade this time: run 4's chat
+  quality, run 2's tool use, better multi-turn than run 4, benchmarks tied. Step 200 (judged 4.07) is being
+  measured on the hard suite as a possible free upgrade; best.pt stands unless it holds everything.
+- Pushed. The four RL runs together settle the recipe: verifiable rewards for every behaviour you want including
+  the negative ones, and every contested surface form inside the mix.
