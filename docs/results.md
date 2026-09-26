@@ -689,3 +689,62 @@ needle, multi-turn). Not tracked: MMLU, ARC-Challenge, WinoGrande, BoolQ, Trivia
 Two of the standard tasks are only usable on a normalised metric (OpenBookQA) or sit near where small models
 plateau (SciQ), so the homebrew evals carry more of the weight than the standard ones — which is the intended
 balance: standard benchmarks for comparability, homebrew ones for resolution on what this project is for.
+
+### 13a. SVAMP, and what the base already knew (2026-09-26)
+
+`slm.eval.reasoning --tools`, accuracy / tool-use rate. SVAMP is 300 one-step word problems; the synthetic
+families are n=50 here, GSM8K n=200. **This is the first time the base was measured with `--tools`.**
+
+| | arith2 | algebra | word | GSM8K | SVAMP |
+|---|---|---|---|---|---|
+| base (`m8_base_4k_336m`) | **1.00 / 1.00** | **1.00 / 1.00** | **1.00 / 1.00** | 0.01 / 0.90 | **0.10** / 0.96 |
+| stage B (`m9_tool4_336m`) | 0.90 / 0.54 | 0.30 / 0.00 | 0.92 / 0.56 | 0.04 / 0.30 | 0.05 / 0.48 |
+| stage C (`m9_rl2_336m` best.pt) | 0.92 / 1.00 | 1.00 / 1.00 | 0.96 / 0.94 | 0.06 / 0.78 | 0.09 / 0.86 |
+
+Two things this table settles.
+
+**The base already had the tool.** Its decay phase carried `tool-chat` at 1.5% of tokens — the same grammar-
+generated Python-tool conversations the SFT sets are built from, folded in as pretraining rows — and that was
+enough for the base to solve every synthetic family perfectly, calling the sandbox 90-100% of the time. Stage B
+SFT then *suppressed* it on math (algebra 1.00 -> 0.30, tool use 1.00 -> 0.00): the prose-reasoning math sets
+crowded out the tool traces, the conversation-count imbalance described in §10. Stage C recovered it. So the
+headline "RL lifted algebra 0.35 -> 0.99" is true but misdescribed: RL restored a pretraining capability that
+SFT had damaged, rather than teaching one. The most likely reading is that a stage B whose mixture had not
+suppressed the tool would have made stage C's largest gain unnecessary.
+
+**SVAMP has resolution, barely, and it is the right band.** 0.05-0.10 against a floor near zero, one notch
+above GSM8K, with tool use at 0.5-0.96: the model reaches for the sandbox and sets up the wrong computation.
+That is the same bottleneck GSM8K has — reading the problem, not the arithmetic — one difficulty step lower,
+which makes SVAMP the place where progress on comprehension will show first. It is tracked from here through
+`scripts/measure_stage.sh`.
+
+### 13b. Multi-turn chat, measured for the first time (`slm.eval.multiturn`, n=64, greedy, 2026-09-26)
+
+Scripted three-turn conversations: the user states a fact, asks an unrelated question, then asks something
+that needs the fact. Scored deterministically, no judge.
+
+| | recall | format | misfire | templated | tokens/turn |
+|---|---|---|---|---|---|
+| stage A (`m9_sft_336m`) | 0.578 | 0.703 | 0.000 | 0.000 | 54 |
+| stage B (`m9_tool4_336m`) | 0.531 | **0.875** | 0.000 | 0.000 | 49 |
+| stage C (`m9_rl2_336m` best.pt) | 0.562 | **0.875** | 0.000 | 0.000 | **22** |
+
+The model remembers a fact from two turns earlier a little over half the time, at every stage — post-training
+neither helped nor hurt recall. Format (every turn reaching `<|end|>`) improved from 0.70 to 0.875 at stage B
+and held. Zero tool misfires and zero templated answers even on the RL checkpoint, which reads 0.32 misfire on
+the judged suite: these turns are conversational ("My cat is called Biscuit. Please remember that.") rather
+than short factual queries, and the RL drift is specific to the latter surface form. RL's answers are less
+than half the length of the SFT models'. Recall at ~0.55 is the number to move; it is the first homebrew eval
+with resolution on multi-turn behaviour and is run per stage from here.
+
+### 13c. Chat-family reward signal on the stage B output (`scripts/rl_signal_probe.py`, 8 prompts x 6)
+
+| family | pass | groups with spread |
+|---|---|---|
+| constraints | 0.19 | 0.75 |
+| **chat** (`plain` reward) | 0.90 | **0.50** |
+| gsm8k | 0.02 | 0.12 |
+
+The `plain` reward -- present, not a `####` line, not a verifier template, no tool call -- yields spread in
+half its groups on the stage B model, so it will carry gradient in RL run 3 rather than sit at all-ones. That
+is the condition for it to work as an anchor.

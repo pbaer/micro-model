@@ -588,3 +588,28 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - D: 68 GB free -> **279 GB free** (97% -> 86%). Every kept checkpoint was reloaded afterwards to confirm it is
   intact, and `m8_base_4k_336m/latest.pt` still carries optimizer and loader state.
 - The four models that matter are additionally in `C:\slm-backup\2026-09-22` (2.6 GB), written before the prune.
+
+## 2026-09-26 (later) — benchmark revision, SVAMP, multi-turn eval, chat-anchored RL launched
+
+- Peter restated the five goals and asked for an assessment; the weakest was goal 2 (benchmarks with
+  resolution) and goal 3 had a blind spot (multi-turn never measured). He is fine with homebrew evals where
+  they serve the goals better than standard ones, and does not want us teaching to the test.
+- **Benchmark revision** (`results.md` §13): ran every lm-eval candidate on base / stage B / stage C. Keep
+  LAMBADA, OpenBookQA (acc_norm), SciQ; drop BoolQ (every checkpoint at or below its 62.2% majority class, so
+  the model is not reading), WinoGrande, ARC-Challenge (chance), TriviaQA (floor), ASDiv (harness format
+  mismatch with our think spans -- the stage C model scores 0.98 on our own word problems). MMLU was already
+  out. SVAMP added through `slm.eval.reasoning --tools` instead. `scripts/measure_stage.sh` runs all of it.
+- **The base already had the tool** (`results.md` §13a). First `--tools` measurement of the base: 1.00 on every
+  synthetic family at 0.90-1.00 tool use, from the 1.5% `tool-chat` in its decay phase. Stage B SFT suppressed
+  it (algebra 1.00 -> 0.30, tool use -> 0.00); stage C recovered it. RL's headline gain was a restoration, not
+  a lesson. SVAMP: 0.10 / 0.05 / 0.09 -- resolution, barely, one notch above GSM8K, same comprehension bottleneck.
+- **Multi-turn eval** (`slm.eval.multiturn`, §13b): recall ~0.55 at every stage, format 0.70 -> 0.875 after
+  stage B, zero misfires on conversational turns even for RL. First coverage of goal 3's multi-turn requirement.
+- **Chat-anchored RL**: a `chat` task family (short non-computational SmolTalk first turns) with a verifiable
+  `plain` reward — present, no `####`, no template, no tool call. Probe on stage B: pass 0.90, spread in 50% of
+  groups, so it carries gradient. `m9_rl3_336m` launched from stage B, 3 of 13 draws chat.
+- Two mistakes of mine today, both caught by measurement. (1) The multi-turn generator deduped on
+  (statement, value), 116 combinations; a test asked for 400 and looped forever on two CPUs for forty minutes
+  before I looked at CPU time. It now caps `n` and raises. (2) I killed the first pass@k run as "too slow after
+  25 minutes" -- it had run four; I had misjudged the clock. Rescheduled at k=32 behind RL v3. Check `date`
+  before calling anything slow.
