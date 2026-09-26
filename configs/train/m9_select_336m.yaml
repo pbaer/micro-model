@@ -1,0 +1,70 @@
+# M9 selection SFT: teach the swarm's selector prompt format on the M9 output (rl5 step 200).
+#
+# The swarm (slm/swarm.py) samples k answers, collapses them by value with support and sandbox evidence, and
+# asks the same model to pick. Untrained, the selector sits at majority level (docs/results.md §17). This
+# short run shows it the format: the selection prompt as the user turn, a one-line templated think that
+# states what the pool showed, and `#### <gold>`. Built by slm.rl.synth_select from the model's own samples
+# on GSM8K-train / SVAMP-train / synthetic word problems; no teacher. Only pools with a correct candidate are
+# in the SFT set; RL run 6 then rewards the pick against gold on every pool, including ones with no right
+# candidate, so overriding the pool is learned there rather than imitated here.
+#
+# The rest of the mixture is rehearsal of the run 5 recipe so nothing measured on the M9 output moves: the
+# chat sets that anchored judged quality, the tool sets, constraints. 16M tokens at a low LR: the select set
+# is ~0.5M tokens, so 0.15 of the mix is about four epochs of it -- enough for a fixed template, not enough
+# to bend the model around it.
+run_name: m9_select_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m9_rl5_336m/checkpoints/step_00200.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    select-sft: 0.15
+    smoltalk-smol-magpie-ultra-4k-direct: 0.20
+    smoltalk-openhermes-100k-4k-direct: 0.12
+    smoltalk-systemchats-30k-short: 0.12
+    synthetic-python-tools: 0.10
+    smoltalk-openhermes-100k-short: 0.06
+    smoltalk-smol-constraints-4k-think: 0.06
+    gsm8k-tools: 0.06
+    synthetic-reasoning-tools: 0.05
+    synthetic-multiturn-tools: 0.04
+    synthetic-reasoning: 0.04
+  seq_len: 4096
+  val_tokens: 1000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 6.0e-6
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 16000000
+  warmup_tokens: 1000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 7
+  log_every_updates: 10
+ckpt:
+  every_minutes: 10
+eval:
+  every_tokens: 8000000
+  gen_every_tokens: 8000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 5
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+notes: "Selection-format SFT on the M9 output; the base for RL run 6 (select family)."

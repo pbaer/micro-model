@@ -174,7 +174,37 @@ def chat_pool() -> list[Task]:
     return _CHAT_POOL
 
 
-POOLED = {"gsm8k": gsm8k_pool, "chat": chat_pool}  # families drawn from a fixed pool rather than a generator
+_SELECT_POOL = None
+SELECT_POOL_FILE = "select-sft/select_pool.jsonl"  # under SFT_DIR/<tokenizer tag>; written by slm.rl.synth_select
+
+
+def select_pool(path=None) -> list[Task]:
+    """Selection prompts: the model's own candidate pools for GSM8K-train / SVAMP-train / synthetic word
+    problems, collapsed by answer with support and sandbox evidence (slm.swarm.selector_messages), gold = the
+    dataset answer. The prompt carries its own ask, so no answer instruction is appended. Pools where no
+    candidate was right are included: there the only rewarded move is to work the problem out."""
+    global _SELECT_POOL
+    if _SELECT_POOL is None or path is not None:
+        import json
+
+        from slm.data.sft import SFT_DIR
+
+        p = Path(path) if path is not None else SFT_DIR / "v1" / SELECT_POOL_FILE
+        pool = []
+        if p.exists():
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
+                if not line.strip():
+                    continue
+                r = json.loads(line)
+                pool.append(Task(id=f"select-{i}", prompt=r["prompt"], answer=str(r["gold"]), task="select",
+                                 meta={"answer_style": "free", "source": r.get("source"), "has_correct": r.get("has_correct")}))
+        if path is not None:
+            return pool
+        _SELECT_POOL = pool
+    return _SELECT_POOL
+
+
+POOLED = {"gsm8k": gsm8k_pool, "chat": chat_pool, "select": select_pool}  # families drawn from a fixed pool rather than a generator
 
 
 def _constraints(rng: random.Random):
