@@ -691,3 +691,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   the trainer down. Regression tests added. Relaunched; the trainer resumed full state (model, optimizer, counters,
   RNG) from `latest.pt`, which the 15-minute cadence had written at step 51, so steps 52-60 were replayed --
   nine steps lost, not the run. (I first read the console as "continued at 60"; it was my grep filter.) Crash log kept as `runs/m9_rl5_336m/train_crash_step60.log`.
+- Peter spotted a sawtooth in run 5's policy-objective chart. Two defects behind one screenshot. (1) The
+  resume: a run that crashes after its last checkpoint replays the steps in between, and both trainers kept
+  appending to `metrics.jsonl`, so steps 52-60 appeared twice and the token counter ran backwards mid-file
+  -- every chart drew the line back over itself. `m9_sft_336m` and `m1` had carried the same artefact since
+  their own resumes without anyone noticing. Fixed at the source (`MetricsLogger.truncate_after` on resume in
+  both trainers), offline for the finished runs (`MetricsLogger.repair`, 15 and 5 records), and in the portal
+  (last record per update). Run 5's live file gets the offline repair once its trainer releases the handle.
+  (2) The label "≈0 by construction" was wrong: the surrogate is summed per token while advantages are
+  zero-mean per sequence, so with wrong rollouts running long and right ones stopping early it sits at +0.2 to
+  +0.5. The chart title, tile and info card now say what it measures and how to read a move (cb71bb5).
