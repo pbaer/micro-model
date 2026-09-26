@@ -3,7 +3,7 @@
 body{margin:0;font-family:system-ui,"Segoe UI",Arial,sans-serif;color:var(--text);background:var(--bg);font-size:14px}
 a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
 .layout{display:grid;grid-template-columns:200px minmax(0,1fr);min-height:100vh}
-nav{background:#111827;color:#e5e7eb;padding:16px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;box-sizing:border-box;overflow:auto}  /* sticks to the viewport so the GPU tile is always bottom-left */
+nav{z-index:10;background:#111827;color:#e5e7eb;padding:16px 12px;display:flex;flex-direction:column;gap:4px;position:sticky;top:0;height:100vh;box-sizing:border-box;overflow:auto}  /* sticks to the viewport so the GPU tile is always bottom-left */
 nav .brand{font-weight:700;font-size:15px;margin:0 6px 14px;color:#fff}
 nav a{color:#cbd5e1;padding:7px 10px;border-radius:6px;display:block}
 nav a.active,nav a:hover{background:#1f2937;color:#fff;text-decoration:none}
@@ -19,6 +19,7 @@ h1{font-size:20px;margin:0 0 4px}h2{font-size:15px;margin:22px 0 8px;border-bott
 .charts{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(480px,100%),1fr));gap:14px}.chart{min-width:0}
 .chart{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px 8px 4px}
 .chart .u-legend{font-size:11px}
+.chart-title{text-align:center;font-size:18px;font-weight:bold;line-height:1.5}  /* rendered by Chart, not uPlot, so the info icon can follow it */
 table{border-collapse:collapse;font-size:12.5px;background:var(--panel);width:100%}th,td{border:1px solid var(--border);padding:4px 8px;text-align:right;white-space:nowrap}th{white-space:normal}  /* headers wrap; numeric cells never break */th{background:#f3f4f6;font-weight:600}td:first-child,th:first-child{text-align:left}
 td.l,th.l{text-align:left;white-space:normal}td .legend{white-space:normal}td.w{white-space:normal}  /* wrappable secondary cells (result, started) */
 tr.click{cursor:pointer}tr.click:hover{background:#eff6ff}
@@ -86,3 +87,21 @@ pre.think{background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:
 .stage-badge{display:inline-block;padding:1px 7px;border-radius:10px;font-size:11px;font-weight:600;margin-right:4px;background:#e5e7eb;color:#374151}
 .stage-badge.sft{background:#dbeafe;color:#1e3a8a}.stage-badge.reasoning{background:#fef3c7;color:#92400e}.stage-badge.rl{background:#dcfce7;color:#166534}
 .panel.warn{border-color:#fca5a5;background:#fef2f2;color:#7f1d1d;margin-bottom:8px}
+
+/* info cards (components/info.js + cards.js): a "?" after a title that explains the concept behind it.
+   The card is fixed-position and only rendered while open, so it never shifts the layout; it takes the theme
+   tokens (--panel, --text, --border, --muted, --accent), and the icon takes currentColor, so both follow the surface they sit on. */
+.info-wrap{display:inline}
+.info{display:inline-flex;vertical-align:-2px;margin-left:5px;color:inherit;opacity:.4;cursor:help;border-radius:50%}
+.info:hover,.info.on{opacity:1;color:var(--accent)}
+.info:focus{outline:none}.info:focus-visible{opacity:1;outline:2px solid var(--accent);outline-offset:1px}
+nav .info:hover,nav .info.on{color:#fff}
+.info-card{position:fixed;z-index:1000;visibility:hidden;width:min(380px,calc(100vw - 16px));max-height:min(70vh,560px);overflow:auto;
+  background:var(--panel);color:var(--text);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(15,23,42,.18);padding:10px 12px;
+  font:400 12.5px/1.5 system-ui,"Segoe UI",Arial,sans-serif;text-align:left;text-transform:none;letter-spacing:normal;white-space:normal;word-break:normal;cursor:auto}
+.info-card:focus{outline:none}
+.info-card .info-title{font-weight:600;font-size:13px;margin-bottom:4px}
+.info-card p{margin:0 0 6px}.info-card p:last-child,.info-card ul:last-child{margin-bottom:0}
+.info-card ul{margin:0 0 6px;padding-left:18px}.info-card li{margin:1px 0}
+.info-card code{font:11.5px var(--mono);background:var(--bg);padding:0 3px;border-radius:3px}
+.info-card .see{color:var(--muted)}

@@ -12,7 +12,8 @@ portal never launches training.
   need a restart. `--runs-root`, `--port`, `--no-browser`, `--reload` flags; settings in `settings.py`.
 - **Frontend** (`slm/portal/static/`): no build step; vendored ESM Preact + htm and uPlot; hash router
   in `app.js`; pages in `pages/`, shared pieces in `components/` (`chart.js` with an optional second
-  y-axis, `tokens.js` token chips with loss-mask colouring, `util.js` formatters and `api()`).
+  y-axis, `tokens.js` token chips with loss-mask colouring, `util.js` formatters and `api()`, `info.js` +
+  `cards.js` the explanatory info cards, see below).
   `index.html` carries boot diagnostics: a failed module import, a boot exception or a 10-second stall
   shows an error panel; an `ErrorBoundary` in `app.js` contains page crashes.
 - **Worker** (`services/worker.py`): all torch work runs in a lazily spawned subprocess. GPU guard:
@@ -37,6 +38,24 @@ portal never launches training.
 | Tokenizer | Playground: encode text in document or chat mode, coloured chips with offsets and ids, vocabulary lookup. |
 | Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), completion and chat modes with a think toggle, streaming tokens with log-probs and top-k alternatives, raw-text vs tokens view (reserved tokens stay visible), prompt scoring, cancel, release GPU. |
 | Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs measured benchmark, LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
+
+## Info cards (`components/info.js`, `components/cards.js`)
+
+The portal is a learning tool, so every chart, tile, column header and section whose meaning is not obvious carries a
+small "?" that opens a card explaining the concept: what it measures, how to read it (what good and bad look like),
+and how it connects to the rest of the pipeline. Hover opens it, a click or tap pins it, keyboard focus opens it,
+Escape / blur / scroll closes it. The card is `position: fixed`, clamped to the viewport (it flips above the icon when
+there is no room below) and rendered only while open, so it never shifts the layout; it uses the theme tokens.
+
+- **Content** lives in one registry, `cards.js`: ``CARDS[key] = { t: "Title", b: html`<p>…</p>` }``, one card per
+  concept, reused wherever the concept appears (e.g. `val_loss` on the tile and the chart). Keep to the pattern: a
+  paragraph on what it is, then how to read it, then an optional muted `<p class="see">` on the connection; explain
+  concepts, not current numbers (those belong on the page and in `docs/results.md`).
+- **Placement**: `<${Info} k="val_loss" />` right after the title text (inside an `h2`/`h3`/`th`/tile `.k`);
+  `<${Chart} … info="lr" />` for a chart (Chart renders its own title so the icon sits inline); run-page tiles take
+  `info=`. The run page shows one icon after the tab buttons that explains whichever tab is open (`tab_<name>`).
+  Never put one inside a `<label>` or `<summary>` (a click there toggles the control). A missing key logs a
+  `console.warn` and renders nothing.
 
 ## API (all under `/api`)
 

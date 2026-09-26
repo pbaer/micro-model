@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtBytes, fmtNum } from "../components/util.js";
 import { TokenChips } from "../components/tokens.js";
+import { Info } from "../components/info.js";
 
 const html = htm.bind(h);
 
@@ -43,7 +44,7 @@ function RecipeList() {
   if (!rs) return html`<div>loading…</div>`;
   return html`<div>
     <div class="sub">Every training config and run, by stage. A recipe is the data section of one plan (config) or of one run (what it actually started with).</div>
-    <table><tr><th>stage</th><th class="l">recipe</th><th>status</th><th>sources</th><th>seq</th><th>tokens</th><th class="l">init_from</th><th class="l">plan</th></tr>
+    <table><tr><th>stage</th><th class="l">recipe<${Info} k="recipe" /></th><th>status<${Info} k="run_status" /></th><th>sources</th><th>seq<${Info} k="seq_len" /></th><th>tokens</th><th class="l">init_from<${Info} k="init_from" /></th><th class="l">plan<${Info} k="plan_differs" /></th></tr>
     ${rs.map((r) => html`<tr class="click" onClick=${() => { location.hash = dataHref("recipes", r.id).slice(1); }}>
       <td><span class=${"stage-badge " + (r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : "")}>${STAGE[r.stage] || r.stage}</span></td>
       <td class="l">${r.run_name}${r.kind === "config" ? html` <span class="muted">(plan only)</span>` : ""}</td>
@@ -59,7 +60,7 @@ function RecipeList() {
 
 /** weight / planned / available / epochs table shared by the mixture and the extra_val block */
 function MixTable({ rows, showPlanned, streams, sel, onPick }) {
-  return html`<table><tr><th class="l">source</th><th>weight</th>${showPlanned ? html`<th>planned</th>` : ""}<th>available (train)</th><th>epochs</th>${streams ? html`<th>consumed</th>` : ""}<th>val tokens</th><th class="l">prepared from</th></tr>
+  return html`<table><tr><th class="l">source</th><th>weight<${Info} k="mix_weight" /></th>${showPlanned ? html`<th>planned<${Info} k="planned" /></th>` : ""}<th>available (train)<${Info} k="available" /></th><th>epochs<${Info} k="epochs" /></th>${streams ? html`<th>consumed<${Info} k="consumed" /></th>` : ""}<th>val tokens<${Info} k="val_tokens" /></th><th class="l">prepared from<${Info} k="provenance" /></th></tr>
     ${rows.map((r) => { const st = streams && streams[r.source]; return html`<tr class=${(onPick && !r.missing ? "click" : "") + (sel === r.source ? " sel" : "")} onClick=${onPick && !r.missing ? () => onPick(r.source) : null}>
       <td class="l">${r.source}${r.missing ? html` <b style="color:#b91c1c">not on disk</b>` : ""}</td>
       <td>${(r.weight * 100).toFixed(1)}%</td>
@@ -128,8 +129,8 @@ function Inspector({ row, tag, seqLen }) {
       <select value=${split} onChange=${(e) => setSplit(e.target.value)}><option>train</option><option>val</option></select>
       <select value=${shard} onChange=${(e) => { setShard(Number(e.target.value)); setOffset(0); setItem(null); }}>
         ${shards.map((s) => html`<option value=${s.shard}>shard ${s.shard} · ${fmtTok(s.tokens)} tok · ${fmtInt(isSft ? s.examples : s.docs)} ${isSft ? "examples" : "docs"}</option>`)}</select>
-      ${["raw", "prepared", "row"].map((v) => html`<button class=${sub === v ? "active" : ""} onClick=${() => setSub(v)}>${v}</button>`)}
-      <span class="muted" style="margin-left:8px">show as</span>
+      ${["raw", "prepared", "row"].map((v) => html`<button class=${sub === v ? "active" : ""} onClick=${() => setSub(v)}>${v}</button>`)}<${Info} k="inspector_views" />
+      <span class="muted" style="margin-left:8px">show as<${Info} k="show_as" /></span>
       ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
     </div>
     <div class="two fill" ref=${fillRef}>
@@ -184,12 +185,12 @@ function RlPrompts({ id, thinkRequired }) {
   const [mode, setMode] = useState("tokens");
   useEffect(() => { setP(null); setSel(0); api(`/api/data/rl/prompts?id=${encodeURIComponent(id)}&split=${split}&offset=${offset}&limit=20`).then(setP).catch(() => setP({ prompts: [], n: 0 })); }, [id, split, offset]);
   const cur = p && p.prompts[sel];
-  return html`<div><h2>Prompt sample</h2>
+  return html`<div><h2>Prompt sample<${Info} k="rl_prompt_sample" /></h2>
     <div class="row" style="margin-bottom:6px">
       ${["train", "heldout"].map((s) => html`<button class=${split === s ? "active" : ""} onClick=${() => { setSplit(s); setOffset(0); }}>${s}</button>`)}
       <button onClick=${() => setOffset(Math.max(0, offset - 20))}>‹</button><button onClick=${() => setOffset(offset + 20)}>›</button>
       ${p && html`<span class="muted">${fmtInt(p.n)} ${split} prompts; showing ${offset}–${Math.min(offset + 20, p.n)}</span>`}
-      <span class="muted" style="margin-left:8px">show as</span>
+      <span class="muted" style="margin-left:8px">show as<${Info} k="show_as" /></span>
       ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
     </div>
     ${!p ? html`<div class="empty-note">…</div>` : !p.prompts.length ? html`<div class="empty-note">no prompts for this split</div>` : html`<div class="two fill" style="height:420px">
@@ -211,16 +212,16 @@ function Rollouts({ run }) {
   const [sel, setSel] = useState(0);
   const [mode, setMode] = useState("text");
   useEffect(() => { setSel(0); api(`/api/runs/${encodeURIComponent(run)}/rollouts?limit=40${step == null ? "" : "&step=" + step}`).then((x) => { setD(x); if (step == null) setStep(x.step); }).catch(() => setD(null)); }, [run, step]);
-  if (!d) return html`<div><h2>Rollouts</h2><div class="empty-note">no rollouts stored for this run</div></div>`;
+  if (!d) return html`<div><h2>Rollouts<${Info} k="rl_rollouts_view" /></h2><div class="empty-note">no rollouts stored for this run</div></div>`;
   const cur = d.rollouts[sel];
-  return html`<div><h2>Rollouts</h2>
+  return html`<div><h2>Rollouts<${Info} k="rl_rollouts_view" /></h2>
     <div class="row" style="margin-bottom:6px"><span class="muted">step</span>
       <select value=${d.step} onChange=${(e) => setStep(Number(e.target.value))}>${d.steps.map((s) => html`<option value=${s}>${s}</option>`)}</select>
       <span class="muted">${fmtInt(d.n)} rollouts in this step</span>
-      <span class="muted" style="margin-left:8px">show as</span>
+      <span class="muted" style="margin-left:8px">show as<${Info} k="show_as" /></span>
       ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}</div>
     <div class="two fill" style="height:460px">
-      <div class="col"><table><tr><th>task</th><th class="l">prompt</th><th>reward</th><th>parsed</th><th>len</th></tr>
+      <div class="col"><table><tr><th>task</th><th class="l">prompt</th><th>reward<${Info} k="rl_reward_scheme" /></th><th>parsed<${Info} k="parsed" /></th><th>len</th></tr>
         ${d.rollouts.map((r, i) => html`<tr class=${"click" + (i === sel ? " sel" : "")} onClick=${() => setSel(i)}>
           <td>${r.task}</td><td class="l">${String(r.prompt).slice(0, 80)}</td>
           <td style=${"font-weight:600;color:" + (r.reward > 0 ? "#15803d" : "#b91c1c")}>${fmtNum(r.reward, 2)}</td>
@@ -237,6 +238,8 @@ function Rollouts({ run }) {
   </div>`;
 }
 
+const RL_CARDS = { tasks: "rl_tasks", prompts: "rl_prompts", rollouts: "rl_rollouts", format: "rl_format", reward: "rl_reward_scheme", objective: "rl_objective", "collapse guards": "rl_guards" };
+
 function RlPanel({ rl, id, runName }) {
   const rows = [["tasks", rl.tasks.map((t) => `${t} ${(rl.task_weights[t] * 100).toFixed(0)}%`).join(" · ")],
     ["prompts", `${fmtInt(rl.n_train_prompts)} train / ${fmtInt(rl.n_heldout_prompts)} held out (split by prompt-text hash, 10% held out)`],
@@ -245,8 +248,8 @@ function RlPanel({ rl, id, runName }) {
     ["reward", `${rl.reward_scheme}: ${rl.reward_rule}`],
     ["objective", `clip ${rl.clip_eps} · KL ${rl.kl_coef} (${rl.kl_kind}) · lr ${rl.lr}`],
     ["collapse guards", `entropy_stop ${rl.entropy_stop || "off"} · kl_stop ${rl.kl_stop || "off"}`]];
-  return html`<div><h2>Prompts and reward</h2>
-    <table>${rows.map(([k, v]) => html`<tr><td>${k}</td><td class="l">${v}</td></tr>`)}</table>
+  return html`<div><h2>Prompts and reward<${Info} k="rl_recipe" /></h2>
+    <table>${rows.map(([k, v]) => html`<tr><td>${k}<${Info} k=${RL_CARDS[k]} /></td><td class="l">${v}</td></tr>`)}</table>
     <div class="legend" style="margin-top:6px">RL has no token mixture: the model trains on its own samples. Prompts are generated deterministically from the task list and the seed.</div>
     <${RlPrompts} id=${id} thinkRequired=${rl.think_required} />
     ${runName && html`<${Rollouts} run=${runName} key=${runName} />`}</div>`;
@@ -264,7 +267,7 @@ function Recipe({ id }) {
   return html`<div>
     <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
       <b>${r.run_name}</b><span class="stage-badge ${r.stage === "sft" ? "sft" : r.stage === "rl" ? "rl" : ""}">${r.stage}</span>
-      <span class="muted">${r.kind === "run" ? "run (what it started with)" : "plan (yaml)"} · ${r.status}</span>
+      <span class="muted">${r.kind === "run" ? "run (what it started with)" : "plan (yaml)"} · ${r.status}<${Info} k="recipe" /></span>
       ${r.kind === "run" && r.config_path && html`<a href=${dataHref("recipes", "config:" + r.config_path)}><button>see the plan</button></a>`}
       ${r.kind === "run" && html`<a href=${"#/runs/" + encodeURIComponent(r.run_name)}><button>run page</button></a>`}
       ${parent && html`<a href=${dataHref("compare", "run:" + parent, r.id)}><button>compare with ${parent}</button></a>`}
@@ -277,7 +280,7 @@ function Recipe({ id }) {
       <${MixTable} rows=${r.rows} showPlanned=${true} streams=${r.stream_sources} sel=${pick} onPick=${(s) => setPick(s === pick ? null : s)} />
       <div class="legend" style="margin-top:6px">epochs = planned tokens / available tokens; above 1.5 (red) the source is repeated.${r.stream_sources ? " 'consumed' is the loader's own per-source count at the last checkpoint." : ""} Click a row to inspect what the model sees from it.</div>
       ${picked && html`<${Inspector} row=${picked} tag=${picked.kind === "sft" ? r.tag : r.tokenizer_tag} seqLen=${r.seq_len} key=${picked.source + r.id} />`}
-      ${!picked && r.extra_val.length > 0 && html`<h2>extra_val_mixture (drift set, val splits only)</h2>
+      ${!picked && r.extra_val.length > 0 && html`<h2>extra_val_mixture (drift set, val splits only)<${Info} k="extra_val" /></h2>
         <${MixTable} rows=${r.extra_val} showPlanned=${false} />
         <div class="legend">Pretraining validation tracked alongside the stage's own val loss, so base-model drift is visible; ${fmtTok(r.extra_val_tokens)} tokens per evaluation.</div>`}
     </div>`}
@@ -306,6 +309,7 @@ function Compare({ a, b }) {
     for (const n of names) rows.push([n, ra.rows.find((x) => x.source === n) || null, rb.rows.find((x) => x.source === n) || null]);
     rows.sort((x, y) => (y[1] ? y[1].weight : 0) + (y[2] ? y[2].weight : 0) - ((x[1] ? x[1].weight : 0) + (x[2] ? x[2].weight : 0)));
   }
+  const HDR_CARDS = { seq_len: "seq_len", init_from: "init_from", extra_val_mixture: "extra_val" };
   const hdr = [["seq_len", (r) => r.seq_len || "-"], ["total tokens", (r) => fmtTok(r.total_tokens)], ["stage", (r) => r.stage],
     ["tokenized / sft root", (r) => r.root || "-"], ["init_from", (r) => r.init_from || "random init"],
     ["extra_val_mixture", (r) => (r.extra_val.length ? r.extra_val.map((x) => `${x.source} ${(x.weight * 100).toFixed(0)}`).join(" · ") : "none")]];
@@ -315,10 +319,10 @@ function Compare({ a, b }) {
       <button onClick=${() => pick("a", b) || (location.hash = dataHref("compare", b, a).slice(1))}>swap</button></div>
     ${!ra || !rb ? html`<div class="empty-note">pick two recipes</div>` : html`<div>
       <table><tr><th class="l">header</th><th class="l">${recipeLabel(ra)}</th><th class="l">${recipeLabel(rb)}</th></tr>
-        ${hdr.map(([k, f]) => { const x = String(f(ra)), y = String(f(rb)); return html`<tr><td class="l">${k}</td>
+        ${hdr.map(([k, f]) => { const x = String(f(ra)), y = String(f(rb)); return html`<tr><td class="l">${k}${HDR_CARDS[k] && html`<${Info} k=${HDR_CARDS[k]} />`}</td>
           <td class="l">${x}</td><td class=${"l" + (x === y ? "" : " diff")} style=${x === y ? "" : "color:#b45309;font-weight:600"}>${y}</td></tr>`; })}</table>
       <h2>mixture</h2>
-      <table><tr><th class="l">source</th><th>weight A</th><th>weight B</th><th>Δ (pp)</th><th>planned A</th><th>planned B</th><th>epochs A</th><th>epochs B</th></tr>
+      <table><tr><th class="l">source</th><th>weight A<${Info} k="mix_weight" /></th><th>weight B</th><th>Δ (pp)</th><th>planned A</th><th>planned B</th><th>epochs A<${Info} k="epochs" /></th><th>epochs B</th></tr>
         ${rows.map(([n, x, y]) => { const d = ((y ? y.weight : 0) - (x ? x.weight : 0)) * 100; const only = !x || !y;
           return html`<tr style=${only ? "background:#fef3c7" : ""}>
             <td class="l">${n}${only ? html` <span class="muted">only in ${x ? "A" : "B"}</span>` : ""}</td>
@@ -347,7 +351,7 @@ function ChainView({ id }) {
   const widest = Math.max(1, ...c.runs.map((r) => r.tokens_used));
   return html`<div>
     <div class="row" style="margin-bottom:6px"><a href=${dataHref()}><button>‹ all recipes</button></a>
-      <b>${run}</b><span class="muted">data seen by these weights, back through init_from</span></div>
+      <b>${run}</b><span class="muted">data seen by these weights, back through init_from<${Info} k="chain" /></span></div>
     <div class="sub">${c.runs.length} stages · ${fmtTok(c.cumulative_tokens)} cumulative tokens</div>
     <div style="margin:10px 0 16px">
       ${c.runs.map((r) => html`<div style="margin-bottom:6px">
@@ -390,14 +394,14 @@ function Catalog() {
     <div class="row" style="margin-bottom:6px"><span class="sub" style="margin:0">Every raw, tokenized and chat-formatted data set. A set is "used" when some recipe's mixture names it.</span>
       <button class=${showUnused ? "active" : ""} onClick=${() => setShowUnused(!showUnused)}>show unused</button>
       ${!showUnused && html`<span class="muted">${nHidden} unused or *-v1 sets hidden</span>`}</div>
-    <table><tr><th class="l">source</th><th>kind</th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})</th><th>val tokens (${t})</th><th>docs (${t})</th>`)}<th>used by</th></tr>
+    <table><tr><th class="l">source</th><th>kind<${Info} k="source_kind" /></th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})<${Info} k="tokenizer_tag" /></th><th>val tokens (${t})</th><th>docs (${t})</th>`)}<th>used by</th></tr>
     ${shown.map((s) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", s.name).slice(1); }}>
       <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
       ${ov.tags.map((t) => { const p = (s.prepared || {})[t]; return p ? html`<td>${fmtTok(p.train_tokens)}</td><td>${fmtTok(p.val_tokens)}</td><td>${fmtInt(p.train_docs)}</td>` : html`<td colspan="3" class="muted">not tokenized</td>`; })}
       <td>${nUses(s.name)}</td></tr>`)}
     </table>
     ${sets.length > 0 && html`<h2>SFT / reasoning sets (chat-formatted, with loss masks)</h2>
-      <table><tr><th>tag</th><th class="l">set</th><th>train examples</th><th>train tokens</th><th>loss targets</th><th>val examples</th><th>max len</th><th>think span</th><th>dropped / too long</th><th>used by</th></tr>
+      <table><tr><th>tag</th><th class="l">set</th><th>train examples</th><th>train tokens</th><th>loss targets<${Info} k="loss_targets" /></th><th>val examples</th><th>max len<${Info} k="max_len" /></th><th>think span<${Info} k="think_span" /></th><th>dropped / too long<${Info} k="dropped" /></th><th>used by</th></tr>
       ${sets.map(([tag, n, m]) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", n).slice(1); }}>
         <td>${tag}</td><td class="l">${n}</td><td>${fmtInt(m.train_examples)}</td><td>${fmtTok(m.train_tokens)}</td><td>${m.train_tokens ? (m.train_targets / m.train_tokens * 100).toFixed(0) + "%" : "-"}</td>
         <td>${fmtInt(m.val_examples)}</td><td>${m.max_len || "-"}</td><td>${m.think_required ? "mandatory" : "no"}</td><td>${fmtInt(m.dropped || 0)} / ${fmtInt(m.too_long || 0)}</td><td>${nUses(n)}</td></tr>`)}</table>`}
@@ -421,9 +425,9 @@ function SourcePage({ name }) {
     ${s.raw_files.length > 0 && html`<div><h2>raw files</h2>
       <table><tr><th>#</th><th class="l">file</th><th>rows</th><th>row groups</th><th>size</th></tr>
       ${s.raw_files.map((f) => html`<tr><td>${f.index}</td><td class="l">${f.name}</td><td>${fmtInt(f.rows)}</td><td>${f.row_groups}</td><td>${fmtBytes(f.bytes)}</td></tr>`)}</table></div>`}
-    <h2>prepared artifacts</h2>
+    <h2>prepared artifacts<${Info} k="prepared_artifacts" /></h2>
     ${Object.keys(s.prepared).length === 0 ? html`<div class="empty-note">nothing prepared from this source</div>`
-      : html`<table><tr><th>tag</th><th>kind</th><th>made by</th><th>train tokens</th><th>train docs</th><th>val tokens</th><th>shards</th><th>loss targets</th><th class="l">provenance</th></tr>
+      : html`<table><tr><th>tag<${Info} k="tokenizer_tag" /></th><th>kind</th><th>made by<${Info} k="provenance" /></th><th>train tokens</th><th>train docs</th><th>val tokens</th><th>shards</th><th>loss targets<${Info} k="loss_targets" /></th><th class="l">provenance</th></tr>
       ${Object.entries(s.prepared).map(([k, p]) => html`<tr><td>${p.tag}</td><td>${p.kind}</td><td>${p.made_by}</td><td>${fmtTok(p.train_tokens)}</td><td>${fmtInt(p.train_docs)}</td><td>${fmtTok(p.val_tokens)}</td><td>${p.train_shards}</td>
         <td>${p.targets ? (p.targets / Math.max(1, p.train_tokens) * 100).toFixed(0) + "%" : "-"}</td><td class="l"><span class="legend">${p.provenance}</span></td></tr>`)}</table>`}
     ${s.parents.length > 0 && html`<div class="sub">derived from ${s.parents.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
@@ -438,9 +442,9 @@ function SourcePage({ name }) {
   </div>`;
 }
 
-function Hist({ edges, counts, label }) {
+function Hist({ edges, counts, label, info }) {
   const max = Math.max(1, ...counts);
-  return html`<div><h3>${label}</h3><div class="hist" style="margin-bottom:18px">${counts.map((c, i) => html`<div style=${"height:" + (c / max * 100).toFixed(1) + "%"} title=${`${fmtTok(edges[i])}+: ${fmtInt(c)}`}><span>${fmtTok(edges[i])}</span></div>`)}</div></div>`;
+  return html`<div><h3>${label}${info && html`<${Info} k=${info} />`}</h3><div class="hist" style="margin-bottom:18px">${counts.map((c, i) => html`<div style=${"height:" + (c / max * 100).toFixed(1) + "%"} title=${`${fmtTok(edges[i])}+: ${fmtInt(c)}`}><span>${fmtTok(edges[i])}</span></div>`)}</div></div>`;
 }
 
 function Documents({ initial = null }) {
@@ -518,8 +522,8 @@ function Documents({ initial = null }) {
       : html`<select value=${file} onChange=${(e) => { setFile(Number(e.target.value)); setRg(0); }}>${files.map((x) => html`<option value=${x.index}>${x.name} · ${fmtInt(x.rows)} rows · ${x.row_groups} row groups</option>`)}</select>
         ${f && html`<span class="muted">row group</span><input type="number" min="0" max=${f.row_groups - 1} value=${rg} onChange=${(e) => setRg(Math.max(0, Math.min(f.row_groups - 1, Number(e.target.value))))} style="width:80px" />`}`}
       <button onClick=${random}>random doc</button>
-      ${isTok && ["doc", "window", "stats"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}
-      <span class="muted" style="margin-left:10px">show as</span>
+      ${isTok && ["doc", "window", "stats"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}${isTok && html`<${Info} k="browse_views" />`}
+      <span class="muted" style="margin-left:10px">show as<${Info} k="show_as" /></span>
       ${["text", "tokens", "ids"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
     </div>
     <div class="two fill" ref=${fillRef}>
@@ -554,12 +558,12 @@ function Documents({ initial = null }) {
           <div class="tiles">
             <div class="tile"><div class="k">docs</div><div class="v">${fmtInt(stats.docs)}</div></div>
             <div class="tile"><div class="k">tokens</div><div class="v">${fmtTok(stats.tokens)}</div></div>
-            <div class="tile"><div class="k">mean tokens/doc</div><div class="v">${fmtNum(stats.mean_len, 0)}</div><div class="s">p10 ${fmtNum(stats.p10, 0)} · p50 ${fmtNum(stats.p50, 0)} · p90 ${fmtNum(stats.p90, 0)} · p99 ${fmtNum(stats.p99, 0)}</div></div>
+            <div class="tile"><div class="k">mean tokens/doc<${Info} k="doc_lengths" /></div><div class="v">${fmtNum(stats.mean_len, 0)}</div><div class="s">p10 ${fmtNum(stats.p10, 0)} · p50 ${fmtNum(stats.p50, 0)} · p90 ${fmtNum(stats.p90, 0)} · p99 ${fmtNum(stats.p99, 0)}</div></div>
             <div class="tile"><div class="k">docs ≥ 4K tokens</div><div class="v">${fmtInt(stats.docs_over_4k)}</div><div class="s">${fmtTok(stats.tokens_over_4k)} tokens (${(stats.tokens_over_4k / Math.max(1, stats.tokens) * 100).toFixed(1)}%)</div></div>
             <div class="tile"><div class="k">docs ≥ 8K tokens</div><div class="v">${fmtInt(stats.docs_over_8k)}</div><div class="s">${fmtTok(stats.tokens_over_8k)} tokens (${(stats.tokens_over_8k / Math.max(1, stats.tokens) * 100).toFixed(1)}%)</div></div>
           </div>
-          <${Hist} edges=${stats.hist_edges} counts=${stats.hist} label="documents by length (tokens, log bins)" />
-          <${Hist} edges=${stats.hist_edges} counts=${stats.tokens_by_bin} label="tokens by document-length bin" />
+          <${Hist} edges=${stats.hist_edges} counts=${stats.hist} label="documents by length (tokens, log bins)" info="doc_hist" />
+          <${Hist} edges=${stats.hist_edges} counts=${stats.tokens_by_bin} label="tokens by document-length bin" info="doc_hist" />
         </div>` : html`<div class="empty-note">computing stats…</div>`)}
       </div>
     </div>

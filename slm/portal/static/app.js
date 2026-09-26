@@ -2,6 +2,7 @@ import { h, render, Component } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum } from "./components/util.js";
+import { Info } from "./components/info.js";
 import { Home } from "./pages/home.js";
 import { RunDetail } from "./pages/runs.js";
 import { DataPage } from "./pages/data.js";
@@ -32,7 +33,7 @@ function GpuTile() {
   }, []);
   if (!g) return html`<div class="gpu">GPU: …</div>`;
   if (!g.available) return html`<div class="gpu">GPU: unavailable</div>`;
-  return html`<div class="gpu"><b>${g.name.replace("NVIDIA GeForce ", "")}</b><br/>
+  return html`<div class="gpu"><b>${g.name.replace("NVIDIA GeForce ", "")}</b><${Info} k="gpu_tile" /><br/>
     ${g.used_gib.toFixed(1)} / ${g.total_gib.toFixed(1)} GiB · ${g.util.toFixed(0)}%<br/>
     ${g.power_w != null ? g.power_w.toFixed(0) + " W · " : ""}${g.temp_c != null ? g.temp_c.toFixed(0) + " °C" : ""}<br/>
     ${g.training_live.length ? html`<span style="color:#60a5fa">training: ${g.training_live.join(", ")}</span>` : html`<span>no live training</span>`}</div>`;

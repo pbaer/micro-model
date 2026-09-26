@@ -2,6 +2,7 @@ import { h } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum, fmtInt } from "../components/util.js";
+import { Info } from "../components/info.js";
 
 const html = htm.bind(h);
 
@@ -47,8 +48,8 @@ export function Home() {
       <div><b>${r.run_name}</b> <span class="status running">running</span> <span class="muted">· ${STAGES.find((s) => s.id === stageOf(r)).label}</span></div>
       <div class="bar"><div style=${"width:" + (r.progress * 100).toFixed(1) + "%"}></div></div>
       <div class="muted">${r.total_steps ? `step ${fmtInt(r.update)} / ${fmtInt(r.total_steps)}` : `${fmtTok(r.tokens)} / ${fmtTok(r.total_tokens)}`} · ${r.is_rl ? `reward ${fmtNum(r.rl.reward_mean, 3)}` : `loss ${fmtNum(r.loss, 3)}`} · ${bestMetric(r)}${r.total_steps ? "" : ` · ${fmtInt(r.tok_s)} tok/s`} · ETA ${fmtDur(r.eta_s)}</div></a>`)}
-    <h2>Pipeline and runs</h2>
-    <table><tr><th class="l">stage</th><th class="l">run</th><th>status</th><th>tokens<div class="legend">this run · seen in total</div></th><th>progress</th><th>loss</th><th>result</th><th>quality<div class="legend">judged, 1-5</div></th><th>tok/s</th><th>elapsed<div class="legend">ETA if running</div></th><th>started<div class="legend">git</div></th></tr>
+    <h2>Pipeline and runs<${Info} k="pipeline" /></h2>
+    <table><tr><th class="l">stage</th><th class="l">run</th><th>status<${Info} k="run_status" /></th><th>tokens<${Info} k="tokens_seen" /><div class="legend">this run · seen in total</div></th><th>progress</th><th>loss<${Info} k="loss_col" /></th><th>result<${Info} k="result_col" /></th><th>quality<${Info} k="quality_col" /><div class="legend">judged, 1-5</div></th><th>tok/s<${Info} k="tok_s" /></th><th>elapsed<div class="legend">ETA if running</div></th><th>started<div class="legend">git</div></th></tr>
       ${STAGES.map((s) => { const rs = byStage[s.id] || []; return rs.length === 0
         ? html`<tr><td class="l"><b>${s.label}</b><div class="legend">${s.hint}</div></td><td class="l muted" colspan="10">not started</td></tr>`
         : rs.map((r, i) => html`<tr class="click" onClick=${() => open(r)}>${i === 0 ? html`<td class="l" rowspan=${rs.length}><b>${s.label}</b><div class="legend">${s.hint}</div></td>` : ""}
@@ -59,7 +60,7 @@ export function Home() {
             </tr>`); })}
     </table>
     <div class="legend" style="margin-top:6px">Click a run for live charts, milestones, samples, checkpoints, events and config.</div>
-    <h2>Data readiness</h2>
+    <h2>Data readiness<${Info} k="data_readiness" /></h2>
     ${!data ? html`<div class="muted">loading…</div>` : tags.length === 0 ? html`<div class="empty-note">no tokenized data yet</div>` : tags.map((t) => {
       const srcs = data.sources.filter((s) => s.tokenized[t]);
       const total = srcs.reduce((a, s) => a + s.tokenized[t].train_tokens, 0);

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtNum } from "../components/util.js";
 import { segmentLabels } from "../components/tokens.js";
+import { Info } from "../components/info.js";
 
 const html = htm.bind(h);
 
@@ -19,7 +20,7 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
   const [force, setForce] = useState(false);
   const loaded = info && info.checkpoint;
   return html`<div class="panel">
-    <div class="row"><b>slot ${slot}</b>
+    <div class="row"><b>slot ${slot}<${Info} k="slots" /></b>
       ${loaded ? html`<span class="muted"><span class=${"stage-badge " + (info.stage || "base")}>${info.stage || "base"}</span> ${info.name} (${info.run || ""}) · ${info.device}/${info.dtype} · ${fmtInt(info.params)} params · trained ${fmtTok(info.tokens)} · val ${fmtNum(info.val_loss, 3)} · tokenizer ${info.tokenizer}${info.tokenizer_matched ? "" : " ⚠ sha mismatch"}</span>
         <button onClick=${() => onUnload(slot)} disabled=${busy}>unload</button>` : html`<span class="muted">empty</span>`}
     </div>
@@ -161,7 +162,7 @@ export function ModelPage() {
   const divergence = useBoth && out.A.tokens.length && out.B.tokens.length ? out.A.tokens.findIndex((t, i) => !out.B.tokens[i] || out.B.tokens[i].id !== t.id) : -1;
   return html`<div>
     <h1>Inference</h1>
-    <div class="sub">${status ? (status.worker ? `worker alive · VRAM in worker ${fmtNum(status.vram_gib, 2)} GiB` : "worker idle (no VRAM held)") : "…"} ${status && status.live_runs && status.live_runs.length ? ` · ⚠ training live: ${status.live_runs.join(", ")} — loads default to CPU` : ""}
+    <div class="sub">${status ? (status.worker ? `worker alive · VRAM in worker ${fmtNum(status.vram_gib, 2)} GiB` : "worker idle (no VRAM held)") : "…"}<${Info} k="worker" /> ${status && status.live_runs && status.live_runs.length ? ` · ⚠ training live: ${status.live_runs.join(", ")} — loads default to CPU` : ""}
       ${status && status.worker && html` · <a href="#" onClick=${(e) => { e.preventDefault(); api("/api/model/worker/stop", { method: "POST" }).then(refresh); }}>release GPU (stop worker)</a>`}</div>
     ${err && html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`}
     <div class="two">
@@ -176,10 +177,10 @@ export function ModelPage() {
       <span class="muted">top-k</span><input type="number" value=${sampling.top_k} onChange=${(e) => setSampling({ ...sampling, top_k: Number(e.target.value) })} style="width:60px" />
       <span class="muted">max new</span><input type="number" value=${sampling.max_new_tokens} onChange=${(e) => setSampling({ ...sampling, max_new_tokens: Number(e.target.value) })} style="width:70px" />
       <span class="muted">seed</span><input type="number" value=${sampling.seed} onChange=${(e) => setSampling({ ...sampling, seed: Number(e.target.value) })} style="width:80px" />
-      <button onClick=${() => setSampling({ ...sampling, temperature: 0 })}>greedy</button>
+      <button onClick=${() => setSampling({ ...sampling, temperature: 0 })}>greedy</button><${Info} k="sampling" />
       <label class="muted"><input type="checkbox" checked=${useBoth} onChange=${(e) => setUseBoth(e.target.checked)} /> A and B side by side</label>
-      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label>
-        <label class="muted"><input type="checkbox" checked=${tools} onChange=${(e) => setTools(e.target.checked)} /> python tool (REPL session ${sessionId})</label>
+      ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label><${Info} k="force_think" />
+        <label class="muted"><input type="checkbox" checked=${tools} onChange=${(e) => setTools(e.target.checked)} /> python tool (REPL session ${sessionId})</label><${Info} k="python_tool" />
         <button onClick=${newConversation}>new conversation</button>`}
     </div>
     ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage || "base") === "base" && html`<div class="panel warn"><b>Slot A holds a base checkpoint (${slots.A.run || slots.A.name}).</b> A base model has never seen the chat tokens: after ${"<|assistant|>"} it just continues web text, so chat output will be garbage. Use <b>completion</b> mode for it, or load an instruct / reasoning / RL checkpoint (m4_sft_149m, m5_reasoning_149m, m6_rl_gsm_tools_149m best.pt) for chat.</div>`}
@@ -198,15 +199,15 @@ export function ModelPage() {
       <details style="margin-top:6px"><summary class="muted">declared functions (${funcs.trim() ? "set" : "none"})</summary>
         <textarea style="min-height:60px;width:100%;font-family:var(--mono)" placeholder=${'[{"name": "unit_price", "signature": "def unit_price(item: str) -> float", "comment": "Catalogue price of an item in dollars."}]'}
           value=${funcs} onInput=${(e) => setFuncs(e.target.value)}></textarea>
-        <div class="legend">JSON list. Each declaration is emitted as a masked ${"<|python_def|>"}signature${"<|python_comment|>"}comment${"<|/python_def|>"} block right after ${"<|bos|>"} (highlighted in the views below). The portal has no implementations, so calling one reports that it is declared but not available here.</div>
+        <div class="legend">JSON list. Each declaration is emitted as a masked ${"<|python_def|>"}signature${"<|python_comment|>"}comment${"<|/python_def|>"} block right after ${"<|bos|>"} (highlighted in the views below). The portal has no implementations, so calling one reports that it is declared but not available here.<${Info} k="declared_functions" /></div>
       </details>
       <div class="legend" style="margin-top:4px">Multi-turn: a well-formed assistant reply is appended here automatically with an empty user turn after it. Python calls inside the think span run in this conversation's session, so variables persist across turns. A base checkpoint has never seen the chat tokens; expect noise until SFT.</div></div>`}
     <div class="row" style="margin:8px 0">
       <button class="active" onClick=${generate} disabled=${busy || !slots.A || !slots.A.checkpoint}>generate</button>
       <button onClick=${cancel} disabled=${!streamId}>cancel</button>
-      <button onClick=${doScore} disabled=${busy || !slots.A || !slots.A.checkpoint}>score prompt (teacher-forced)</button>
+      <button onClick=${doScore} disabled=${busy || !slots.A || !slots.A.checkpoint}>score prompt (teacher-forced)</button><${Info} k="score" />
       <span class="muted" style="margin-left:10px">view</span>
-      ${["text", "tokens"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}
+      ${["text", "tokens"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}<${Info} k="token_view" />
       ${hover && html`<span class="muted" style="font-family:var(--mono)">top-${hover.topk.length}: ${hover.topk.map((t) => `${JSON.stringify(t.piece)} ${Math.exp(t.logprob).toFixed(2)}`).join("  ")}</span>`}
     </div>
     <div class=${useBoth ? "two" : ""}>
@@ -219,7 +220,7 @@ export function ModelPage() {
       ${calls.map((c, i) => html`<div class="toolcall" key=${i}><pre class="code">${c.code}</pre><span class=${c.ok ? "result ok" : "result err"}>${c.result}</span></div>`)}</div>`}
     ${out.A.done && out.A.done.assistant && html`<div class="legend" style="margin-top:4px">assistant turn: ${out.A.done.assistant.well_formed ? "well-formed, added to the conversation" : `not well-formed (${out.A.done.reason}${out.A.done.assistant.malformed ? ", malformed" : ""}) — not added`}</div>`}
     <div class="legend" style="margin-top:6px">${view === "tokens" ? "chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step." : "raw decoded text; reserved tokens are shown as markers. Hover any word for its log-prob and the top-k alternatives."}</div>
-    ${score && html`<h2>Teacher-forced scoring (slot A)</h2>
+    ${score && html`<h2>Teacher-forced scoring (slot A)<${Info} k="score" /></h2>
       <div class="muted">${score.n} tokens · mean logprob ${score.mean_logprob.toFixed(3)} · perplexity ${score.ppl ? score.ppl.toFixed(2) : "-"} (over loss-target tokens)</div>
       ${view === "tokens" ? html`<div class="chips">${score.tokens.map((t, i) => html`<span class=${"chip" + (t.target ? "" : " masked")} style=${t.target ? `background:${lpColor(t.logprob)}` : ""} title=${t.logprob == null ? "first token" : `logprob ${t.logprob.toFixed(3)} · rank ${t.rank}`} key=${i}>${showPiece(t.piece)}</span>`)}</div>`
         : html`<div class="rawout">${score.tokens.map((t, i) => isSpecial(t.piece) ? html`<span class="chip special" key=${i}>${t.piece}</span>` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}

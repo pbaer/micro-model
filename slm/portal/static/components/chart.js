@@ -2,13 +2,16 @@ import { h } from "preact";
 import { useEffect, useRef } from "preact/hooks";
 import htm from "htm";
 import { fmtTok, fmtDur } from "./util.js";
+import { Info } from "./info.js";
 
 const html = htm.bind(h);
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
 
-/** props: title, series=[{label, x:[], y:[], color?, points?, scale?, dash?}], xmode ('tokens'|'update'|'time'), logy, height, ymin, ymin2
- *  A series with scale:"y2" is drawn against a second axis on the right (e.g. temperature vs power). */
-export function Chart({ title, series, xmode = "tokens", logy = false, height = 240, ymin, ymin2 }) {
+/** props: title, info (a cards.js key for the "?" beside the title), series=[{label, x:[], y:[], color?, points?, scale?, dash?}],
+ *  xmode ('tokens'|'update'|'time'), logy, height, ymin, ymin2
+ *  A series with scale:"y2" is drawn against a second axis on the right (e.g. temperature vs power).
+ *  The title is rendered here rather than by uPlot so the info icon can sit inline after it. */
+export function Chart({ title, info, series, xmode = "tokens", logy = false, height = 240, ymin, ymin2 }) {
   const ref = useRef(null);
   const plot = useRef(null);
   useEffect(() => {
@@ -22,7 +25,6 @@ export function Chart({ title, series, xmode = "tokens", logy = false, height = 
     const opts = {
       width: el.clientWidth || 480,
       height,
-      title,
       // Hovering a legend entry focuses that series and fades the rest to `focus.alpha`. uPlot only wires the legend
       // hover when cursor.focus.prox >= 0; prox 0 keeps plot-area hovering from stealing focus, and setSeries:false
       // keeps the fade from propagating to the other synced charts (they share only the cursor position).
@@ -48,6 +50,6 @@ export function Chart({ title, series, xmode = "tokens", logy = false, height = 
     const ro = new ResizeObserver(() => plot.current && plot.current.setSize({ width: el.clientWidth, height }));
     ro.observe(el);
     return () => { ro.disconnect(); if (plot.current) { plot.current.destroy(); plot.current = null; } };
-  }, [series, xmode, logy, height, title, ymin, ymin2]);
-  return html`<div class="chart"><div ref=${ref}></div></div>`;
+  }, [series, xmode, logy, height, ymin, ymin2]);
+  return html`<div class="chart">${title && html`<div class="chart-title">${title}${info && html`<${Info} k=${info} />`}</div>`}<div ref=${ref}></div></div>`;
 }
