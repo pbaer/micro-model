@@ -396,6 +396,11 @@ class Sandbox:
                 step = self.expr(e.slice.step, env) if e.slice.step else None
                 if isinstance(c, dict):
                     raise ToolError("cannot slice a dict")
+                for name, v in (("start", lo), ("stop", hi), ("step", step)):
+                    if v is not None and not isinstance(v, int):  # a float or str index is a model mistake, not a crash
+                        raise ToolError(f"slice {name} must be an integer, got {type(v).__name__} {v!r}")
+                if step == 0:
+                    raise ToolError("slice step cannot be zero")
                 return self.check(c[lo:hi:step])
             key = self.expr(e.slice, env)
             try:

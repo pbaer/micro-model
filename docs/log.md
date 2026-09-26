@@ -683,3 +683,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   token counts nested (`train.tokens`) where `prepare.py` and the portal use flat `train_tokens`; the five
   converted sources (`smoltalk-chat`, `tool-chat*`) therefore had no visible volume. Script fixed to emit both,
   manifests backfilled, overview now reads 26.03B across 23 sources with every source counted (732c5ee).
+- **Incident: run 5 crashed at step 60** (10:03). The policy wrote a slice with a float index; Python's
+  `TypeError` escaped `pysandbox` and propagated through `run_tool` and `sample_with_tools` into the trainer.
+  Two fixes: the slice site now raises a readable `ToolError` for a non-integer start/stop/step (and a zero
+  step), and `run_tool` -- the harness boundary -- now converts *any* escaping exception into an `error:`
+  result, because the class of bug is "the sandbox missed a case" and no program the model writes may take
+  the trainer down. Regression tests added. Relaunched; the trainer resumes from `latest.pt` (~step 60), so
+  the run continues rather than restarts. Crash log kept as `runs/m9_rl5_336m/train_crash_step60.log`.

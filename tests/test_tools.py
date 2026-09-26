@@ -282,3 +282,31 @@ def test_stored_tool_results_replay_from_the_sandbox():
             continue
         s = V.verify(root / name, tok, impls, max_conversations=150)
         assert s["calls"] > 0 and s["mismatches"] == 0, (name, s["examples"])
+
+
+def test_bad_slice_indices_are_tool_errors_not_crashes():
+    """M9 stage C run 5 died at step 60 when the policy wrote a slice with a float index and Python's TypeError
+    escaped the sandbox. The slice case is now a readable ToolError, and run_tool converts anything else that
+    escapes into an 'error:' result, so no program the model writes can take the trainer down."""
+    from slm.tools.protocol import run_tool
+    from slm.tools.pysandbox import PySession
+
+    for code in ("xs = [1, 2, 3]\nxs[1.5:]", "xs = [1, 2, 3]\nxs['a':2]", "xs = [1, 2, 3]\nxs[::0]", "s = 'abc'\ns[0.0]"):
+        out, ok = run_tool(code, PySession())
+        assert not ok and out.startswith("error:"), (code, out)
+    # a valid slice still works
+    out, ok = run_tool("xs = [1, 2, 3, 4]\nxs[1:3]", PySession())
+    assert ok and out.strip() == "[2, 3]"
+
+
+def test_run_tool_never_raises(monkeypatch):
+    """Even a sandbox bug that raises a bare Python exception reaches the model as text."""
+    from slm.tools import protocol
+    from slm.tools.pysandbox import PySession
+
+    class Boom(PySession):
+        def run(self, code):
+            raise RuntimeError("unexpected sandbox failure")
+
+    out, ok = protocol.run_tool("1 + 1", Boom())
+    assert not ok and out.startswith("error: RuntimeError")

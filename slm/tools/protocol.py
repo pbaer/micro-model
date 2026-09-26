@@ -50,6 +50,11 @@ def run_tool(code: str, session: PySession | None = None) -> tuple[str, bool]:
         return (out if out != "" else NO_OUTPUT)[:MAX_RESULT_CHARS], True
     except ToolError as e:
         return f"error: {str(e)[:MAX_RESULT_CHARS]}", False
+    except Exception as e:  # noqa: BLE001 - the harness boundary: a program the model wrote must never crash the caller
+        # M9 stage C run 5 died at step 60 on a float slice index the sandbox had not anticipated (TypeError
+        # straight out of Python). The specific case is now a ToolError, but the class of bug is "the sandbox
+        # missed a case", so anything else that escapes is reported to the model the same way.
+        return f"error: {type(e).__name__}: {str(e)[:MAX_RESULT_CHARS]}", False
 
 
 _HOIST_RE = re.compile(r"^(?P<lead>.*?\S)\s*(?:because|since|as|so|,|:)?\s+(?P<expr>[-\d.,$%]+(?:\s*[-+*/x×÷]\s*[-\d.,$%]+)+)\s*=\s*(?P<call><<[^>]*>>)(?P<rest>.*)$")
