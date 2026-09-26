@@ -748,3 +748,60 @@ with resolution on multi-turn behaviour and is run per stage from here.
 The `plain` reward -- present, not a `####` line, not a verifier template, no tool call -- yields spread in
 half its groups on the stage B model, so it will carry gradient in RL run 3 rather than sit at all-ones. That
 is the condition for it to work as an anchor.
+
+## 14. M9 stage C, run 3: GRPO with a chat anchor (`m9_rl3_336m`, 2026-09-26)
+
+Run 2's regression -- judged facts 2.88 -> 2.00, tool misfire 0.25 -> 0.32, "Who wrote Hamlet?" -> "So the
+answer is 2." -- came from RL seeing only verifiable math/tool/constraint families. Run 3 adds a `chat` family
+(short, non-computational SmolTalk first turns) with a `plain` reward: 1 only if the answer is present, is not
+a `####` line, is not a verifier template, and made no tool call. Verifiable, no judge. 3 of 13 draws.
+Everything else identical to run 2 (lr 4e-6, 8 prompts x 6 rollouts, guard on a 10-step window).
+
+Stopped by the KL guard at step 150 (sustained 0.156 vs 0.15), held-out still rising: 0.438 -> 0.490 -> 0.542
+-> **0.562**, malformed 0.25 -> 0.08. (The held-out set now contains chat prompts, so its level is not
+comparable to run 2's 0.250; its gain, +0.124, is.) The chat family sat at reward 0.95-0.96 with **zero** tool
+calls for the whole run -- the anchor held, and the spread it showed in a third of its groups is what pushed
+back.
+
+### Judged (final checkpoint of each run; run 3 = best.pt, step 150)
+
+| | overall | corr | coh | task | **misfire** | arith | defin | **facts** | narra | patte | prose | pytho | qa |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| stage A | 3.47 | 3.03 | 3.56 | 3.81 | 0.000 | 2.83 | 4.17 | 3.08 | 2.67 | 4.00 | 3.25 | 4.22 | 3.50 |
+| stage B (v4) | 3.58 | 3.22 | 3.84 | 3.69 | 0.250 | 4.42 | 4.17 | 2.88 | 4.00 | 2.50 | 3.33 | 4.22 | 4.50 |
+| RL run 2 | 3.49 | 3.06 | 3.94 | 3.47 | 0.321 | 4.67 | 3.50 | 2.00 | 3.50 | 3.25 | 3.58 | 4.28 | 5.00 |
+| **RL run 3** | **3.65** | **3.41** | 3.88 | 3.66 | **0.143** | 4.58 | **5.00** | 2.79 | 3.67 | 3.42 | 3.33 | 4.11 | 3.50 |
+
+Facts recovered from 2.00 to 2.79 (v4: 2.88), misfire more than halved, correctness the highest of any
+checkpoint in the project. Per checkpoint within run 3:
+
+| checkpoint | overall | facts | misfire | RL held-out |
+|---|---|---|---|---|
+| step 50 | 3.81 | 3.71 | 0.18 | 0.490 |
+| **step 100** | **3.96** | **3.96** | **0.07** | 0.542 |
+| step 150 (best.pt) | 3.65 | 2.79 | 0.14 | **0.562** |
+
+Every run 3 checkpoint scores above every other model's *maximum* (3.58), so "run 3 is the best chat model
+we have" does not depend on which one is picked. Step 100 leads on exactly what the anchor targets, which is
+consistent with less KL drift; whether it also holds the hard measures is checked below before choosing.
+
+### Hard measures (best.pt)
+
+| | needle | HellaSwag(n) | ARC-E | PIQA | LAMBADA | OBQA(n) | SciQ | facts probe | mt recall | mt format | tok/turn |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| stage B (v4) | 3072 (73%) | 42.8 | 57.8 | 67.2 | -- | -- | -- | 72.7% | 0.531 | 0.875 | 49 |
+| RL run 2 | 3072 (75%) | 42.8 | 58.0 | 66.6 | -- | -- | -- | 71.1% | 0.562 | 0.875 | 22 |
+| RL run 3 | 3072 (72%) | 43.0 | 58.0 | 66.6 | 32.9 | 31.6 | 83.3 | **72.7%** | **0.578** | **0.906** | 35 |
+
+Core benchmarks identical; facts probe back to v4's level; the best multi-turn recall and format of any
+checkpoint; answers no longer run 2's terse 22 tokens.
+
+| reasoning (acc / tool use) | arith2 | arith2mul | algebra | word | GSM8K | SVAMP |
+|---|---|---|---|---|---|---|
+| RL run 2 | 0.93 / 0.98 | 0.75 / 0.98 | **0.99 / 0.96** | 0.98 / 0.97 | 0.06 / **0.78** | 0.09 / 0.86 |
+| RL run 3 | 0.95 / 0.90 | **0.86 / 0.83** | 0.74 / 0.71 | 0.95 / 0.79 | 0.04 / 0.54 | 0.05 / 0.68 |
+
+The cost: tool use on math came down across the board (algebra 0.96 -> 0.71, GSM8K 0.78 -> 0.54), and
+algebra accuracy with it. A reward that penalises *any* tool call on chat prompts generalised "call the tool
+less" somewhat beyond chat. A softer anchor (penalise only calls that fail, or only on prompts with no
+numbers) is the obvious next dial; this run establishes that the mechanism works.
