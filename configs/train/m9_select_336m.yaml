@@ -9,9 +9,9 @@
 # candidate, so overriding the pool is learned there rather than imitated here.
 #
 # The rest of the mixture is rehearsal of the run 5 recipe so nothing measured on the M9 output moves: the
-# chat sets that anchored judged quality, the tool sets, constraints. 16M tokens at a low LR: the select set
-# is ~0.5M tokens, so 0.15 of the mix is about four epochs of it -- enough for a fixed template, not enough
-# to bend the model around it.
+# chat sets that anchored judged quality, the tool sets, constraints. 16M tokens at a low LR: only ~35% of
+# k=8 pools hold a correct candidate, so the select set is ~380 examples / ~0.25M tokens, and 0.05 of the mix
+# is about three epochs of it -- enough for a fixed template, not enough to bend the model around it.
 run_name: m9_select_336m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_336m.yaml
@@ -23,9 +23,9 @@ data:
   sft_root: C:\slm-data\sft\v1
   tokenized_root: C:\slm-data\tokenized\v1
   mixture:
-    select-sft: 0.15
-    smoltalk-smol-magpie-ultra-4k-direct: 0.20
-    smoltalk-openhermes-100k-4k-direct: 0.12
+    select-sft: 0.05
+    smoltalk-smol-magpie-ultra-4k-direct: 0.25
+    smoltalk-openhermes-100k-4k-direct: 0.17
     smoltalk-systemchats-30k-short: 0.12
     synthetic-python-tools: 0.10
     smoltalk-openhermes-100k-short: 0.06
