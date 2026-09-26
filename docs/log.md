@@ -669,3 +669,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Peter's call on the run 3 / run 4 trade: **run 5 first, then decide** -- run 3's config plus `algebra`,
   `arith2`, `word` in the RL mix under `tool`, so the out-of-mix families whose tool use the anchor eroded are
   trained rather than inferred. Queued behind run 4's pass@k. Run 4 stands as interim output meanwhile.
+- **Command center: info cards everywhere** (Opus subagent, commit 4d2ae85, on Peter's request). One `Info`
+  component (`slm/portal/static/components/info.js`), 81 cards in one content table (`components/cards.js`),
+  placed on every chart, tile, column header and section across the overview, run, data, tokenizer,
+  inference and architecture pages -- hover, tap or focus opens a card that says what the thing measures, what
+  good and bad look like, and how it connects to the pipeline; content drawn from `design.md`,
+  `quality_eval.md` and `results.md`, no invented numbers. Verified: LF line endings (its first pass had
+  rewritten the files to CRLF, caught before commit), 25 portal tests pass, cards open and stay on screen.
+  Its smoke run also found a pre-existing `NaN` in the overview's data-readiness total (a source with no
+  token count), fixed in 093c585. Flagged and left: no dark theme exists to check against; the cards do not
+  mention the suite-v1 `expect` defect.
