@@ -570,3 +570,21 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Operational risk for Peter: **D: is at 97%, 68 GB free**, `runs/` is 241 GB and one 336M run costs ~14 GB.
   Superseded attempts hold ~46 GB (`m9_tool_336m`, `m9_tool2_336m`, `m9_tool3_336m`, `m9_rl_336m`); their
   results are all in `results.md`, so only the checkpoints would be lost. Nothing deleted — his call.
+
+## 2026-09-26 — reclaimed 211 GB of checkpoints
+
+- `runs/` had grown to 233 GB of `.pt` files on a volume at **97% full (68 GB free)** against ~14 GB per 336M
+  run. `scripts/prune_checkpoints.py` classifies every checkpoint and deletes what has no remaining purpose;
+  it dry-runs by default and refuses to strip a run to nothing unless the run is explicitly listed.
+- Kept (21.6 GB): `final.pt` and `best.pt` for every run — the only thing another run initialises from or is
+  compared against — plus `latest.pt` for `m8_base_4k_336m`, because a *continuation* of pretraining needs its
+  data-stream cursors via `init_loader_from` and without them the phase silently re-reads what the parent
+  already trained on (the M8 phase-2 incident, 2026-09-19).
+- Dropped (211.3 GB): all `snap_*`/`step_*` milestone weights — the judged scores are already in
+  `quality/summary.json` and the curves in `metrics.jsonl`, so nothing measured is lost — every `latest.prev.pt`,
+  and `latest.pt` everywhere except the one continuable run. Two runs lost their weights entirely:
+  `m6_rl_gsm_tools_try1_149m` (the m6 collapse; it is referenced for what a real collapse looks like, and that
+  evidence is the metrics, not the weights) and `m8_base_4k_336m_stub` (a 55-second aborted start).
+- D: 68 GB free -> **279 GB free** (97% -> 86%). Every kept checkpoint was reloaded afterwards to confirm it is
+  intact, and `m8_base_4k_336m/latest.pt` still carries optimizer and loader state.
+- The four models that matter are additionally in `C:\slm-backup\2026-09-22` (2.6 GB), written before the prune.
