@@ -679,3 +679,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Its smoke run also found a pre-existing `NaN` in the overview's data-readiness total (a source with no
   token count), fixed in 093c585. Flagged and left: no dark theme exists to check against; the cards do not
   mention the suite-v1 `expect` defect.
+- Follow-up from the info-card smoke run: the overview's NaN came from `scripts/sft_to_pretrain.py` writing its
+  token counts nested (`train.tokens`) where `prepare.py` and the portal use flat `train_tokens`; the five
+  converted sources (`smoltalk-chat`, `tool-chat*`) therefore had no visible volume. Script fixed to emit both,
+  manifests backfilled, overview now reads 26.03B across 23 sources with every source counted (732c5ee).
