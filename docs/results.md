@@ -821,3 +821,20 @@ voting recovers almost nothing** (0.033 / 0.167). The design consequence is prec
 *verifier* to pick the winner, not a vote. That is the sandbox's job -- re-derive, check the setup against
 the problem, execute. n=30 per set, so pass@32 carries about +-0.09; the direction is robust, the exact
 numbers are not.
+
+### 14b. Which run 3 checkpoint: best.pt, and why not the judged argmax
+
+Step 100 leads the judged suite (3.96 vs 3.65; facts 3.96 vs 2.79; misfire 0.07 vs 0.14). Measured on the
+full hard suite before choosing:
+
+| | reasoning mean | arith2 | algebra | GSM8K | mt recall | mt format | benchmarks / needle / facts probe |
+|---|---|---|---|---|---|---|---|
+| **best.pt (step 150)** | **0.686** | **0.95 / 0.90** | **0.74 / 0.71** | **0.04 / 0.54** | **0.578** | 0.906 | identical |
+| step 100 | 0.568 | 0.75 / 0.82 | 0.65 / 0.50 | 0.02 / 0.47 | 0.516 | 0.922 | identical |
+
+Step 100's judged advantage is real, not noise -- but it is bought with 0.12 of reasoning accuracy and lower
+tool use across every family, plus four fewer multi-turn recalls in 64. That is the wrong trade for a model
+whose tool use is meant to be a core capability, and the judged gap is concentrated in `facts`, eight items.
+**`runs/m9_rl3_336m/checkpoints/best.pt` is the M9 output.** Second time the rule has paid for itself: check
+the hard suite before the judged argmax (run 2's 30M snapshot was the first, where the check showed noise;
+here it showed a trade).

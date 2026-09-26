@@ -24,12 +24,14 @@ enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so
 ## Status, 2026-09-26
 
 M8 (the 336M base) and M9 (its post-training chain) are complete. The current model is
-`runs/m9_rl2_336m/checkpoints/best.pt`; `runs/m9_tool4_336m/checkpoints/final.pt` is kept as the better
-pure-chat model. Numbers in `results.md` §10-12, narrative in `log.md`.
+**`runs/m9_rl3_336m/checkpoints/best.pt`** (GRPO with a chat anchor, 2026-09-26). Numbers in `results.md`
+§10-14, narrative in `log.md`.
 
-Known state: judged quality 3.49, HellaSwag 34.5 (42.8 norm), ARC-Easy 58.0, PIQA 66.6, facts probe 71.1%,
-MMLU at chance (23.6% vs 25.0 baseline — it has no resolution at this size and is not tracked),
-effective context **3072**, reasoning mean 0.779, GSM8K 0.06.
+Known state: judged quality **3.65** (correctness 3.41, both project bests), tool misfire 0.14, HellaSwag 43.0
+(norm), ARC-Easy 58.0, PIQA 66.6, LAMBADA 32.9, OpenBookQA 31.6 (norm), SciQ 83.3, facts probe 72.7%,
+multi-turn recall 0.578 / format 0.906, effective context **3072**, reasoning mean 0.686, SVAMP 0.05,
+GSM8K 0.04 greedy but **0.33 pass@32** (SVAMP 0.53) with majority vote recovering almost nothing -- the
+swarm question is selection by a verifier, not by a vote. MMLU at chance and not tracked.
 
 ## After the base (in order)
 
@@ -124,10 +126,13 @@ context-extended base once the curriculum settles.
 1. **GSM8K comprehension.** 0.06 and the weakest number we have. GRPO raised the tool-use rate on it from
    0.17 to 0.78 without moving accuracy, which localises the bottleneck: reading the problem and setting it
    up, not the arithmetic. Needs better multi-step reasoning data, and the payoff is uncertain.
-2. **RL without the chat-quality cost.** GRPO cost judged facts 2.88 -> 2.00 and raised tool misfire
-   0.250 -> 0.321, because it saw only math/tool/constraint families with nothing but a KL term anchoring it.
-   *Not* fixable by a tighter KL — measured: the regression is not drift-proportional (log.md 2026-09-22).
-   Wants a rehearsal family scored on something other than a verifier.
+2. ~~RL without the chat-quality cost~~ **done (run 3)**: a verifiable `plain` chat reward recovered facts
+   2.00 -> 2.79 and halved misfire. Remaining dial: the anchor over-generalised "call the tool less" (algebra
+   tool use 0.96 -> 0.71); a softer version (penalise only failing calls, or only prompts with no numbers) is
+   the obvious next run.
+2b. **Goal 5, the swarm.** pass@32 is 15-16x pass@1 on GSM8K/SVAMP but 22-24 distinct answers per 32 samples
+   means voting fails; the design is parallel sampling + a verifier (sandbox re-derivation, setup checks).
+   Discussion with Peter pending; he has thoughts.
 3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
    an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
    (the current base has never seen long-form fiction).

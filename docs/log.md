@@ -635,3 +635,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Not picking the output checkpoint on the judged argmax this time: step 100 leads on exactly what the anchor
   targets, which is plausible rather than noise, but run 2's 30M snapshot taught me to check the hard suite
   first. Step 100 is being measured; decision and push follow.
+- **Decision: `m9_rl3_336m/checkpoints/best.pt` (step 150) is the M9 output.** Step 100's judged lead (3.96 vs
+  3.65) is real but costs 0.12 of reasoning mean and tool use in every family, plus multi-turn recall 0.578 ->
+  0.516; benchmarks and needle are identical. Checking the hard suite before the judged argmax changed the
+  answer this time. Pushed to GitHub.
