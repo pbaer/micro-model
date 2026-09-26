@@ -29,6 +29,16 @@ def test_plain_scheme_pays_only_for_a_plain_answer_with_no_tool_call():
     assert reward_from_verdict(ok, malformed=False, scheme="binary") == 1.0
 
 
+def test_tool_strict_widens_the_gap_without_touching_tool():
+    """tool: 1.0 / 0.5 / 0. tool_strict: 1.0 / 0.25 / 0. Same answer, same verdict, only the no-call credit moves."""
+    ok = Verdict(True, "42", "numeric compare")
+    for scheme, no_call in (("tool", 0.5), ("tool_strict", 0.25)):
+        assert reward_from_verdict(ok, False, scheme, from_tool=True) == 1.0
+        assert reward_from_verdict(ok, False, scheme, from_tool=False) == no_call
+        assert reward_from_verdict(Verdict(False, "41", "numeric compare"), False, scheme, from_tool=True) == 0.0
+        assert reward_from_verdict(ok, True, scheme, from_tool=True) == 0.0
+
+
 def test_chat_pool_and_pooled_families():
     """Pool entries are short non-computational user turns with the plain verifier and no answer suffix;
     make_tasks draws them through the same pooled path as gsm8k, split by prompt hash."""

@@ -203,17 +203,22 @@ def reward_from_verdict(v: Verdict, malformed: bool, scheme: str = "binary", fro
     fraction: the verdict's partial credit (constraints: the share of instructions satisfied), so an answer
     that obeys 2 of 3 rules is worth more than one that obeys none, long before any of them is perfect.
     plain: 1 if the answer is an ordinary chat answer (verify_plain) AND no tool was called, else 0 -- the
-    anchor that keeps RL on math and tools from turning every reply into a tool call and a template."""
+    anchor that keeps RL on math and tools from turning every reply into a tool call and a template.
+    tool_strict: like tool, but correct-without-a-call earns 0.25 instead of 0.5. Run 3's chat anchor pulled
+    tool use down on math too (algebra 0.96 -> 0.71): with the no-call credit at 0.5, a mental answer was
+    worth half a tool answer and the anchor's "call less" pressure tipped the balance. A wider gap makes the
+    sandbox worth reaching for again where it belongs, without softening the anchor where it works."""
     if scheme == "binary":
         return 1.0 if v.correct else 0.0
     if scheme == "fraction":
         if malformed:
             return 0.0
         return float(v.fraction if v.fraction is not None else (1.0 if v.correct else 0.0))
-    if scheme == "tool":
+    if scheme in ("tool", "tool_strict"):
         if malformed:
             return 0.0  # includes tool calls outside the think span
-        return (1.0 if from_tool else 0.5) if v.correct else 0.0
+        no_call = 0.5 if scheme == "tool" else 0.25
+        return (1.0 if from_tool else no_call) if v.correct else 0.0
     if scheme == "plain":
         return 0.0 if (malformed or n_calls) else (1.0 if v.correct else 0.0)
     if scheme == "signed":

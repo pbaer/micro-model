@@ -1,0 +1,61 @@
+# M9 stage C, run 4: the chat anchor kept, the tool incentive on math strengthened.
+#
+# Run 3's chat anchor did its job -- judged facts 2.00 -> 2.79, misfire 0.32 -> 0.14, best judged model of the
+# project -- but "call the tool less" generalised past chat: algebra tool use 0.96 -> 0.71, GSM8K 0.78 -> 0.54,
+# and algebra accuracy 0.99 -> 0.74 with it. Under the `tool` scheme a correct mental answer earns 0.5 against
+# 1.0 for a correct tool answer, so once the anchor added pressure against calling, the mental route was worth
+# half as much for none of the risk. Softening the anchor would trade away the success to reduce the side
+# effect; the targeted change is to widen the gap where the tool belongs.
+#
+# One change from run 3: math and tool families use `tool_strict` (1.0 with a call, 0.25 without, 0 wrong).
+# chat stays on `plain` at full strength. Everything else identical, so the comparison is clean.
+run_name: m9_rl4_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  max_seq_len: 4096  # the rollout KV cache is sized from this; the run is a 4K run
+init_from: runs/m9_tool4_336m/checkpoints/final.pt
+tools: true
+max_tool_calls: 6
+tasks: [chat, chat, chat, constraints, constraints, constraints, constraints, gsm8k, gsm8k, gsm8k, pytool_numbers, pytool_numbers, pytool_declared]
+n_train_prompts: 6000
+n_heldout_prompts: 96   # every eval greedy-decodes all of them; pytool prompt lengths vary, so batches are small
+group_size: 6
+prompts_per_step: 8
+max_new_tokens: 512     # a tool call, its result, and a written answer all have to fit
+temperature: 0.8
+top_p: 0.95
+think_required: true
+reward_scheme: tool     # default: 1.0 correct AND the answer came out of a Python call, 0.5 correct without one
+reward_schemes:
+  gsm8k: tool_strict
+  pytool: tool_strict   # matches every pytool_* family by its group prefix
+  constraints: fraction # the share of instructions satisfied; there is no tool to use here
+  chat: plain           # a plain chat answer with no tool call; the anchor against tool-and-terse drift
+lr: 4.0e-6              # try 1 (2026-09-22) ran 75 steps at 8e-7 and moved the policy almost not at all:
+                        # KL to the reference averaged 0.00028 against the 0.15 budget -- 0.2% of it -- with
+                        # reward flat over 50 steps and held-out 0.250 -> 0.271 (+2 prompts of 96, inside
+                        # noise). The KL budget, not the learning rate, is the safety mechanism here, and it
+                        # was going unused. 5x lr should land KL near 0.008, still ~20x under the limit.
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.05           # m6 try1 collapsed at 0.01 (entropy 0.8 -> 5 by step 150)
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 2
+total_steps: 250
+entropy_stop: 2.5       # collapse guards: stop, checkpoint, keep best.pt -- judged on `guard_window` means
+kl_stop: 0.15
+guard_window: 10        # try 1 was stopped at step 75 by ONE step touching entropy 2.54. Over its 69 steps
+                        # entropy ran 0.00-2.54, stdev 0.63, with no trend (corr with step -0.13) while KL
+                        # stayed at 0.0003: noise from a 24-rollout step, not a diverging policy. Collapse is
+                        # sustained (m6 try1 went 0.8 -> 5 and stayed), so the window mean is what is tested.
+eval_every_steps: 50
+eval_max_new_tokens: 512
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 11
+notes: "RL over the full tool subset plus instruction constraints. Per-family schemes (tool / fraction). Use best.pt (held-out) for evals; check tool_use_rate, answer_from_tool_rate and score_mean per family in the rollout dumps."
