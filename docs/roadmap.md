@@ -28,7 +28,7 @@ M8 (the 336M base) and M9 (its post-training chain) are complete. The current mo
 2026-09-26; `results.md` §16). Numbers in `results.md`
 §10-14, narrative in `log.md`.
 
-Known state: judged quality **3.84** (correctness 3.56, pattern 4.67 -- project bests), tool misfire 0.04, HellaSwag 43.0 (norm), ARC-Easy 57.6, PIQA 67.0, LAMBADA 33.0, OpenBookQA 30.6 (norm), SciQ 83.1, facts probe 71.6%, multi-turn recall 0.484 / format 0.969, effective context **3072**, reasoning mean 0.755 with **100% tool use** on algebra/arith/word, SVAMP 0.09 (0.84 tool use), GSM8K 0.04 greedy but 0.33-0.37 pass@32 with majority vote near useless -- the swarm question is selection by a verifier. MMLU at chance and not tracked.
+Known state: judged quality **4.07** (step 200; correctness and pattern project bests), tool misfire 0.04, HellaSwag 43.0 (norm), ARC-Easy 57.6, PIQA 67.0, LAMBADA 33.0, OpenBookQA 30.6 (norm), SciQ 83.1, facts probe 71.6%, multi-turn recall 0.562 / format 0.938, effective context **3072**, reasoning mean 0.755 with **100% tool use** on algebra/arith/word, SVAMP 0.09 (0.84 tool use), GSM8K 0.04 greedy but 0.33-0.37 pass@32 with majority vote near useless -- the swarm question is selection by a verifier. MMLU at chance and not tracked.
 
 ## After the base (in order)
 

@@ -40,6 +40,11 @@ CONTINUABLE = {"m8_base_4k_336m"}
 #   m8_base_4k_336m_stub       a 55-second aborted start (524K tokens, val inf), set aside deliberately.
 NO_KEEP = {"m6_rl_gsm_tools_try1_149m", "m8_base_4k_336m_stub"}
 
+# Checkpoints kept by name beyond final/best: a run's chosen output when it is a milestone snapshot rather than
+# best.pt. m9_rl5_336m step 200 is the M9 output (results.md 16e): judged 4.07 and multi-turn recall 0.562
+# against best.pt's 3.84 / 0.484, everything else tied.
+KEEP_EXTRA = {"m9_rl5_336m": {"step_00200.pt"}}
+
 
 def classify(run: Path) -> tuple[list[Path], list[Path]]:
     """(keep, drop) for one run's checkpoint files."""
@@ -51,7 +56,7 @@ def classify(run: Path) -> tuple[list[Path], list[Path]]:
         return [], sorted(ck.glob("*.pt"))
     for f in sorted(ck.glob("*.pt")):
         n = f.name
-        if n in ("final.pt", "best.pt"):
+        if n in ("final.pt", "best.pt") or n in KEEP_EXTRA.get(run.name, set()):
             keep.append(f)
         elif n == "latest.pt" and run.name in CONTINUABLE:
             keep.append(f)

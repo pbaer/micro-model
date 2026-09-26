@@ -1028,3 +1028,18 @@ policy that calls the tool reliably produces a *more diverse-and-correct* pool e
 no better -- and majority vote still recovers almost none of it (0.07 / 0.13), with ~23 distinct answers per
 32 samples. For goal 5 that means two things: selection is still the whole problem, and the ceiling a
 selector is aiming at is now 0.47 / 0.73 rather than 0.33 / 0.53.
+
+### 16e. Step 200 on the hard suite: a free upgrade, and the M9 output
+
+| | reasoning mean | algebra | GSM8K | SVAMP | needle | HellaSwag(n) | ARC-E | PIQA | facts | mt recall | mt format | mt misfire | judged |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| best.pt (step 150) | 0.755 | 1.00 / 1.00 | 0.04 / 0.69 | 0.09 / 0.84 | 3072 (75%) | 43.0 | 57.6 | 67.0 | 71.6% | 0.484 | **0.969** | 0.000 | 3.84 |
+| **step 200** | 0.757 | 1.00 / 1.00 | 0.03 / 0.74 | 0.10 / 0.84 | 3072 (73%) | 42.5 | 57.6 | 66.8 | 71.6% | **0.562** | 0.938 | 0.000 | **4.07** |
+
+Everything held within noise, and step 200 is better where the two differ: judged +0.23, multi-turn recall
++5 of 64 (back near run 3's 0.578), misfire zero. The only ticks down -- multi-turn format by two
+conversations, HellaSwag by 0.5 -- are inside their noise. Third application of the "hard suite before the
+judged argmax" rule: the first found noise (run 2's 30M snapshot), the second a trade (run 3's step 100),
+this one an upgrade.
+
+**`runs/m9_rl5_336m/checkpoints/step_00200.pt` is the M9 output.** best.pt (step 150) is kept beside it.

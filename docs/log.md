@@ -717,3 +717,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   measured on the hard suite as a possible free upgrade; best.pt stands unless it holds everything.
 - Pushed. The four RL runs together settle the recipe: verifiable rewards for every behaviour you want including
   the negative ones, and every contested surface form inside the mix.
+- Step 200 measured on the hard suite: holds everything (reasoning 0.757, algebra 1.00/1.00, benchmarks and
+  needle tied) and is better on multi-turn recall (0.484 -> 0.562) and judged (3.84 -> 4.07) with misfire zero.
+  **M9 output is now `runs/m9_rl5_336m/checkpoints/step_00200.pt`.** The judged-argmax check has now found
+  noise once, a trade once and an upgrade once; it stays. Prune script taught to keep that file; runs 3-5's
+  remaining intermediates pruned; backup refreshed; pushed.

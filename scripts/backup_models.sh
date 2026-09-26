@@ -27,7 +27,8 @@ copy_run() {  # copy_run <run> <checkpoint file>
 copy_run m8_base_4k_336m final.pt     # the base
 copy_run m9_sft_336m     final.pt     # stage A, chat SFT
 copy_run m9_tool4_336m   final.pt     # stage B, tools SFT
-copy_run m9_rl5_336m     best.pt      # stage C, GRPO run 5 -- the M9 output (2026-09-26)
+copy_run m9_rl5_336m     step_00200.pt  # stage C, GRPO run 5 step 200 -- the M9 output (2026-09-26, results.md 16e)
+copy_run m9_rl5_336m     best.pt      # run 5 best.pt (step 150), kept beside it
 copy_run m9_rl4_336m     best.pt      # stage C run 4: the best pure-chat judged checkpoint, kept for comparison
 mkdir -p "$DEST/$stamp/_meta"
 cp docs/results.md docs/log.md docs/roadmap.md "$DEST/$stamp/_meta/" 2>/dev/null
