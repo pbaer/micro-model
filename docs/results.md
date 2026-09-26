@@ -805,3 +805,19 @@ The cost: tool use on math came down across the board (algebra 0.96 -> 0.71, GSM
 algebra accuracy with it. A reward that penalises *any* tool call on chat prompts generalised "call the tool
 less" somewhat beyond chat. A softer anchor (penalise only calls that fail, or only on prompts with no
 numbers) is the obvious next dial; this run establishes that the mechanism works.
+
+### 14a. pass@k on word problems: selection, not capability (`scripts/pass_at_k.py`, run 3 best.pt, k=32, n=30 each)
+
+| | pass@1 | pass@2 | pass@4 | pass@8 | pass@16 | **pass@32** | majority vote | distinct answers / 32 |
+|---|---|---|---|---|---|---|---|---|
+| GSM8K | 0.021 | 0.033 | 0.100 | 0.133 | 0.233 | **0.333** | 0.033 | 22.4 |
+| SVAMP | 0.035 | 0.033 | 0.100 | 0.167 | 0.367 | **0.533** | 0.167 | 24.0 |
+
+The question this was run to answer: with GSM8K at 0.04-0.06 greedy, is the right answer *in* the model at
+all? It is -- in a third of GSM8K problems and half of SVAMP ones, somewhere among 32 samples, a 15-16x
+lift over pass@1. So goal 5's swarm has something to select from. But the errors are not systematic: 22-24
+distinct answers per problem means the samples almost never agree, the mode is usually wrong, and **majority
+voting recovers almost nothing** (0.033 / 0.167). The design consequence is precise: parallel sampling needs a
+*verifier* to pick the winner, not a vote. That is the sandbox's job -- re-derive, check the setup against
+the problem, execute. n=30 per set, so pass@32 carries about +-0.09; the direction is robust, the exact
+numbers are not.

@@ -613,3 +613,25 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   before I looked at CPU time. It now caps `n` and raises. (2) I killed the first pass@k run as "too slow after
   25 minutes" -- it had run four; I had misjudged the clock. Rescheduled at k=32 behind RL v3. Check `date`
   before calling anything slow.
+
+## 2026-09-26 (evening) — RL run 3 with the chat anchor: best judged model of the project
+
+- `m9_rl3_336m` ran 150 steps and was stopped by the KL guard at a sustained 0.156, held-out still rising
+  (0.438 -> 0.562, malformed 0.25 -> 0.08). The `chat` family sat at reward 0.95-0.96 with zero tool calls
+  the whole run, showing spread in about a third of its groups -- the anchor did exactly what it was for.
+- Judged (`results.md` §14): best.pt overall **3.65**, correctness **3.41** (both the highest in the project),
+  facts 2.00 -> **2.79**, misfire 0.321 -> **0.143**, definition 5.00. Every one of run 3's three checkpoints
+  is above every other model's maximum (3.58); step 100 reads 3.96 / facts 3.96 / misfire 0.07. Core
+  benchmarks, needle and the facts probe unchanged or back to stage B's level; the best multi-turn recall
+  (0.578) and format (0.906) of any checkpoint.
+- The cost is real and has one cause: a reward that penalises *any* tool call on chat prompts generalised
+  "call the tool less" beyond chat -- algebra tool use 0.96 -> 0.71 and accuracy 0.99 -> 0.74, GSM8K tool use
+  0.78 -> 0.54. A softer anchor (penalise only failing calls, or only on prompts with no numbers) is the next
+  dial. Run 3 establishes that the mechanism works.
+- **pass@k** (§14a): GSM8K pass@1 0.02 -> pass@32 0.33, SVAMP 0.04 -> 0.53. The answer is in the model; it is
+  a selection problem. But 22-24 distinct answers per 32 samples means voting recovers almost nothing
+  (majority 0.03 / 0.17). A swarm needs a verifier, not a vote -- the sandbox's role, and the starting point
+  for the goal-5 discussion Peter wants to have.
+- Not picking the output checkpoint on the judged argmax this time: step 100 leads on exactly what the anchor
+  targets, which is plausible rather than noise, but run 2's 30M snapshot taught me to check the hard suite
+  first. Step 100 is being measured; decision and push follow.
