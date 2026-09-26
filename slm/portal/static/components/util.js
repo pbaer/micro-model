@@ -17,3 +17,19 @@ export const api = async (path, opts) => {
   if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
   return r.json();
 };
+/** Read a fetch Response carrying server-sent events and call onEvent(name, data) per event. */
+export const readSSE = async (response, onEvent) => {
+  if (!response.ok) throw new Error(`${response.status} ${await response.text()}`);
+  const reader = response.body.getReader(); const dec = new TextDecoder(); let buf = "";
+  while (true) {
+    const { value, done } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
+      const ev = /event: (\w+)/.exec(chunk)?.[1]; const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
+      if (!dataLine) continue;
+      onEvent(ev, JSON.parse(dataLine.slice(5)));
+    }
+  }
+};

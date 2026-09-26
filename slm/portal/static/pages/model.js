@@ -1,9 +1,10 @@
 import { h } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
-import { api, fmtTok, fmtInt, fmtNum } from "../components/util.js";
+import { api, fmtTok, fmtInt, fmtNum, readSSE } from "../components/util.js";
 import { segmentLabels } from "../components/tokens.js";
 import { Info } from "../components/info.js";
+import { SwarmPanel } from "../components/swarm.js";
 
 const html = htm.bind(h);
 
@@ -117,30 +118,21 @@ export function ModelPage() {
       }
       const body = { slots, mode, text, messages, ...sampling, think_required: mode === "chat" && thinkReq, tools: mode === "chat" && tools, session_id: sessionId, max_tool_calls: 8, functions: decls };
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
-      const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = "";
-      while (true) {
-        const { value, done } = await reader.read(); if (done) break;
-        buf += dec.decode(value, { stream: true });
-        let idx;
-        while ((idx = buf.indexOf("\n\n")) >= 0) {
-          const chunk = buf.slice(0, idx); buf = buf.slice(idx + 2);
-          const ev = /event: (\w+)/.exec(chunk)?.[1]; const dataLine = chunk.split("\n").find((l) => l.startsWith("data:"));
-          if (!dataLine) continue; const data = JSON.parse(dataLine.slice(5));
-          if (ev === "start") setStreamId(data.stream_id);
-          else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, segments: data.segments } }));
-          else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
-          else if (ev === "tool") setCalls((c) => [...c, data]);
-          else if (ev === "done") {
-            setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], done: data } }));
-            // a well-formed assistant turn (slot A, chat mode) becomes part of the conversation, followed by an empty user turn
-            if (data.slot === "A" && mode === "chat" && data.assistant && data.assistant.well_formed) {
-              setMessages((ms) => [...ms.filter((m, i) => !(i === ms.length - 1 && m.role === "user" && !m.content.trim() && false)),
-                { role: "assistant", think: data.assistant.think, content: data.assistant.answer, ids: data.assistant.ids, n_calls: data.assistant.n_calls }, { role: "user", content: "" }]);
-            }
+      await readSSE(r, (ev, data) => {
+        if (ev === "start") setStreamId(data.stream_id);
+        else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, segments: data.segments } }));
+        else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
+        else if (ev === "tool") setCalls((c) => [...c, data]);
+        else if (ev === "done") {
+          setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], done: data } }));
+          // a well-formed assistant turn (slot A, chat mode) becomes part of the conversation, followed by an empty user turn
+          if (data.slot === "A" && mode === "chat" && data.assistant && data.assistant.well_formed) {
+            setMessages((ms) => [...ms.filter((m, i) => !(i === ms.length - 1 && m.role === "user" && !m.content.trim() && false)),
+              { role: "assistant", think: data.assistant.think, content: data.assistant.answer, ids: data.assistant.ids, n_calls: data.assistant.n_calls }, { role: "user", content: "" }]);
           }
-          else if (ev === "error") setErr(data.error);
         }
-      }
+        else if (ev === "error") setErr(data.error);
+      });
     } catch (e) { if (e.name !== "AbortError") setErr(String(e)); }
     setBusy(false); setStreamId(null);
   };
@@ -171,7 +163,8 @@ export function ModelPage() {
     </div>
     <h2>Prompt</h2>
     <div class="row" style="margin-bottom:6px">
-      ${["completion", "chat"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
+      ${["completion", "chat", "swarm"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}
+      ${mode !== "swarm" && html`
       <span class="muted">temp</span><input type="number" step="0.1" value=${sampling.temperature} onChange=${(e) => setSampling({ ...sampling, temperature: Number(e.target.value) })} style="width:60px" />
       <span class="muted">top-p</span><input type="number" step="0.05" value=${sampling.top_p} onChange=${(e) => setSampling({ ...sampling, top_p: Number(e.target.value) })} style="width:60px" />
       <span class="muted">top-k</span><input type="number" value=${sampling.top_k} onChange=${(e) => setSampling({ ...sampling, top_k: Number(e.target.value) })} style="width:60px" />
@@ -181,8 +174,9 @@ export function ModelPage() {
       <label class="muted"><input type="checkbox" checked=${useBoth} onChange=${(e) => setUseBoth(e.target.checked)} /> A and B side by side</label>
       ${mode === "chat" && html`<label class="muted"><input type="checkbox" checked=${thinkReq} onChange=${(e) => setThinkReq(e.target.checked)} /> force ${"<|think|>"} (reasoning models)</label><${Info} k="force_think" />
         <label class="muted"><input type="checkbox" checked=${tools} onChange=${(e) => setTools(e.target.checked)} /> python tool (REPL session ${sessionId})</label><${Info} k="python_tool" />
-        <button onClick=${newConversation}>new conversation</button>`}
+        <button onClick=${newConversation}>new conversation</button>`}`}
     </div>
+    ${mode === "swarm" ? html`<${SwarmPanel} slots=${slots} onError=${setErr} busy=${busy} setBusy=${setBusy} />` : html`
     ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage || "base") === "base" && html`<div class="panel warn"><b>Slot A holds a base checkpoint (${slots.A.run || slots.A.name}).</b> A base model has never seen the chat tokens: after ${"<|assistant|>"} it just continues web text, so chat output will be garbage. Use <b>completion</b> mode for it, or load an instruct / reasoning / RL checkpoint (m4_sft_149m, m5_reasoning_149m, m6_rl_gsm_tools_149m best.pt) for chat.</div>`}
     ${mode === "chat" && slots.A && slots.A.checkpoint && slots.A.stage === "sft" && html`<div class="legend">Instruct checkpoint: leave "force ${"<|think|>"}" off (it was not trained with think spans). Answers can run long; the reply is added to the conversation only if it closes with ${"<|end|>"} within max-new tokens.</div>`}
     ${mode === "chat" && slots.A && slots.A.checkpoint && (slots.A.stage === "reasoning" || slots.A.stage === "rl") && html`<div class="legend">Reasoning / RL checkpoint: "force ${"<|think|>"}" is on (it opens every answer with a think span; tool models call Python inside it) and decoding defaults to greedy — at temperature 0.8 these small policies often fail to close the turn.</div>`}
@@ -223,6 +217,6 @@ export function ModelPage() {
     ${score && html`<h2>Teacher-forced scoring (slot A)<${Info} k="score" /></h2>
       <div class="muted">${score.n} tokens · mean logprob ${score.mean_logprob.toFixed(3)} · perplexity ${score.ppl ? score.ppl.toFixed(2) : "-"} (over loss-target tokens)</div>
       ${view === "tokens" ? html`<div class="chips">${score.tokens.map((t, i) => html`<span class=${"chip" + (t.target ? "" : " masked")} style=${t.target ? `background:${lpColor(t.logprob)}` : ""} title=${t.logprob == null ? "first token" : `logprob ${t.logprob.toFixed(3)} · rank ${t.rank}`} key=${i}>${showPiece(t.piece)}</span>`)}</div>`
-        : html`<div class="rawout">${score.tokens.map((t, i) => isSpecial(t.piece) ? html`<span class="chip special" key=${i}>${t.piece}</span>` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}
+        : html`<div class="rawout">${score.tokens.map((t, i) => isSpecial(t.piece) ? html`<span class="chip special" key=${i}>${t.piece}</span>` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}`}
   </div>`;
 }

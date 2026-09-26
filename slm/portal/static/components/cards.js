@@ -487,6 +487,62 @@ export const CARDS = {
       tokens, and the top-k alternatives (hover). In the tokens view colour runs from red (surprised) to green (confident).</p>
     <p><b>mean entropy</b> (nats) is the model's average uncertainty over the next token: high means many plausible
       continuations. A run of red tokens is usually where sampling took the model somewhere it did not expect.</p>` },
+  swarm: { t: "Swarm inference", b: html`
+    <p>Many attempts, then one judgement, all from the same model. The task is sampled <b>k</b> times in one batch
+      (each attempt may call Python inside its think span), the attempts are <b>collapsed</b> into distinct final
+      answers with their evidence, and a second, greedy pass of the model reads that summary and <b>selects</b> the answer.</p>
+    <p>Why: a small model's single greedy answer is often wrong, yet the right answer is frequently somewhere among
+      its samples. The pool has the answer; the problem is picking it. Plain voting rarely works, because the right answer
+      is usually held by one or two attempts among many confident wrong ones.</p>
+    <p class="see">Code: <code>slm/swarm.py</code>; the measurement across a test set is <code>scripts/swarm_eval.py</code>.</p>` },
+  swarm_k: { t: "k and temperature", b: html`
+    <p><b>k</b> is how many attempts are sampled. They run as one batch, so k=16 costs far less than 16 separate
+      generations on the GPU, but the KV cache grows with k × (prompt + max new tokens).</p>
+    <p>The swarm needs <b>diversity</b>: at temperature 0 all k attempts are identical and the swarm is one greedy answer.
+      Around 0.8 the attempts spread out; too high and most of them derail or never close the turn. More k raises the
+      chance the right answer is in the pool, with diminishing returns.</p>` },
+  swarm_suffix: { t: "Answer instruction", b: html`
+    <p>Appends <i>"Think step by step, then give the final answer on its own line as '#### &lt;number&gt;'"</i> to the
+      task, the same instruction the RL tasks and the reasoning evals use. Answers are grouped by
+      what follows <code>####</code>, so without it a model that answers in a sentence gives the swarm nothing to parse.</p>
+    <p>The selector prompt carries its own ask and sees the task without this line.</p>` },
+  swarm_support: { t: "Support vs verified", b: html`
+    <p><b>Support</b>: how many of the k attempts reached this answer (numbers compared by value, text by
+      lowercase). <b>Verified</b>: how many of those computed it with a Python call that ran without error, i.e. the answer is
+      the output of real code rather than arithmetic done "in the head".</p>
+    <p>Verification is evidence a small model cannot fake: it can be confidently wrong in prose, but a call whose result
+      is the answer at least did the computation. The table is sorted by verified support first. A verified answer can
+      still be wrong (the code can solve the wrong problem); it is evidence, not proof.</p>
+    <p class="see">The representative rationale is a verified member's think span when there is one, else the shortest.</p>` },
+  swarm_majority: { t: "Majority vs verified majority", b: html`
+    <ul><li><b>Majority</b>: the answer with the most support. The zero-cost baseline (self-consistency).</li>
+      <li><b>Verified majority</b>: the most-supported answer counting only verified attempts; if nothing was verified it
+        equals the majority. It is the fallback when the selector gives no parsable answer.</li></ul>
+    <p>When the two disagree, the popular answer was never computed and a computed one exists: exactly the case the
+      verification signal is for. The selector should beat both; if it does not, it adds nothing over a vote.</p>` },
+  swarm_selector: { t: "The selector pass", b: html`
+    <p>The same model, run once more with greedy decoding, over a prompt that lists the task and every distinct answer
+      with its support, whether it was computed with code, and a short rationale. It may call Python to check, and it must
+      end with <code>#### &lt;answer&gt;</code>; that parsed answer is the <b>final</b> answer.</p>
+    <p>Choosing among a dozen summarised answers is a much easier job than choosing among dozens of raw attempts, and
+      the prompt format is one the model is trained on (a selection SFT set and an RL <code>select</code> task), so
+      selection is a learned capability, not a prompt trick. If the selector gives no parsable answer, the final answer
+      falls back to the verified majority.</p>` },
+  swarm_budget: { t: "Selector prompt budget", b: html`
+    <p>The selector prompt must fit the model's effective context, so it is built under a token budget (measured with the
+      real tokenizer). It first keeps at most <b>max groups</b> answers, then shortens the rationales, then drops the
+      least-supported answers, never going below three.</p>
+    <p>An answer dropped here cannot be selected. "in selector prompt" shows which ones survived: a right answer that
+      was sampled but did not make it into the prompt is lost to the budget, not to the selector.</p>` },
+  swarm_oracle: { t: "Oracle ceilings", b: html`
+    <p>Given the expected answer, each stage has a ceiling that bounds everything after it:</p>
+    <ul><li><b>oracle (pass@k)</b>: the right answer is among the k attempts. No selector can do better.</li>
+      <li><b>oracle, verified</b>: it is among the verified attempts.</li>
+      <li><b>in prompt</b>: it survived into the selector prompt.</li>
+      <li><b>selector</b>: it was picked.</li></ul>
+    <p>The gaps say where to work: pass@k minus in-prompt is lost before the model judges (sampling, budget);
+      in-prompt minus selector is the selector's own error. On one task these are yes/no; the eval averages them over a test set.</p>
+    <p class="see"><code>scripts/swarm_eval.py</code> reports all of them per test set; docs/results.md has the numbers.</p>` },
 
   // ------------------------------------------------------------------ architecture
   arch_shape: { t: "Model shape", b: html`

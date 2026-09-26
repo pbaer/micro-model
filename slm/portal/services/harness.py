@@ -224,6 +224,73 @@ class Harness:
         yield done
 
     @torch.no_grad()
+    def swarm(self, slot: str, text: str, k: int = 16, temperature: float = 0.8, top_p: float = 0.95, max_new_tokens: int = 512,
+              max_calls: int = 6, seed: int | None = None, budget_tokens: int = 2400, max_groups: int = 12,
+              answer_suffix: bool = True, should_stop=None):
+        """Swarm inference (slm.swarm) with a progress event per stage. Yields {'event': 'stage', 'stage':
+        'sampling'|'collapsed'|'selecting', ...} and finally {'event': 'done', 'result': SwarmResult.to_dict()}.
+
+        The stages are the calls `swarm_answer` makes, in the same order and with the same generator seeding, so a
+        seeded run here reproduces it. The k samples are one batch (splitting it would change both the throughput
+        and the random stream), so a cancel takes effect at the next stage boundary: after sampling it skips the
+        selector and `final` falls back to the verified majority. With no seed a fresh one is drawn and reported in
+        `result.meta.seed` (an unseeded torch.Generator always starts from the same state)."""
+        from dataclasses import asdict
+
+        from slm.data.answers import SUFFIX
+        from slm.swarm import SwarmResult, collapse, display_answer, majority, sample_candidates, select, selector_messages, verified_majority
+        from slm.utils.sdpa import sdpa_context
+
+        s = self.slots[slot]
+        if s.model is None:
+            raise RuntimeError(f"slot {slot} is empty")
+        if not text.strip():
+            raise RuntimeError("empty task prompt")
+        model, tok = s.model, s.tok
+        seed = int(seed) if seed is not None else int(time.time() * 1000) % 2**31
+        suffix = SUFFIX if answer_suffix else None
+        meta = {"slot": slot, "checkpoint": s.info.get("name"), "device": s.info.get("device"), "seed": seed, "temperature": temperature,
+                "top_p": top_p, "max_new_tokens": max_new_tokens, "max_calls": max_calls, "budget_tokens": budget_tokens,
+                "max_groups": max_groups, "answer_suffix": suffix, "cancelled": False}
+
+        def n_in_prompt(msgs: list[dict]) -> int:
+            return msgs[0]["content"].count("\n- Answer: ") if msgs else 0
+
+        t0 = time.time()
+        try:
+            with sdpa_context("decode"):
+                msgs = [{"role": "user", "content": text + (suffix or "")}]
+                yield {"event": "stage", "stage": "sampling", "k": k, "seconds": 0.0}
+                cands = sample_candidates(model, tok, msgs, k, temperature, top_p, max_new_tokens, max_calls, seed)
+                groups = collapse(cands)
+                vm, maj = verified_majority(groups), majority(groups)
+                yield {"event": "stage", "stage": "collapsed", "seconds": round(time.time() - t0, 2), "n_candidates": len(cands),
+                       "n_parsed": sum(c.key is not None for c in cands), "n_verified": sum(c.verified for c in cands),
+                       "groups": [asdict(g) for g in groups], "majority": maj, "verified_majority": vm}
+                sel_msgs = selector_messages(text, groups, tok, budget_tokens, max_groups) if groups else []
+                think, answer, parsed, n_calls = (None, "", None, 0)
+                if groups and should_stop is not None and should_stop():
+                    meta["cancelled"] = True
+                elif groups:
+                    yield {"event": "stage", "stage": "selecting", "seconds": round(time.time() - t0, 2),
+                           "prompt_tokens": len(tok.encode(sel_msgs[0]["content"])), "groups_in_prompt": n_in_prompt(sel_msgs)}
+                    think, answer, parsed, n_calls = select(model, tok, sel_msgs)
+            final = display_answer(parsed) if parsed is not None else vm
+            res = SwarmResult(prompt=text, k=k, candidates=cands, groups=groups, majority=maj, verified_majority=vm, selector_messages=sel_msgs,
+                              selector_think=think, selector_answer=answer, selector_calls=n_calls, final=final,
+                              seconds=round(time.time() - t0, 2), meta=meta)
+            out = res.to_dict()
+            for c, cd in zip(cands, out["candidates"]):
+                cd["verified"] = c.verified  # a property, so asdict leaves it out
+            out["meta"]["selector_parsed"] = parsed is not None  # False: no '####' line from the selector, final is the verified majority
+            out["meta"]["groups_in_prompt"] = n_in_prompt(sel_msgs)
+            out["meta"]["prompt_tokens"] = len(tok.encode(sel_msgs[0]["content"])) if sel_msgs else 0
+            yield {"event": "done", "stage": "done", "result": out}
+        finally:
+            if next(model.parameters()).device.type == "cuda":
+                torch.cuda.empty_cache()  # generation KV caches leave reserved segments behind (CLAUDE.md)
+
+    @torch.no_grad()
     def score(self, slot: str, mode: str = "completion", text: str = "", messages: list[dict] | None = None) -> dict:
         """Teacher-forced per-token log-probs of a text/conversation under the slot's model."""
         s = self.slots[slot]

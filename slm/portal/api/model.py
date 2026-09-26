@@ -6,11 +6,12 @@ import queue
 import threading
 import uuid
 from pathlib import Path
+from typing import Literal
 
 import anyio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from slm.utils.stage import run_stage  # noqa: F401 (re-exported; the portal and the quality eval share it)
 from slm.portal.api.system import gpu_info
@@ -42,6 +43,21 @@ class GenerateRequest(BaseModel):
     session_id: str | None = None  # conversation id for REPL state; reset via /sessions/{id}/reset
     max_tool_calls: int = 8
     functions: list[dict] | None = None  # declared functions (chat mode): {name, signature, comment} per entry
+
+
+class SwarmRequest(BaseModel):
+    """Swarm inference (slm.swarm.swarm_answer): k samples, collapsed by answer, one selector pass."""
+    slot: Literal["A", "B"] = "A"
+    text: str = ""  # the task prompt
+    k: int = Field(16, ge=1, le=64)
+    temperature: float = Field(0.8, ge=0.0, le=2.0)
+    top_p: float = Field(0.95, gt=0.0, le=1.0)
+    max_new_tokens: int = Field(512, ge=1, le=4096)
+    max_calls: int = Field(6, ge=0, le=16)
+    seed: int | None = None  # None: the worker draws one and reports it in result.meta.seed
+    budget_tokens: int = Field(2400, ge=200, le=8192)  # selector prompt budget
+    max_groups: int = Field(12, ge=1, le=64)
+    answer_suffix: bool = True  # append slm.data.answers.SUFFIX (the '#### <number>' instruction) to the sampling prompt
 
 
 class ScoreRequest(BaseModel):
@@ -165,6 +181,44 @@ async def score(request: Request, body: ScoreRequest) -> dict:
 async def generate(request: Request, body: GenerateRequest):
     """SSE stream. For two slots, events carry `slot`; the streams run one after the other with the same seed."""
     w = request.app.state.worker
+
+    def produce(q: queue.Queue, cancel: threading.Event) -> None:
+        for slot in body.slots:
+            kw = body.model_dump(exclude={"slots"})
+            for ev in w.stream("generate", cancel_flag=cancel, slot=slot, **kw):
+                ev["slot"] = slot
+                q.put(ev)
+                if ev["event"] == "error":
+                    break
+            if cancel.is_set():
+                break
+
+    return _sse(request, produce)
+
+
+@router.post("/swarm")
+async def swarm(request: Request, body: SwarmRequest):
+    """Swarm inference on one slot (slm.swarm), as SSE: `stage` events (sampling, collapsed with the groups,
+    selecting), then `done` with the whole SwarmResult dict. Cancel (POST /streams/{id}/cancel) takes effect at
+    the next stage boundary; the k samples are one batch."""
+    if not body.text.strip():
+        raise HTTPException(422, "text (the task prompt) is empty")
+    w = request.app.state.worker
+
+    def produce(q: queue.Queue, cancel: threading.Event) -> None:
+        for ev in w.stream("swarm", cancel_flag=cancel, **body.model_dump()):
+            ev["slot"] = body.slot
+            q.put(ev)
+            if ev["event"] == "error":
+                break
+
+    return _sse(request, produce)
+
+
+def _sse(request: Request, produce) -> StreamingResponse:
+    """Run `produce(queue, cancel_event)` on a thread and stream what it puts on the queue as SSE: a `start` event
+    with the stream id (for POST /streams/{id}/cancel), each event under its own name, then `end`. A client that
+    disconnects sets the cancel event."""
     streams = request.app.state.streams
     sid = uuid.uuid4().hex[:12]
     cancel = threading.Event()
@@ -173,15 +227,7 @@ async def generate(request: Request, body: GenerateRequest):
 
     def run():
         try:
-            for slot in body.slots:
-                kw = body.model_dump(exclude={"slots"})
-                for ev in w.stream("generate", cancel_flag=cancel, slot=slot, **kw):
-                    ev["slot"] = slot
-                    q.put(ev)
-                    if ev["event"] == "error":
-                        break
-                if cancel.is_set():
-                    break
+            produce(q, cancel)
         except Exception as e:  # noqa: BLE001
             q.put({"event": "error", "error": str(e)})
         finally:
