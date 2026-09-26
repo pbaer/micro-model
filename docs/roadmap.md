@@ -127,9 +127,12 @@ context-extended base once the curriculum settles.
    quality (run 3); widening the tool reward gap does not fix the tool-use cost (run 4); training the
    out-of-mix families in the mix does, completely (run 5). Recipe settled: verifiable rewards for every
    behaviour you want including the negative ones, and every contested surface form inside the mix.
-2b. **Goal 5, the swarm.** pass@32 is 15-16x pass@1 on GSM8K/SVAMP but 22-24 distinct answers per 32 samples
-   means voting fails; the design is parallel sampling + a verifier (sandbox re-derivation, setup checks).
-   Discussion with Peter pending; he has thoughts.
+2b. **Goal 5, the swarm** — in progress (2026-09-26). Design settled with Peter: k parallel samples, collapse by
+   answer with sandbox evidence, then the *same* model selects from a compact prompt (no second model, per
+   goal 1). Built: `slm/swarm.py`, `scripts/swarm_eval.py` (ceilings), `slm/rl/synth_select.py` (selection SFT
+   set + RL `select` family), configs `m9_select_336m` / `m9_rl6_336m`; the chain is running
+   (`scripts/after_swarm_eval.sh`). Open: the trained selector's gain over `verified_majority`, and the portal's
+   swarm mode (subagent, in flight). Results in `docs/results.md` §17.
 3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
    an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
    (the current base has never seen long-form fiction).

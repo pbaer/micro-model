@@ -439,3 +439,41 @@ invariant that no `<|python_result|>` token is a loss target. Two whole families
 `declared.distance` — are written only to the validation split, so val measures generalisation to program shapes that
 were never trained on. `tests/test_synth_python.py` checks per-family verification, the real hints, declared-function
 resolution, the masks, feature coverage and skeleton diversity floors, and the hold-out.
+
+## Swarm inference (`slm/swarm.py`, `slm/rl/synth_select.py`, `scripts/swarm_eval.py`)
+
+Goal 5: use the batch parallelism one GPU gives (dozens of completions per prompt at once) as a *system* around one
+model, not as a way to run one model faster. The pipeline is sample → collapse → verify → select, and every stage is
+a plain function that returns its intermediate state so the eval can report the ceiling at each step and the
+portal's inference tab can show what the swarm saw and chose.
+
+- **Sample.** `sample_candidates` runs `sample_with_tools` on `k` copies of the chat prompt (temperature 0.8,
+  top-p 0.95, the tool available, `max_calls` 6). Each completion becomes a `Candidate`: think span, answer span,
+  the parsed `#### <answer>`, its tool calls, and `from_tool` (the answer came out of a real call,
+  `slm.rl.rewards.answer_from_tool`). `verified` = `from_tool and n_errors == 0` — sandbox-backed evidence that
+  the model cannot fake in its head and that majority voting ignores.
+- **Collapse.** `answer_key` canonicalises answers (numbers by value, so 42 / 42.0 / 42.00 agree; text
+  lowercased) and `collapse` groups candidates into `Group`s carrying `support`, `verified` (how many members were
+  sandbox-backed) and a representative rationale (a verified member's think, shortest first). Groups are ordered
+  verified-support first, then support: with 22–24 distinct answers per 32 samples (`docs/results.md` §14a),
+  raw support is nearly noise and provenance is the signal. `majority` and `verified_majority` are the two
+  mechanical baselines.
+- **Select.** `selector_messages` renders the task and the groups as one user turn (`SELECT_INTRO` /
+  `SELECT_ASK` are module constants so SFT, RL and inference all see one wording) inside a token budget
+  (2400 by default, measured with the real tokenizer; rationales are shortened before groups are dropped, never
+  below three). `select` is one greedy pass of the *same* model with the tool available, so it can re-check.
+  `final` is the selector's parsed answer, else `verified_majority`.
+- **Teaching the selector.** Selection is a prompt format the model has never seen, so it is trained like every
+  other behaviour. `slm.rl.synth_select` samples k=8 candidates from a checkpoint on GSM8K-train, SVAMP-train and
+  the synthetic word families, collapses them, and writes (a) an SFT set `select-sft` — the selection prompt as
+  the user turn, a one-line templated think stating what the pool showed, `#### <gold>` — for pools that contain
+  a correct group, and (b) `select_pool.jsonl` for the RL `select` family (`slm.rl.tasks.select_pool`, in
+  `POOLED`), which keeps *every* pool including those with no correct candidate: there the only rewarded move is
+  to solve the problem afresh, which is the override behaviour a selector needs and that imitation cannot teach.
+  No teacher is involved: the candidates are the model's own, the evidence is mechanical, the target is the
+  dataset's gold. `reward_schemes: {select: binary}` — the evidence is already in the prompt, so no tool credit.
+- **Ceilings.** `scripts/swarm_eval.py` reports, from the same k samples, greedy / majority / verified_majority /
+  selector, and the ceilings oracle (pass@k), oracle_verified (a correct verified candidate exists) and in_prompt
+  (the correct group survived into the selector prompt). The gaps locate the work: oracle − oracle_verified is
+  what verification throws away, oracle_verified − in_prompt what the budget throws away, in_prompt − selector
+  what the selector still gets wrong.
