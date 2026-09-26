@@ -910,3 +910,38 @@ Run 4 pass@k (k=32, n=30 each), for the record: GSM8K pass@1 0.020 -> pass@32 **
 22.5 distinct answers per problem; SVAMP 0.035 -> **0.533**, majority 0.067, 23.5 distinct. Within noise of
 run 3 (0.333 / 0.533). The pass@k ceiling and the failure of voting are properties of the model, not of the RL
 variant -- a verifier-based swarm has the same raw material whichever run it is built on.
+
+## 16. M9 stage C, run 5: the anchor plus the out-of-mix families trained in the mix (2026-09-26)
+
+Run 3's config (chat anchor, `tool` scheme) with `algebra`, `arith2` and `word` added to the RL mix under `tool`
+-- the families whose tool use runs 3 and 4 had eroded by generalisation -- so "short question with numbers ->
+call the sandbox" is trained rather than inferred. 17 draws: chat 3, constraints 4, gsm8k 3, pytool_numbers 2,
+pytool_declared 1, algebra 2, arith2 1, word 1. Seed 12.
+
+**The only stage C run to complete all 250 steps.** KL stayed at 0.01-0.07 for the whole run, never near the
+0.15 guard that stopped runs 2-4 at 141-150. It also survived a crash: at step 60 the policy wrote a slice with a
+float index and the sandbox let Python's `TypeError` through to the trainer (fixed at the slice site and at the
+`run_tool` boundary, §log 2026-09-26); the run resumed from the step-51 checkpoint with full state.
+
+| held-out | pre-RL | step 50 | 100 | 150 | 200 | 250 |
+|---|---|---|---|---|---|---|
+| accuracy | 0.438 | 0.604 | 0.615 | **0.625** | 0.625 | 0.615 |
+| malformed | 0.11 | 0.08 | 0.10 | 0.05 | 0.07 | 0.04 |
+
+`best.pt` = step 150. (The held-out set contains the new families, so its level is not comparable to earlier
+runs; the +0.19 gain is the largest of any run.)
+
+| window | KL | entropy | reward | no-signal groups |
+|---|---|---|---|---|
+| 1-50 | 0.014 | 0.94 | 0.593 | 0.66 |
+| 51-100 | 0.050 | 0.84 | 0.649 | 0.79 |
+| 101-150 | 0.032 | 0.95 | 0.648 | 0.76 |
+| 151-200 | 0.063 | 0.93 | 0.682 | 0.77 |
+| 201-250 | 0.072 | 1.03 | 0.667 | 0.76 |
+
+Per family, first 30 steps -> last 30 (reward / tool-call rate): **algebra** 0.95/0.94 -> 0.97/**1.00**,
+**arith2** 0.86/0.81 -> 1.00/**1.00**, **word** 0.86/0.80 -> 1.00/**1.00**, chat 0.80/0.01 -> 0.95/**0.00**,
+gsm8k 0.02/0.45 -> 0.06/**0.75**, pytool_numbers 0.77/0.90 -> 0.95/1.00, constraints 0.40 -> 0.45. The two
+pressures coexist in one mix: the trained math families saturate at 100% tool use while the chat anchor holds
+at zero. Whether that transfers to the post-run evals -- the reasoning suite, judged facts and misfire,
+multi-turn -- is the next table.
