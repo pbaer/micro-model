@@ -63,9 +63,9 @@ export function Home() {
     <h2>Data readiness<${Info} k="data_readiness" /></h2>
     ${!data ? html`<div class="muted">loading…</div>` : tags.length === 0 ? html`<div class="empty-note">no tokenized data yet</div>` : tags.map((t) => {
       const srcs = data.sources.filter((s) => s.tokenized[t]);
-      const total = srcs.reduce((a, s) => a + s.tokenized[t].train_tokens, 0);
+      const total = srcs.reduce((a, s) => a + (s.tokenized[t].train_tokens ?? 0), 0);  // a source with no count must not NaN the sum
       const sft = (data.sft && data.sft[t]) ? Object.keys(data.sft[t]) : [];
-      return html`<div class="panel" style="margin-bottom:8px"><b>tokenizer ${t}</b> · ${fmtTok(total)} pretraining tokens across ${srcs.length} sources (${srcs.map((s) => `${s.name} ${fmtTok(s.tokenized[t].train_tokens)}`).join(", ")}) · ${sft.length} SFT/reasoning sets
+      return html`<div class="panel" style="margin-bottom:8px"><b>tokenizer ${t}</b> · ${fmtTok(total)} pretraining tokens across ${srcs.length} sources (${srcs.map((s) => `${s.name} ${s.tokenized[t].train_tokens == null ? "?" : fmtTok(s.tokenized[t].train_tokens)}`).join(", ")}) · ${sft.length} SFT/reasoning sets
         <div class="legend">details on the <a href="#/data">Data</a> page</div></div>`; })}
   </div>`;
 }
