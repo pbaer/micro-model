@@ -49,3 +49,40 @@ def test_selector_prompt_fits_its_budget_and_keeps_the_strongest_groups():
     assert "- Answer: 99 (agreed by 3 attempts; computed with code in 3)" in content
     assert content.startswith("What is 9 times 11?") and content.rstrip().endswith("'#### <answer>'.")
     assert content.count("- Answer:") >= 3, "answers are trimmed before they are dropped, and never below three"
+
+
+def test_pair_prompt_and_pick_parsing():
+    from slm.swarm import pair_messages, parse_pick
+
+    a = collapse([cand(0, "10"), cand(1, "10", think="ten " * 300)])[0]
+    b = collapse([cand(2, "12", from_tool=True, calls=[["3*4", "12"]], think="short")])[0]
+    content = pair_messages("What is 3 times 4?", a, b, tok=None, budget_tokens=120)[0]["content"]
+    assert content.startswith("What is 3 times 4?") and "Answer A: 10 (agreed by 2 attempts; not computed with code)" in content
+    assert "Answer B: 12 (agreed by 1 attempt; computed with code in 1)" in content and content.rstrip().endswith("'#### A' or '#### B'.")
+    assert len(content) // 4 <= 120 or "Reasoning: " in content, "rationales shrink to fit; the two answers are never dropped"
+    assert parse_pick("#### A") == 0 and parse_pick("#### b") == 1 and parse_pick("#### B.") == 1
+    assert parse_pick("#### 12") is None and parse_pick("no marker") is None and parse_pick("#### Answer B is right") is None
+
+
+def test_tournament_bracket_seeds_swaps_and_falls_back_to_evidence():
+    from slm.swarm import seed_pairs, tournament
+
+    gs = collapse([cand(0, "1", from_tool=True, calls=[["1", "1"]]), cand(1, "2"), cand(2, "2"), cand(3, "3"), cand(4, "4"), cand(5, "5")])
+    assert [g.key for g in gs] == ["1", "2", "3", "4", "5"]
+    pairs, byes = seed_pairs(gs)
+    assert [(a.key, b.key) for a, b in pairs] == [("1", "5"), ("2", "4")] and [g.key for g in byes] == ["3"]
+    seen = []
+
+    def compare(oriented):  # picks the larger number, and gives no pick for the pair holding "4"
+        seen.append([(x.key, y.key) for x, y in oriented])
+        return [None if "4" in (x.key, y.key) else (0 if float(x.key) > float(y.key) else 1) for x, y in oriented]
+
+    champ, rounds = tournament(None, None, "q", gs, compare=compare)
+    assert seen[0] == [("1", "5"), ("4", "2")], "second pair is presented swapped"
+    r1 = rounds[0]
+    assert r1[0]["winner"] == "5" and r1[1]["pick"] is None and r1[1]["winner"] == "2", "no pick -> the evidence order (support 2 beats 1)"
+    assert [g for g in [rounds[0][0]["swapped"], rounds[0][1]["swapped"]]] == [False, True]
+    assert champ.key == "5" and len(rounds) == 3, "5 beats 3, then the bye (2)"
+    assert tournament(None, None, "q", [], compare=compare) == (None, [])
+    solo, rounds = tournament(None, None, "q", gs[:1], compare=compare)
+    assert solo.key == "1" and rounds == []

@@ -37,6 +37,9 @@ SELECT_INTRO = ("Several attempts were made at this problem. Here are the distin
                 "attempts agreed on each, and whether the answer was computed by running Python code.")
 SELECT_ASK = ("Decide which answer is correct. You may check with Python. Give the final answer on its own line as "
               "'#### <answer>'.")
+# The pairwise prompt (tournament mode): one binary decision per prompt, the shape a small model can learn.
+PAIR_INTRO = "Two attempts at this problem reached different final answers."
+PAIR_ASK = "Which answer is correct? Reply with the final answer on its own line as '#### A' or '#### B'."
 
 
 @dataclass
@@ -85,6 +88,8 @@ class SwarmResult:
     final: str | None                   # the selector's parsed answer, or verified_majority when it gave none
     seconds: float
     meta: dict = field(default_factory=dict)
+    tournament: str | None = None       # the pairwise bracket's champion (tournament mode), else None
+    rounds: list[list[dict]] = field(default_factory=list)  # per round: {a, b, swapped, pick, winner}
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -174,7 +179,88 @@ def selector_messages(task_prompt: str, groups: list[Group], tok=None, budget_to
             gs = gs[:-1]
 
 
+def pair_messages(task_prompt: str, a: Group, b: Group, tok=None, budget_tokens: int = 1200) -> list[dict]:
+    """The pairwise prompt: the task, then Answer A and Answer B each with its support, provenance and a short
+    rationale, and one binary ask. Fits the budget by shortening rationales (never dropping an answer)."""
+    chars = 240
+    while True:
+        lines = []
+        for label, g in (("A", a), ("B", b)):
+            how = f"agreed by {g.support} attempt{'s' if g.support != 1 else ''}"
+            how += f"; computed with code in {g.verified}" if g.verified else "; not computed with code"
+            lines.append(f"Answer {label}: {g.answer} ({how})" + (f"\n  Reasoning: {_trim(g.rationale, chars)}" if g.rationale else ""))
+        content = f"{task_prompt.strip()}\n\n{PAIR_INTRO}\n" + "\n".join(lines) + f"\n\n{PAIR_ASK}"
+        n = len(tok.encode(content)) if tok is not None else len(content) // 4
+        if n <= budget_tokens or chars <= 40:
+            return [{"role": "user", "content": content}]
+        chars = max(40, chars // 2)
+
+
+def parse_pick(answer_text: str) -> int | None:
+    """0 for '#### A', 1 for '#### B', else None."""
+    from slm.rl.rewards import parse_final_span
+
+    p = parse_final_span(answer_text)
+    if p is None:
+        return None
+    p = p.strip().strip("*.'\"()").upper()
+    if len(p) > 8:
+        return None
+    return {"A": 0, "B": 1}.get(p[:1])
+
+
+def seed_pairs(entrants: list) -> tuple[list[tuple], list]:
+    """Standard seeding: first against last, so the strongest-evidence answers meet late. Odd one out gets a bye."""
+    n = len(entrants)
+    pairs = [(entrants[i], entrants[n - 1 - i]) for i in range(n // 2)]
+    byes = [entrants[n // 2]] if n % 2 else []
+    return pairs, byes
+
+
+def tournament(model, tok, task_prompt: str, groups: list[Group], budget_tokens: int = 1200, max_new_tokens: int = 96,
+               max_entrants: int = 16, compare=None) -> tuple[Group | None, list[list[dict]]]:
+    """Single elimination over distinct answers. Each round's comparisons are one greedy batch; every other pair is
+    presented swapped so position bias cancels across the bracket rather than deciding it. A comparison that gives
+    no parsable pick falls back to the evidence order (verified, then support). `compare` can be injected (tests)."""
+    entrants = list(groups[:max_entrants])
+    rounds: list[list[dict]] = []
+    if not entrants:
+        return None, rounds
+    compare = compare or (lambda pairs: compare_batch(model, tok, task_prompt, pairs, budget_tokens, max_new_tokens))
+    while len(entrants) > 1:
+        pairs, byes = seed_pairs(entrants)
+        oriented = [(b, a) if j % 2 else (a, b) for j, (a, b) in enumerate(pairs)]
+        picks = compare(oriented)
+        winners, log = [], []
+        for j, ((x, y), pick) in enumerate(zip(oriented, picks)):
+            if pick is None:
+                w = x if (x.verified, x.support) >= (y.verified, y.support) else y
+            else:
+                w = x if pick == 0 else y
+            winners.append(w)
+            log.append({"a": x.answer, "b": y.answer, "swapped": bool(j % 2), "pick": pick, "winner": w.answer})
+        rounds.append(log)
+        entrants = winners + byes
+    return entrants[0], rounds
+
+
 # ------------------------------------------------------------------------------------------------ model parts
+def compare_batch(model, tok, task_prompt: str, pairs: list[tuple[Group, Group]], budget_tokens: int = 1200,
+                  max_new_tokens: int = 96) -> list[int | None]:
+    """One greedy batch of pairwise prompts -> 0 (A), 1 (B) or None per pair. No tool: the decision is read off
+    the evidence and the two rationales, which is what the pairwise data teaches."""
+    import torch
+
+    from slm.data.chat import format_chat, parse_assistant
+    from slm.tools.loop import sample_with_tools
+
+    ids = [format_chat(tok, pair_messages(task_prompt, a, b, tok, budget_tokens), add_generation_prompt=True, think_required=True).ids for a, b in pairs]
+    gen = torch.Generator(device=next(model.parameters()).device)
+    gen.manual_seed(0)
+    tcs = sample_with_tools(model, tok, ids, max_new_tokens, 1.0, 1.0, 1, gen, max_calls=0)
+    return [parse_pick(parse_assistant(tok, tc.ids)["answer"]) for tc in tcs]
+
+
 def _candidates_from_completions(tok, tcs) -> list[Candidate]:
     from slm.data.chat import parse_assistant
     from slm.rl.rewards import answer_from_tool, parse_final_span
@@ -223,22 +309,33 @@ def select(model, tok, messages: list[dict], max_new_tokens: int = 384, max_call
 
 def swarm_answer(model, tok, task_prompt: str, k: int = 16, temperature: float = 0.8, top_p: float = 0.95,
                  max_new_tokens: int = 512, max_calls: int = 6, seed: int | None = None, budget_tokens: int = 2400,
-                 max_groups: int = 12, answer_suffix: str | None = None) -> SwarmResult:
+                 max_groups: int = 12, answer_suffix: str | None = None, mode: str = "select",
+                 pair_budget_tokens: int = 1200, max_entrants: int = 16) -> SwarmResult:
     """The whole pipeline for one task. `answer_suffix` is appended to the sampling prompt (the '#### <number>'
-    instruction the verifiable tasks use); the selector prompt carries its own ask."""
+    instruction the verifiable tasks use); the selector prompt carries its own ask. `mode`: "select" (one prompt
+    over all groups), "tournament" (pairwise bracket), or "both" (run both; `final` follows the tournament)."""
     from slm.utils.sdpa import sdpa_context
 
+    if mode not in ("select", "tournament", "both"):
+        raise ValueError(f"mode {mode!r}")
     t0 = time.time()
     with sdpa_context("decode"):
         msgs = [{"role": "user", "content": task_prompt + (answer_suffix or "")}]
         cands = sample_candidates(model, tok, msgs, k, temperature, top_p, max_new_tokens, max_calls, seed)
         groups = collapse(cands)
-        sel_msgs = selector_messages(task_prompt, groups, tok, budget_tokens, max_groups) if groups else []
+        sel_msgs = selector_messages(task_prompt, groups, tok, budget_tokens, max_groups) if groups and mode != "tournament" else []
         think, answer, parsed, n_calls = (None, "", None, 0)
-        if groups:
+        if sel_msgs:
             think, answer, parsed, n_calls = select(model, tok, sel_msgs)
+        champion, rounds = (None, [])
+        if groups and mode != "select":
+            champion, rounds = tournament(model, tok, task_prompt, groups, pair_budget_tokens, max_entrants=max_entrants)
     vm = verified_majority(groups)
-    final = display_answer(parsed) if parsed is not None else vm
+    if mode == "select":
+        final = display_answer(parsed) if parsed is not None else vm
+    else:
+        final = champion.answer if champion is not None else vm
     return SwarmResult(prompt=task_prompt, k=k, candidates=cands, groups=groups, majority=majority(groups), verified_majority=vm,
                        selector_messages=sel_msgs, selector_think=think, selector_answer=answer, selector_calls=n_calls, final=final,
-                       seconds=round(time.time() - t0, 2))
+                       seconds=round(time.time() - t0, 2), meta={"mode": mode},
+                       tournament=champion.answer if champion is not None else None, rounds=rounds)
