@@ -134,8 +134,11 @@ context-extended base once the curriculum settles.
    the model's own judgment is closed at this size. Next, in cost order (§19): cross-method agreement as a
    mechanical selector; a 10x larger pairwise set to test data-starvation; or parallel sampling only where an
    external verifier exists. Portal swarm mode shows both paths with a live bracket.
-2c. **Local competitor models** (2026-09-27, Peter): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
-   gpt2-medium run locally through our evals (`slm/eval/external.py`, `--external`), rows in the Evals tab.
+2c. **Local competitor models** — done (2026-09-27, §20): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
+   gpt2-medium scored locally by our evals, rows in the Evals tab, loadable in the Inference tab. Verdict: on
+   public benchmarks we are a 135M-class model (the training-token ordering, 10B vs 2-18T), judged chat sits
+   between the two SmolLM2 sizes, and we lead only where post-training built something specific (format
+   following, tool use). The gaps are pretraining tokens -- the argument for the third base (item 3).
 3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
    an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
    (the current base has never seen long-form fiction).

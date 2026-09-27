@@ -809,3 +809,7 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Judged (Sonnet, blind): SmolLM2-360M-Instruct 4.4 overall on our suite vs our 4.11; facts probe 86% vs 71%;
   multi-turn recall 0.734 vs 0.609; HellaSwag(n) 52.2 vs 42.9 -- but ARC-Easy 56.2 vs 57.0 and SciQ 72.7 vs
   83.1 in our favour, and its strict-format GSM8K is 0.005 (0.075 counting the last number) vs our 0.085.
+- All seven comparison models measured (§20, 03:09-05:07 including the needle re-runs), three chat models judged
+  blind. We are a 135M-class model on the public benchmarks, between the two SmolLM2 sizes on judged chat, ahead
+  only on format following and tool use; every gap tracks pretraining tokens. The Evals tab carries the rows; the
+  Inference tab can load any of them into a slot. GPU idle from 05:07.

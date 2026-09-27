@@ -1157,3 +1157,58 @@ prose path, or by two differently-worded re-askings of the problem, is right mor
 test whether the judge is data-starved rather than incapable; (3) accept selection as out of reach at this size and
 use parallel sampling only where an external verifier exists (unit tests, constraints), which the RL families already
 do. The training ladder is reusable as is: a format SFT then the chat-anchored RL (§18) costs nothing measurable.
+
+## 20. Where we stand against local open-weight models of the same size (2026-09-27)
+
+Peter's ask: similarly sized open-source models, run *locally in our own harness* on the same suites, as rows in the
+Evals tab. Seven models (`slm/eval/external.py`; weights under `C:\slm-data\models`, offline at run time): SmolLM2-135M
+and 360M (base + Instruct; trained on the same data family we sampled, 2T / 4T tokens), Qwen2.5-0.5B (base + Instruct;
+up to 18T tokens), gpt2-medium (355M, 2019, a floor). Ours: `m9_rl6_336m` final.pt, 336M, ~10B pretraining tokens.
+Same lm-eval tasks and limits, same items and verifiers for the homebrew evals, each model's own tokenizer and chat
+template as shipped, our decoding settings; anything that depends on our tool protocol is n/a for them.
+
+| model | params / tokens | HellaSwag(n) | ARC-E | PIQA | LAMBADA | OBQA(n) | SciQ | facts | GSM8K strict / lenient | SVAMP lenient | mt recall | needle | judged |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| gpt2-medium (base) | 355M / ~? | 43.4 | 49.6 | 67.3 | 41.3 | 29.6 | 75.7 | 46.4 | -- | -- | -- | 1024 (max) | -- |
+| SmolLM2-135M (base) | 135M / 2T | 44.2 | 64.2 | 68.3 | 42.5 | 33.0 | 83.8 | 70.6 | -- | -- | -- | 2048 | -- |
+| SmolLM2-135M-Instruct | 135M / 2T | 43.5 | 53.8 | 66.6 | 38.6 | 33.2 | 81.6 | 71.1 | 0.000 / 0.015 | 0.040 | 0.516 | 4096 | 3.94 |
+| **ours, m9_rl6 final** | **336M / 10B** | 42.9 | 57.0 | 67.1 | 33.7 | 31.6 | 82.7 | 70.6 | **0.085** / -- | 0.100 (strict) | 0.609 | 3072 | 4.11 |
+| SmolLM2-360M (base) | 362M / 4T | 51.8 | 70.3 | 71.8 | 52.8 | 37.8 | 91.1 | 87.1 | -- | -- | -- | 4096 | -- |
+| SmolLM2-360M-Instruct | 362M / 4T | 52.2 | 56.2 | 71.0 | 49.1 | 36.8 | 72.7 | 86.1 | 0.005 / 0.075 | 0.173 | 0.734 | 4096 | 4.46 |
+| Qwen2.5-0.5B (base) | 494M / 18T | 48.9 | 64.4 | 70.6 | 51.9 | 35.2 | 92.9 | 80.9 | -- | -- | -- | 4096 | -- |
+| Qwen2.5-0.5B-Instruct | 494M / 18T | 49.9 | 65.3 | 70.5 | 50.3 | 34.2 | 91.8 | 70.1 | 0.000 / 0.330 | 0.560 | 0.750 | 4096 | 4.31 |
+
+(lm-eval zero-shot, limit 2000, acc_norm for HellaSwag/OBQA, acc otherwise; facts = the 194-item completion probe;
+GSM8K/SVAMP = our reasoning eval, greedy, 256 tokens, no tools for the external models -- *strict* requires our
+`#### <answer>` line, *lenient* counts the last number; mt recall = the scripted 3-turn recall eval; needle =
+effective context at min-over-depths >= 0.8 in each model's own tokens, real haystack; judged = claude-sonnet-5 on
+the blind v1 suite, chat form. Base models get only the evals that have a completion form.)
+
+What it says, honestly:
+- **On the public benchmarks we are a 135M-class model, not a 360M-class one.** Against SmolLM2-360M (base) we trail
+  by 9 points on HellaSwag, 13 on ARC-E, 19 on LAMBADA, 8 on SciQ; against SmolLM2-135M (base, 2T tokens) we are
+  within noise on HellaSwag, PIQA, OBQA and SciQ and behind on ARC-E and LAMBADA. gpt2-medium is below us on
+  everything except HellaSwag(n). That ordering is the training-token ordering: 10B versus 2T versus 4T versus 18T.
+  Parameter count is not what these tables measure.
+- **Where the post-training recipe shows.** Strict-format GSM8K: ours 0.085, every external model 0.000-0.005 --
+  they were never taught our marker. Counting the last number instead, Qwen-Instruct solves 0.33 of GSM8K and 0.56
+  of SVAMP to our 0.085 / 0.10: a model with 50x the pretraining and a real math SFT is a different class of
+  reasoner, and our tool-use gains (§16a, §18) sit on a weak comprehension base. SmolLM2-360M-Instruct, closest in
+  size, is at 0.075 / 0.17 lenient -- near us.
+- **Chat quality.** Judged: SmolLM2-360M-Instruct 4.46 > Qwen-Instruct 4.31 > ours 4.11 > SmolLM2-135M-Instruct 3.94.
+  We are between the two SmolLM2 sizes, on a suite written for our model, judged blind. Multi-turn recall follows
+  the same order (0.734 / 0.750 / 0.609 / 0.516).
+- **Facts.** The 360M base's 87% shows what the probe can read; we are at the 135M level (70.6%).
+- **Context.** Every external model except gpt2 holds the needle at 4096 in its own tokens; ours holds 3072 (the M8
+  4K stage's known erosion). The chat models needed the haystack as a user turn of their template (log,
+  2026-09-27): on a raw completion prompt SmolLM2-360M-Instruct ends its turn instead of answering.
+- **Not comparable, deliberately.** No external model has our tool protocol, so tool-use rate, sandbox verification,
+  the selector and the tournament are n/a for them; the swarm eval reports only greedy / majority / oracle
+  (Qwen-Instruct oracle 0.10 / 0.24 at k=16 without tools, ours 0.36 / 0.48 with them -- sampling with a sandbox
+  gives us a wider pool than a stronger model without one).
+
+The picture for the roadmap: the recipe (goal 1) is doing its job -- a 10B-token model behaves like a 2T-token
+model of the same size on chat and beats it on format-following and tool use -- but nothing in post-training
+substitutes for pretraining tokens on knowledge and comprehension, which is where every gap in this table is.
+Rows and hover details are in the Evals tab (`runs/ext_<name>/`); re-run any of them with
+`scripts/measure_external.sh <name>`.
