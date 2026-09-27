@@ -326,6 +326,22 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   coherence and task (1-5). `pack` writes shuffled packets with opaque item ids and the rubric text; `ingest`
   validates the judge's JSON and rebuilds `quality/summary.json`, which the run page charts. The three prompts
   the trainer has always sampled are averaged separately (`legacy3`). Protocol and rubric: `docs/quality_eval.md`.
+- `external.py`: **external comparison models** — seven similarly sized open-weight LMs (SmolLM2-135M/360M base and
+  Instruct, Qwen2.5-0.5B base and Instruct, GPT-2 medium; Apache-2.0 / MIT) scored by our own evals as comparison
+  rows. `EXTERNAL_MODELS` is the registry (hf id, params, license, chat or base, max positions, published training
+  tokens); weights live in `<data root>/models/<name>/` (`python -m slm.eval.external download`, the only networked
+  step, run in a child process). Importing the module forces `HF_HUB_OFFLINE` / `TRANSFORMERS_OFFLINE` /
+  `HF_DATASETS_OFFLINE`, so no eval or inference touches the network. `HfChatModel` wraps the HF forward pass in our
+  own decode loop (`sample_next`, left-padded batches, stop tokens from the model's own config), so decoding settings
+  mean what they mean for our checkpoints and no `generation_config.json` default leaks in; each model uses its own
+  tokenizer and chat template, and a base model is never given a template. Every eval takes `--external <name>`
+  (lm-eval through its own `hf` backend; facts completion form for every model; reasoning, multi-turn, judged quality
+  and the swarm's sampling half for chat models only; needle for all, with lengths counted in the model's own tokens
+  on the same corpus windows and secrets as ours, and lengths beyond its position table n/a) and writes the same
+  file shape to `runs/ext_<name>/` with `"checkpoint": "external:<name>"` and a `"model"` block. What depends on our
+  tool protocol or think span (tool-use rates, sandbox verification, the selector, multi-turn misfire) is null, not
+  approximated. `scripts/measure_external.sh <name>` runs them all; the Evals tab shows the rows as a separate
+  "external models" group after ours.
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
 

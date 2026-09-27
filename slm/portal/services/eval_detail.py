@@ -191,7 +191,7 @@ class EvalDetail:
             sources.append({"source": r["source"], "value": r["value"], "detail": r["detail"], "winner": i == 0,
                             "size": size, "mtime": mtime, "shown": r is ref})
         out = {"run": row["run"], "checkpoint": row["checkpoint"], "requested": checkpoint, "aliases": row["aliases"],
-               "stage": row["stage"], "params": row["params"], "tokens": row["tokens"], "own_tokens": row["own_tokens"],
+               "stage": row["stage"], "params": row["params"], "tokens": row["tokens"], "own_tokens": row["own_tokens"], "model": row.get("model"),
                "key": key, "column": {**{k: col[k] for k in _PUBLIC_FIELDS}, "min": tcol.get("min"), "max": tcol.get("max")},
                "cell": row["cells"].get(key), "value": ref["value"], "source": ref["source"], "source_detail": ref["detail"],
                "sources": sources, "run_info": self._run_info(row["run"]), "log": _log_tail(path),

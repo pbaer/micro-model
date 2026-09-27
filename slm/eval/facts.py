@@ -9,6 +9,10 @@ Answers are matched case-insensitively as whole words; aliases separated by "|".
 scores 43% in completion form, its instruct checkpoint 46% in chat form (capitals ~65%, units ~15%).
 
     python -m slm.eval.facts --checkpoint runs/<run>/checkpoints/final.pt [--chat] [--out ...]
+    python -m slm.eval.facts --external smollm2-360m [--chat] [--out ...]      # slm.eval.external
+
+An external model gets the same items, budgets and matching: completion prompts through its own tokenizer (any
+model), questions through its own chat template (chat models only; there is no think span to strip).
 """
 
 from __future__ import annotations
@@ -156,6 +160,10 @@ def run_facts(model, tok: SlmTokenizer, chat: bool = False, think_required: bool
                 comps = sample_completions(model, tok, [enc[i] for i in idxs], max_new, 0.0)
                 for i, c in zip(idxs, comps):
                     outs[i] = tok.decode(c, skip_special=True)
+    return _score(its, outs, chat)
+
+
+def _score(its: list[dict], outs: list[str], chat: bool) -> dict:
     per_cat: dict[str, list[int]] = {}
     rows = []
     for it, o in zip(its, outs):
@@ -168,20 +176,44 @@ def run_facts(model, tok: SlmTokenizer, chat: bool = False, think_required: bool
     return {"accuracy": total, "n": len(rows), "per_category": {k: sum(v) / len(v) for k, v in per_cat.items()}, "rows": rows, "mode": "chat" if chat else "completion"}
 
 
+def run_facts_external(model, chat: bool = False, max_new: int = 12, batch: int = 32) -> dict:
+    """`run_facts` for an `slm.eval.external.HfChatModel`: greedy, the same budgets, the same scoring."""
+    its = items()
+    if chat:
+        gens = model.batch_generate_chat([[{"role": "user", "content": it["question"]}] for it in its], max(max_new, 32), 0.0, batch_size=batch)
+    else:
+        gens = model.batch_generate_text([it["completion"] for it in its], max_new, 0.0, batch_size=batch)
+    return _score(its, [g.text for g in gens], chat)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--external", default=None, help="a registered external model (slm.eval.external) instead of a checkpoint")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--chat", action="store_true")
     ap.add_argument("--think", action="store_true", help="chat mode with a forced think span (reasoning checkpoints)")
     ap.add_argument("--device", default="cuda", help="cpu lets the probe run while the GPU trains")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    tok = SlmTokenizer.load(a.tokenizer)
-    model = load_model(a.checkpoint, a.device)
     t0 = time.time()
-    res = run_facts(model, tok, chat=a.chat or a.think, think_required=a.think)
-    res["checkpoint"] = a.checkpoint
+    if a.external:
+        from slm.eval.external import chat_only, load_external, result_header
+
+        if a.think:
+            raise SystemExit("--think is our think-span convention: n/a for an external model")
+        if a.chat:
+            chat_only(a.external, "facts --chat")
+        res = run_facts_external(load_external(a.external, a.device), chat=a.chat)
+        res.update(result_header(a.external))
+    else:
+        if not a.checkpoint:
+            ap.error("--checkpoint is required (or --external)")
+        tok = SlmTokenizer.load(a.tokenizer)
+        model = load_model(a.checkpoint, a.device)
+        t0 = time.time()
+        res = run_facts(model, tok, chat=a.chat or a.think, think_required=a.think)
+        res["checkpoint"] = a.checkpoint
     print(f"facts ({res['mode']}): {res['accuracy'] * 100:.1f}% of {res['n']}  " + "  ".join(f"{k} {v * 100:.0f}%" for k, v in res["per_category"].items()) + f"  [{time.time() - t0:.0f}s]")
     for r in res["rows"][:6]:
         print(f"  {r['completion'] if res['mode'] == 'completion' else r['question']!r} -> {r['output']!r} {'OK' if r['correct'] else 'x'}")

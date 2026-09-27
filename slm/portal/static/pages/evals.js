@@ -9,6 +9,10 @@ const html = htm.bind(h);
 const SUPER = { public: "Public benchmarks", homebrew: "Homebrew evals" };
 const PARAMS = (p) => p == null ? "unknown size" : p >= 1e9 ? (p / 1e9).toFixed(1) + "B" : Math.round(p / 1e6) + "M";
 const enc = encodeURIComponent;
+const EXTERNAL = "external models";
+/** One line for an external comparison model's registry entry (runs/ext_<name>/model.json). */
+const modelLine = (m) => `${m.hf_id} · ${PARAMS(m.params)} · ${m.license} · ${m.is_chat ? "chat" : "base"} model`
+  + (m.train_tokens ? ` · ${fmtTok(m.train_tokens)} pretraining tokens (published)` : " · pretraining tokens not published");
 export const detailHref = (run, ckpt, key) => `#/evals/${enc(run)}/${enc(ckpt)}/${enc(key)}`;
 
 /** Card key for a column: one card per benchmark; the two swarm sets and the two pass@k sets share theirs. */
@@ -77,6 +81,7 @@ function HoverCard() {
   return html`<div class="info-card ev-hover" ref=${box}>
     <div class="info-title">${col.label} <span class="muted">· ${col.group}</span></div>
     <div><b style="font-size:15px">${fmtCell(cell.value, col.fmt)}</b> <span class="muted">(${cell.value})</span> · ${row.run} / ${row.checkpoint}</div>
+    ${row.model && html`<div class="ev-hsrc">external model: ${modelLine(row.model)}</div>`}
     <div class="ev-hsrc">${cell.source}</div>
     <ul>${cell.detail.split(" · ").filter(Boolean).map((x) => html`<li>${x}</li>`)}</ul>
     <div class="see">click for the full results: per-item outputs and grading where the eval saved them</div>
@@ -119,8 +124,10 @@ export function EvalsPage() {
   const rowHtml = (r) => {
     const alias = r.aliases.length ? ` = ${r.aliases.join(" = ")}` : "";
     return html`<tr>
-      <td class="ev-first"><a href=${"#/runs/" + enc(r.run)}><b>${r.run}</b></a> <span class=${"stage-badge " + r.stage}>${r.stage}</span>
-        <div class="legend">${sortCol ? html`<b>${PARAMS(r.params)}</b> · ` : ""}${r.checkpoint}${alias} · ${fmtTok(r.tokens)}${r.own_tokens != null && r.own_tokens !== r.tokens ? ` (${fmtTok(r.own_tokens)})` : ""}</div></td>
+      <td class="ev-first">${r.model ? html`<b title=${modelLine(r.model)}>${r.run}</b>` : html`<a href=${"#/runs/" + enc(r.run)}><b>${r.run}</b></a>`} <span class=${"stage-badge " + r.stage}>${r.stage}</span>
+        <div class="legend">${sortCol ? html`<b>${PARAMS(r.params)}</b> · ` : ""}${r.model
+          ? `${r.model.hf_id} · ${r.model.license} · ${r.model.is_chat ? "chat" : "base"}${r.tokens != null ? " · " + fmtTok(r.tokens) : ""}`
+          : html`${r.checkpoint}${alias} · ${fmtTok(r.tokens)}${r.own_tokens != null && r.own_tokens !== r.tokens ? ` (${fmtTok(r.own_tokens)})` : ""}`}</div></td>
       ${cols.map((c) => html`<${Cell} cell=${r.cells[c.key]} col=${c} row=${r} />`)}
     </tr>`;
   };
@@ -161,16 +168,20 @@ export function EvalsPage() {
           ${sortCol
             ? html`${measured.map(rowHtml)}${unmeasured.length ? sep(`n/a: ${sortCol.label} (${sortCol.group}) never measured on these ${unmeasured.length} checkpoints`) : ""}${unmeasured.map(rowHtml)}`
             : measured.map((r) => {
-              const s = r.params !== lastParams;
-              lastParams = r.params;
-              return html`${s ? sep(`${PARAMS(r.params)} parameters`) : ""}${rowHtml(r)}`;
+              const g = r.group === EXTERNAL ? EXTERNAL : r.params;
+              const s = g !== lastParams;
+              lastParams = g;
+              const label = g === EXTERNAL ? "external models · open-weight comparison models, run locally through the same evals with their own tokenizer and chat template"
+                : `${PARAMS(r.params)} parameters`;
+              return html`${s ? sep(label) : ""}${rowHtml(r)}`;
             })}
         </tbody>
       </table>
     </div>
     <${HoverCard} />
     <div class="legend" style="margin-top:6px">Rows: every checkpoint with at least one result file, 336M chain first, each chain in stage order (base → sft → tool → rl), then by run name
-      (sorted by a column, the size moves into each row's second line).
+      (sorted by a column, the size moves into each row's second line). External comparison models (<code>runs/ext_*</code>, <code>slm.eval.external</code>)
+      come last in their own group; evals that need our tool protocol or think span are n/a for them, and base models are n/a on chat evals.
       Checkpoints of one run at the same token count are the same weights and share a row (<code>best.pt = step_00150.pt</code>).
       The numbers and what they led to are discussed in <code>docs/results.md</code>.</div>
   </div>`;
@@ -256,7 +267,8 @@ export function EvalDetailPage({ run, checkpoint, colKey }) {
     ${back}
     <h1>${c.label} <span class="muted" style="font-weight:400">· ${c.group}</span><${Info} k=${cardKey(c)} /></h1>
     <div class="sub"><b>${d.run}</b> <span class=${"stage-badge " + d.stage}>${d.stage}</span> ${d.checkpoint}${d.aliases.length ? " = " + d.aliases.join(" = ") : ""}${" · "}
-      ${fmtTok(d.tokens)} tokens seen${d.own_tokens != null && d.own_tokens !== d.tokens ? ` (${fmtTok(d.own_tokens)} in this run)` : ""} · ${PARAMS(d.params)} parameters</div>
+      ${fmtTok(d.tokens)} tokens seen${d.own_tokens != null && d.own_tokens !== d.tokens ? ` (${fmtTok(d.own_tokens)} in this run)` : ""} · ${PARAMS(d.params)} parameters
+      ${d.model ? html`<div class="legend">external model: ${modelLine(d.model)}</div>` : ""}</div>
     <div class="tiles">
       <div class="tile" style=${"background:" + cellColour(d.cell && d.source === d.cell.source ? d.cell.t : null)}>
         <div class="k">${c.label}${c.higher_is_better ? "" : " (lower is better)"}</div><div class="v">${fmtCell(d.value, c.fmt)}</div>

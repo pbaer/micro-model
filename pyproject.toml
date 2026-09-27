@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 portal = ["fastapi>=0.115", "uvicorn>=0.30"]
+# external comparison models (slm/eval/external.py); lm-eval is also what lm_eval_wrapper.py needs
+external = ["transformers>=5.0", "accelerate>=1.0", "lm-eval>=0.4.13"]
 dev = ["playwright>=1.45", "pytest-playwright>=0.5"]
 
 [tool.pytest.ini_options]

@@ -683,6 +683,9 @@ export const CARDS = {
       this project is for: facts, tool-using reasoning, multi-turn chat, long context, answer quality, selection.</p>
     <p>A cell's number is only comparable within its column, and even there check the hover card: sample counts and
       limits differ between older and newer rows. Click a score for its full results.</p>
+    <p><b>External models</b> (last group) are open-weight models of similar size run locally through the same evals
+      with their own tokenizer and chat template (<code>slm/eval/external.py</code>). Whatever needs our Python tool or
+      think span is n/a for them, and base models are n/a on chat evals.</p>
     <p class="see">Built from <code>runs/&lt;run&gt;/*.json</code> by <code>slm/portal/services/evals.py</code>; discussion of every number in <code>docs/results.md</code>.</p>` },
   ev_colour: { t: "Cell colours", b: html`
     <p>Each column is coloured on its own: the best score in the column is green, the worst red, and every other cell

@@ -19,6 +19,11 @@ Facts, names and distractors are drawn from small tables with a seeded RNG, so a
 conversation here can appear in training data (the tables are ours). Decoding is greedy (top_k=1) so the
 numbers are stable across runs. The tool loop is used for generation so a model that does call the tool gets
 a real result back, exactly as it would in the harness -- the score measures the model, not a dead result.
+
+    python -m slm.eval.multiturn --external smollm2-360m-instruct --n 64     # slm.eval.external (chat models only)
+
+An external chat model runs the same conversations through its own chat template, greedy, with the same per-turn
+budget; its replies go back into the history as plain assistant messages. It has no tool, so `misfire` is null.
 """
 
 from __future__ import annotations
@@ -125,27 +130,52 @@ def run(checkpoint: str, tokenizer: str, n: int, seed: int, max_new: int, max_ca
                         "tool_calls": int(tc.n_calls), "n_tokens": len(tc.ids)})
                     h.append({"role": "assistant", "ids": list(tc.ids)})
             torch.cuda.empty_cache()
+    return {"checkpoint": checkpoint, "summary": _score(convs, n, seed, t0), "conversations": convs}
+
+
+def _score(convs: list[dict], n: int, seed: int, t0: float, tools: bool = True) -> dict:
     for c in convs:
         final = c["assistant"][2]["answer"].strip()
         c["recall"] = c["fact"].lower() in final.lower()
         c["format_ok"] = all(a["terminated"] for a in c["assistant"])
-        c["misfires"] = sum(1 for a in c["assistant"] if a["tool_calls"])
+        c["misfires"] = sum(1 for a in c["assistant"] if a["tool_calls"]) if tools else None
         c["templated"] = final.lower().startswith(_TEMPLATE_OPENERS) and len(final.split()) <= 8
-    summary = {
+    return {
         "n": n, "seed": seed,
         "recall": round(statistics.fmean(c["recall"] for c in convs), 3),
         "format": round(statistics.fmean(c["format_ok"] for c in convs), 3),
-        "misfire": round(sum(c["misfires"] for c in convs) / (3 * n), 3),
+        "misfire": round(sum(c["misfires"] for c in convs) / (3 * n), 3) if tools else None,
         "templated": round(statistics.fmean(c["templated"] for c in convs), 3),
         "mean_answer_tokens": round(statistics.fmean(a["n_tokens"] for c in convs for a in c["assistant"]), 1),
         "seconds": round(time.time() - t0, 1),
     }
-    return {"checkpoint": checkpoint, "summary": summary, "conversations": convs}
+
+
+def run_external(name: str, n: int, seed: int, max_new: int, batch: int) -> dict:
+    """`run` for an external chat model (slm.eval.external): same conversations, greedy, same budget, no tool."""
+    from slm.eval.external import chat_only, load_external, result_header
+
+    chat_only(name, "multiturn")
+    model = load_external(name)
+    convs = make_conversations(n, seed)
+    t0 = time.time()
+    for lo in range(0, n, batch):
+        chunk = convs[lo:lo + batch]
+        histories = [[] for _ in chunk]
+        for turn in range(3):
+            for h, c in zip(histories, chunk):
+                h.append({"role": "user", "content": c["turns"][turn]})
+            gens = model.batch_generate_chat(histories, max_new, 0.0, batch_size=batch)
+            for h, c, g in zip(histories, chunk, gens):
+                c.setdefault("assistant", []).append({"answer": g.text, "think": None, "terminated": g.terminated, "tool_calls": None, "n_tokens": g.n_tokens})
+                h.append({"role": "assistant", "content": g.text})
+    return {**result_header(name), "summary": _score(convs, n, seed, t0, tools=False), "conversations": convs}
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--external", default=None, help="a registered external chat model (slm.eval.external) instead of a checkpoint")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--n", type=int, default=64)
     ap.add_argument("--seed", type=int, default=0)
@@ -154,9 +184,14 @@ def main() -> None:
     ap.add_argument("--batch", type=int, default=32)
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    res = run(a.checkpoint, a.tokenizer, a.n, a.seed, a.max_new, a.max_tool_calls, a.batch)
+    if a.external:
+        res = run_external(a.external, a.n, a.seed, a.max_new, a.batch)
+    elif not a.checkpoint:
+        ap.error("--checkpoint is required (or --external)")
+    else:
+        res = run(a.checkpoint, a.tokenizer, a.n, a.seed, a.max_new, a.max_tool_calls, a.batch)
     s = res["summary"]
-    print(f"multiturn n={s['n']}: recall {s['recall']:.3f}  format {s['format']:.3f}  misfire {s['misfire']:.3f}"
+    print(f"multiturn n={s['n']}: recall {s['recall']:.3f}  format {s['format']:.3f}  misfire {'n/a' if s['misfire'] is None else format(s['misfire'], '.3f')}"
           f"  templated {s['templated']:.3f}  mean tokens/turn {s['mean_answer_tokens']}  [{s['seconds']:.0f}s]")
     for c in res["conversations"][:4]:
         print(f"  fact={c['fact']!r:<14} recall={str(c['recall']):<5} turn3={c['assistant'][2]['answer'][:70]!r}")

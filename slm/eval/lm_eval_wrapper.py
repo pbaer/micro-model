@@ -1,6 +1,10 @@
 """lm-evaluation-harness adapter for our checkpoints (HellaSwag, ARC, PIQA, MMLU subsets, ...).
 
     python -m slm.eval.lm_eval_wrapper --checkpoint runs/<run>/checkpoints/final.pt --tasks hellaswag,arc_easy,piqa --limit 500
+    python -m slm.eval.lm_eval_wrapper --external smollm2-360m --tasks hellaswag,arc_easy,piqa --limit 500   # slm.eval.external
+
+An external model runs through lm-eval's own `hf` backend (local weights, offline) on the same tasks, limit and batch
+size, and its JSON has the same shape with `"checkpoint": "external:<name>"` and a `"model"` block.
 
 Only what the multiple-choice tasks need is implemented carefully (loglikelihood with a
 context/continuation split that respects BPE merges); generate_until is greedy and simple.
@@ -117,15 +121,49 @@ class SlmLM(LM):
         return out
 
 
+def run_external(a: argparse.Namespace) -> None:
+    """The same tasks / limit / batch size / output shape through lm-eval's `hf` backend on a local external model.
+    Offline switches are forced before lm_eval is imported (slm.eval.external)."""
+    os.environ.setdefault("HF_HOME", r"C:\slm-data\hf-cache")
+    os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "1")
+    from slm.eval.external import ensure_offline, get, result_header
+
+    ensure_offline()
+    import lm_eval
+
+    m = get(a.external)
+    if not m.available():
+        raise SystemExit(f"{a.external}: no weights under {m.local_dir} (python -m slm.eval.external download {a.external})")
+    from lm_eval.models.huggingface import HFLM  # the `hf` backend, by class: this module's registry import leaves only "slm" registered
+
+    lm = HFLM(pretrained=str(m.local_dir), dtype="bfloat16", batch_size=a.batch_size, device=a.device)
+    # "decode" = efficient + math: lm-eval batches vary in length, and cuDNN attention re-plans per shape
+    with sdpa_context("decode" if a.device != "cpu" else None):
+        res = lm_eval.simple_evaluate(model=lm, tasks=a.tasks.split(","), limit=a.limit, log_samples=False)
+    summary = {t: {k: v for k, v in mm.items() if not k.endswith("stderr") and isinstance(v, (int, float))} for t, mm in res["results"].items()}
+    for t, mm in summary.items():
+        print(t, {k: round(v, 4) for k, v in mm.items()})
+    if a.out:
+        Path(a.out).parent.mkdir(parents=True, exist_ok=True)
+        out = {**result_header(a.external), "limit": a.limit, "results": summary, "backend": "lm-eval hf", "batch_size": a.batch_size}
+        Path(a.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--external", default=None, help="a registered external model (slm.eval.external) instead of a checkpoint")
+    ap.add_argument("--device", default="cuda", help="external models only")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--tasks", default="hellaswag,arc_easy,piqa")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--batch-size", type=int, default=16)
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
+    if a.external:
+        return run_external(a)
+    if not a.checkpoint:
+        ap.error("--checkpoint is required (or --external)")
     os.environ.setdefault("HF_HOME", r"C:\slm-data\hf-cache")
     os.environ.setdefault("HF_DATASETS_TRUST_REMOTE_CODE", "1")
     import lm_eval

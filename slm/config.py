@@ -121,7 +121,10 @@ def _lookup_global(name: str) -> Any:
     for mod in list(sys.modules.values()):
         if mod is None:
             continue
-        obj = getattr(mod, name, None)
+        try:
+            obj = getattr(mod, name, None)
+        except Exception:  # noqa: BLE001 -- a lazy module (transformers) imports on attribute access and can fail (no torchvision)
+            continue
         if is_dataclass(obj):
             return obj
     return getattr(builtins, name, None)

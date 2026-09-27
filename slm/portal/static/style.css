@@ -189,4 +189,4 @@ button[disabled]{opacity:.45;cursor:default}
 .ev-legend{margin-bottom:8px;align-items:center}
 .ev-swatch{display:inline-block;width:34px;height:11px;border-radius:3px;vertical-align:-1px;border:1px solid var(--border)}
 .ev-grad{background:linear-gradient(90deg,hsl(0,62%,80%),hsl(60,62%,80%),hsl(120,62%,80%))}
-.stage-badge.base{background:#e5e7eb;color:#374151}.stage-badge.tool{background:#ede9fe;color:#5b21b6}
+.stage-badge.base{background:#e5e7eb;color:#374151}.stage-badge.tool{background:#ede9fe;color:#5b21b6}.stage-badge.external{background:#ffedd5;color:#9a3412}

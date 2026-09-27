@@ -13,6 +13,13 @@ is much easier because the needle is the only thing that changes).
 
 The trainer runs the same measurement periodically for extension runs (`eval.needle_lengths`) and logs
 `needle_<L>` (mean over depths) and `needle_min_<L>` (worst depth) into its eval records.
+
+External models (slm.eval.external, `--external <name>`): the length axis is counted in *the model's own* tokens, so a
+4096 cell is a 4096-token prompt for that model too. Each case makes exactly the random draws ours makes (secret, shard,
+window), so the secrets and the place in the corpus where the haystack starts are the ones our checkpoints see; the
+window is decoded to text, continued contiguously from the same shard, re-encoded with the model's tokenizer and cut to
+its budget. Needle, question and depths are identical; the prompt is completion-style for every model (as for ours).
+Lengths above the model's position table are n/a (skipped), and only the real-text haystack is allowed.
 """
 
 from __future__ import annotations
@@ -219,6 +226,114 @@ def run_needle(model: Transformer, tok: SlmTokenizer, lengths: list[int], depths
             "summary": summary, "threshold": threshold, "effective_context": effective, "max_seq_len": model.cfg.max_seq_len}
 
 
+# ------------------------------------------------------------------------------------------------ external models
+def _external_case(model, tok: SlmTokenizer, L: int, d: float, rng: random.Random, haystack: RealHaystack, case_seed: str) -> tuple[list[int], int]:
+    """`_make_case` (single needle) for an external model. The draws on `rng` are exactly those `_make_case` +
+    `build_haystack` + `RealHaystack.tokens` make, so case k gets our case k's secret and corpus window."""
+    secret = rng.randint(100000, 999999)
+    needle = f"The secret number is {secret}."
+    question = "What is the secret number?"
+    reserve = 16
+    our_budget = L - reserve - len(tok.encode("\n\nQuestion: " + question + "\nAnswer:")) - len(tok.encode(" " + needle + " ")) - 1
+    # RealHaystack.tokens(our_budget, rng), replicated so the window can be read further than our budget
+    mm = haystack.mm[rng.randrange(len(haystack.mm))]
+    want = int(our_budget * 1.05) + 64
+    start = rng.randrange(0, max(1, len(mm) - want))
+    chunk = np.asarray(mm[start : start + want])
+    chunk = chunk[~np.isin(chunk, haystack.drop)]
+    contiguous = True
+    while len(chunk) < our_budget:  # boundary-heavy region: the same extra draws ours makes
+        contiguous = False
+        s2 = rng.randrange(0, max(1, len(mm) - want))
+        more = np.asarray(mm[s2 : s2 + want])
+        chunk = np.concatenate([chunk, more[~np.isin(more, haystack.drop)]])
+    if contiguous:  # the same document stream past where our window stops (a tokenizer that packs more text per token)
+        more = np.asarray(mm[start + want : start + 3 * want])
+        chunk = np.concatenate([chunk, more[~np.isin(more, haystack.drop)]])
+    q_ids = model.encode_plain("\n\nQuestion: " + question + "\nAnswer:")
+    n_ids = model.encode_plain(" " + needle + " ")
+    prefix = model.prefix_ids()
+    budget = L - reserve - len(q_ids) - len(n_ids) - len(prefix)
+    text = tok.decode(chunk.astype(np.int64).tolist(), skip_special=True)
+    filler = model.encode_plain(text)
+    extra = random.Random(case_seed)  # end of a shard: more windows from a private rng (never disturbs the shared one)
+    while len(filler) < budget:
+        more = haystack.tokens(budget, extra)
+        text += " " + tok.decode(more, skip_special=True)
+        filler = model.encode_plain(text)
+    filler = filler[:budget]
+    pos = int(len(filler) * d)
+    return [*prefix, *filler[:pos], *n_ids, *filler[pos:], *q_ids], secret
+
+
+def _answer_all_external(model, prompts: list[list[int]], max_batch_tokens: int, max_new: int = 12) -> list[str | None]:
+    """`answer_all` for an external model: greedy, equal-length batches (no padding), stop at EOS; an OOM batch is
+    retried row by row and rows that still fail come back as None."""
+    order: dict[int, list[int]] = {}
+    for i, p in enumerate(prompts):
+        order.setdefault(len(p), []).append(i)
+    out: list[str | None] = [None] * len(prompts)
+    for length, idxs in order.items():
+        bs = max(1, max_batch_tokens // max(1, length))
+        for k in range(0, len(idxs), bs):
+            chunk = idxs[k : k + bs]
+            try:
+                texts = [g.text for g in model.generate_ids([prompts[i] for i in chunk], max_new, 0.0, batch_size=bs)]
+            except torch.OutOfMemoryError:
+                torch.cuda.empty_cache()
+                texts = []
+                for i in chunk:
+                    try:
+                        texts.append(model.generate_ids([prompts[i]], max_new, 0.0)[0].text)
+                    except torch.OutOfMemoryError:
+                        torch.cuda.empty_cache()
+                        texts.append(None)
+            for i, t in zip(chunk, texts):
+                out[i] = t
+    return out
+
+
+def run_needle_external(model, tok: SlmTokenizer, lengths: list[int], haystack: RealHaystack, depths: list[float] | None = None, n: int = 16,
+                        seed: int = 0, threshold: float = 0.8, keep_failures: int = 3, max_batch_tokens: int = 16384) -> dict:
+    """`run_needle` for an `slm.eval.external.HfChatModel` (single needle, real haystack): same cells, same scoring."""
+    depths = DEFAULT_DEPTHS if depths is None else depths
+    rng = random.Random(seed)
+    results = []
+    for L in lengths:
+        if L > model.max_positions:
+            results.append({"length": L, "skipped": f"exceeds the model's {model.max_positions} positions"})
+            continue
+        cases = []
+        for j, d in enumerate(depths):
+            for i in range(n):
+                cases.append((d, *_external_case(model, tok, L, d, rng, haystack, f"{seed}-{L}-{j}-{i}")))
+        assert all(len(c[1]) == L - 16 for c in cases), "external needle prompts must be exactly L - 16 of the model's tokens"
+        outs = _answer_all_external(model, [c[1] for c in cases], max_batch_tokens)
+        for j, d in enumerate(depths):
+            hits, failures, n_oom = 0, [], 0
+            for (_, _, gold), out in zip(cases[j * n : (j + 1) * n], outs[j * n : (j + 1) * n]):
+                if out is None:
+                    n_oom += 1
+                    continue
+                m = _NUM_RE.search(out.replace(",", ""))
+                ok = m is not None and m.group(0) == str(gold)
+                hits += int(ok)
+                if not ok and len(failures) < keep_failures:
+                    failures.append({"gold": gold, "out": out.strip()[:60]})
+            if n_oom == n:
+                results.append({"length": L, "depth": d, "oom": True})
+                continue
+            results.append({"length": L, "depth": d, "accuracy": hits / (n - n_oom), "n": n - n_oom, "multi": False, "failures": failures})
+    summary: dict[int, dict] = {}
+    for L in lengths:
+        cells = [r["accuracy"] for r in results if r.get("length") == L and "accuracy" in r]
+        if cells:
+            summary[L] = {"mean": sum(cells) / len(cells), "min": min(cells)}
+    effective = max((L for L, s in summary.items() if s["min"] >= threshold), default=0)
+    return {"lengths": lengths, "depths": depths, "n": n, "haystack": "real", "results": results, "summary": summary, "threshold": threshold,
+            "effective_context": effective, "max_seq_len": model.max_positions, "length_unit": f"tokens of {model.entry.hf_id}'s tokenizer"}
+
+
 def format_table(res: dict) -> str:
     depths = res["depths"]
     lines = ["length  " + "".join(f"d={d:<6}" for d in depths) + " mean   min"]
@@ -246,7 +361,8 @@ def load(path: str, max_seq_len: int | None = None, rope_scaling: dict | None = 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--external", default=None, help="a registered external model (slm.eval.external) instead of a checkpoint")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--lengths", type=int, nargs="+", default=[1024, 2048, 4096, 8000])
     ap.add_argument("--depths", type=float, nargs="+", default=DEFAULT_DEPTHS)
@@ -263,10 +379,23 @@ def main() -> None:
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
     tok = SlmTokenizer.load(a.tokenizer)
-    model, meta = load(a.checkpoint, a.max_seq_len, json.loads(a.rope_scaling) if a.rope_scaling else None)
-    hs = make_haystack(tok, a.haystack, Path(a.tokenized_root) / a.haystack_source / "val")
-    res = run_needle(model, tok, a.lengths, a.depths, a.n, seed=a.seed, multi=a.multi, haystack=hs, threshold=a.threshold, max_batch_tokens=a.batch_tokens)
-    res["checkpoint"] = a.checkpoint
+    if a.external:
+        from slm.eval.external import load_external, result_header
+
+        if a.haystack != "real" or a.multi or a.max_seq_len or a.rope_scaling:
+            raise SystemExit("--external runs the single-needle real-text haystack at the model's own positions only")
+        hs = make_haystack(tok, "real", Path(a.tokenized_root) / a.haystack_source / "val")
+        res = run_needle_external(load_external(a.external), tok, a.lengths, hs, a.depths, a.n, seed=a.seed, threshold=a.threshold,
+                                  max_batch_tokens=a.batch_tokens)
+        res.update(result_header(a.external))
+        res["haystack_source"] = a.haystack_source
+    elif not a.checkpoint:
+        ap.error("--checkpoint is required (or --external)")
+    else:
+        model, meta = load(a.checkpoint, a.max_seq_len, json.loads(a.rope_scaling) if a.rope_scaling else None)
+        hs = make_haystack(tok, a.haystack, Path(a.tokenized_root) / a.haystack_source / "val")
+        res = run_needle(model, tok, a.lengths, a.depths, a.n, seed=a.seed, multi=a.multi, haystack=hs, threshold=a.threshold, max_batch_tokens=a.batch_tokens)
+        res["checkpoint"] = a.checkpoint
     print(format_table(res))
     for r in res["results"]:
         if r.get("failures"):

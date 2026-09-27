@@ -45,6 +45,7 @@ $SLM_DATA_ROOT/
   tokenizer/v1/           the trained BPE tokenizer
   tokenized/v1/<source>/  uint16 pretraining shards + document index
   sft/v1/<name>/          chat-formatted SFT examples + loss masks
+  models/<short-name>/    external comparison models (optional, slm/eval/external.py)
 ```
 
 ## 3. Download the raw corpora
@@ -73,6 +74,25 @@ python -m slm.data.download smoltalk-smol-magpie-ultra smoltalk-openhermes-100k 
     smoltalk-systemchats-30k smoltalk-smol-constraints smoltalk-everyday-conversations --all
 python -m slm.data.download smoltalk-metamathqa-50k gsm8k --all
 ```
+
+**External comparison models** (optional). Seven open-weight models of similar size are scored by our own evals as
+comparison rows (`slm/eval/external.py`, [design.md](design.md) §8). Their weights are downloaded once, like the
+datasets, to `$SLM_DATA_ROOT/models/<short-name>/` (safetensors, configs and tokenizer files only; ~5.5 GB for all
+seven); everything after this step runs with the Hugging Face offline switches forced on.
+
+```bash
+uv pip install --python .venv/Scripts/python.exe -e ".[external]"   # transformers + accelerate (+ lm-eval); torch untouched
+python -m slm.eval.external download --all        # or name them: smollm2-360m-instruct qwen2.5-0.5b ...
+python -m slm.eval.external list                  # registry, and what is on disk
+bash scripts/measure_external.sh smollm2-360m-instruct   # every applicable eval -> runs/ext_<name>/
+```
+
+| short name | Hugging Face id | on disk |
+|---|---|---|
+| `smollm2-135m`, `smollm2-135m-instruct` | HuggingFaceTB/SmolLM2-135M, -Instruct | 0.27 GB each |
+| `smollm2-360m`, `smollm2-360m-instruct` | HuggingFaceTB/SmolLM2-360M, -Instruct | 0.73 GB each |
+| `qwen2.5-0.5b`, `qwen2.5-0.5b-instruct` | Qwen/Qwen2.5-0.5B, -Instruct | 1.00 GB each |
+| `gpt2-medium` | openai-community/gpt2-medium | 1.52 GB (fp32) |
 
 **Scale it down.** `--n-files 2` for fineweb-edu and 1 for cosmopedia is enough to exercise the whole
 pipeline end to end on ~20 GB; you simply cannot train the 10B-token base on it. Every config's `mixture`

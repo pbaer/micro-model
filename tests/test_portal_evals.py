@@ -380,3 +380,62 @@ def test_api_eval_detail_endpoint(tmp_path):
     page = Path("slm/portal/static/pages/evals.js").read_text(encoding="utf-8")
     assert "/api/evals/detail?" in page and "export function EvalDetailPage" in page and "export function sortRows" in page
     assert "EvalDetailPage" in Path("slm/portal/static/app.js").read_text(encoding="utf-8")
+
+
+# ------------------------------------------------------------------------------------------------ external models
+def test_external_models_are_their_own_group_after_ours(tmp_path):
+    runs = make_tree(tmp_path)
+    ext = runs / "ext_toy-360m"  # what slm.eval.external + scripts/measure_external.sh write: model.json, no run.json
+    ck = "external:toy-360m"
+    _w(ext / "model.json", {"name": "toy-360m", "hf_id": "Org/Toy-360M", "params": 360_000_000, "license": "Apache-2.0", "is_chat": True,
+                            "max_positions": 8192, "train_tokens": 4_000_000_000_000, "notes": "a toy"})
+    _w(ext / "lm_eval_limit2000.json", {**_lm(ck, 2000, 0.45), "model": {"hf_id": "Org/Toy-360M"}})
+    _w(ext / "facts.json", {"checkpoint": ck, "accuracy": 0.7, "n": 194, "mode": "completion", "per_category": {}})
+    _w(ext / "reasoning_eval.json", {"checkpoint": ck, "tools": False, "mean_accuracy": 0.2, "per_task": {
+        "gsm8k_test": {"accuracy": 0.1, "n": 200, "tool_use_rate": None, "malformed_rate": 0.1}}})
+    _w(ext / "multiturn.json", {"checkpoint": ck, "summary": {"n": 64, "recall": 0.9, "format": 1.0, "misfire": None}})
+    _w(ext / "swarm_eval.json", {"checkpoint": ck, "k": 16, "temperature": 0.8, "results": {"svamp": {"summary": {
+        "greedy": 0.3, "majority": 0.4, "verified_majority": None, "selector": None, "oracle": 0.8, "n": 50, "k": 16}}}})
+    _w(ext / "needle_v2.json", {**_needle(ck, {1024: 1.0, 2048: 0.9}), "results": [{"length": 4096, "skipped": "exceeds the model's 2048 positions"}]})
+    _w(ext / "quality" / "summary.json", {"run": "ext_toy-360m", "judges": ["j"], "checkpoints": [
+        {"checkpoint": ck, "tokens": 0, "overall": 3.9, "n_scored": 35, "n_items": 35, "tool_misfire": 0.0, "tool_misfire_n": 28}]})
+    base_ext = runs / "ext_toy-base"
+    _w(base_ext / "model.json", {"name": "toy-base", "hf_id": "Org/Toy-Base", "params": 1_000, "license": "MIT", "is_chat": False,
+                                 "max_positions": 1024, "train_tokens": None})
+    _w(base_ext / "facts.json", {"checkpoint": "external:toy-base", "accuracy": 0.1, "n": 194, "mode": "completion"})
+
+    idx = EvalIndex(runs)
+    tab = idx.table()
+    got = [(r["run"], r["checkpoint"]) for r in tab["rows"]]
+    # ours first in the usual order, then the external group (by size), however large an external model is
+    assert got[:5] == [("base_a", "final.pt"), ("chat_c", "final.pt"), ("rl_b", "best.pt"), ("rl_b", "step_00100.pt"), ("judged_only", "final.pt")]
+    assert got[5:] == [("ext_toy-360m", ck), ("ext_toy-base", "external:toy-base")]
+    assert all(r["group"] == "ours" for r in tab["rows"][:5])
+
+    x = _row(tab, "ext_toy-360m", ck)
+    assert x["group"] == "external models" and x["stage"] == "external" and x["params"] == 360_000_000
+    assert x["tokens"] == 4_000_000_000_000 and x["aliases"] == []
+    assert x["model"]["hf_id"] == "Org/Toy-360M" and x["model"]["license"] == "Apache-2.0" and x["model"]["is_chat"] is True
+    assert _row(tab, "ext_toy-base", "external:toy-base")["tokens"] is None  # training tokens not published
+    assert x["cells"]["facts"]["value"] == 0.7 and x["cells"]["judged"]["value"] == 3.9 and x["cells"]["needle"]["value"] == 2048
+    assert x["cells"]["r_gsm8k"]["value"] == 0.1 and "tool off" in x["cells"]["r_gsm8k"]["detail"]
+    # what needs our tool protocol is null in the files and n/a (absent) in the table, never a zero
+    for k in ("r_tool_use", "mt_misfire", "sw_svamp_verified_majority", "sw_svamp_selector"):
+        assert k not in x["cells"], k
+    assert x["cells"]["mt_recall"]["value"] == 0.9 and x["cells"]["sw_svamp_majority"]["value"] == 0.4
+
+    # the colour scale spans every row: the external model is now the best HellaSwag, rl_b's 0.35 the midpoint
+    col = {c["key"]: c for c in tab["columns"]}
+    assert col["hellaswag"]["min"] == pytest.approx(0.30) and col["hellaswag"]["max"] == pytest.approx(0.45)
+    assert x["cells"]["hellaswag"]["t"] == 1.0 and _row(tab, "rl_b", "best.pt")["cells"]["hellaswag"]["t"] == pytest.approx(1 / 3, abs=1e-3)
+
+    # the detail page carries the registry entry; the runs list does not show external models
+    d = idx.detail("ext_toy-360m", ck, "facts")
+    assert d["stage"] == "external" and d["model"]["hf_id"] == "Org/Toy-360M"
+    from slm.portal.services.runs import RunIndex
+
+    assert not any(s["run_name"].startswith("ext_") for s in RunIndex(runs).summaries())
+    c = TestClient(create_app(PortalSettings(runs_root=runs, open_browser=False)))
+    assert _row(c.get("/api/evals").json(), "ext_toy-360m", ck)["model"]["params"] == 360_000_000
+    page = Path("slm/portal/static/pages/evals.js").read_text(encoding="utf-8")
+    assert 'const EXTERNAL = "external models"' in page and "modelLine(row.model)" in page

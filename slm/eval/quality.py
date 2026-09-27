@@ -5,6 +5,7 @@ model blind, ingest the scores, and summarise them per checkpoint for the portal
     python -m slm.eval.quality pack --run m8_base_stable_336m            # blind packets for the judge
     python -m slm.eval.quality ingest --run m8_base_stable_336m --scores scores.json --judge claude-sonnet
     python -m slm.eval.quality status --run m8_base_stable_336m
+    python -m slm.eval.quality generate --external qwen2.5-0.5b-instruct --device cuda   # -> runs/ext_<name>/quality/ (chat models)
 
 Layout under runs/<run>/quality/:
     outputs/<tokens:012d>.jsonl   header line + one line per prompt (the model's output, greedy)
@@ -201,6 +202,42 @@ def _generate_suite(torch, model, tok, stage: str, device: str, max_new_cap, too
     return items
 
 
+def generate_suite_external(model, max_new_cap: int | None = None) -> list[dict]:
+    """The chat form of every suite prompt for an external chat model (slm.eval.external): its own chat template, greedy,
+    one prompt at a time (unpadded, as ours), the budget our SFT-stage checkpoints get (no think span). Same record shape."""
+    items = []
+    for p in SUITE:
+        max_new = _budget(p, True, False, max_new_cap)
+        t0 = time.time()
+        g = model.batch_generate_chat([[{"role": "user", "content": p["chat"]}]], max_new, 0.0)[0]
+        items.append({"id": p["id"], "category": p["category"], "mode": "chat", "prompt": p["chat"], "expect": p["expect"], "n_new": g.n_tokens,
+                      "max_new": max_new, "seconds": round(time.time() - t0, 2), "output": g.text, "think": None, "malformed": not g.terminated,
+                      "stopped": g.terminated})
+    return items
+
+
+def cmd_generate_external(a: argparse.Namespace) -> None:
+    from slm.eval.external import checkpoint_label, chat_only, load_external
+
+    chat_only(a.external, "quality")
+    run = a.run or f"ext_{a.external}"
+    run_dir = Path(a.runs_root) / run
+    if outputs_path(run_dir, 0).exists() and not a.force:
+        print(f"[{run}] outputs exist ({outputs_path(run_dir, 0)}); --force to regenerate", flush=True)
+        return
+    print(f"[{run}] external {a.external} device={a.device} (suite {SUITE_VERSION}, {len(SUITE)} prompts, chat form)", flush=True)
+    if a.device == "cpu":
+        import torch
+
+        torch.set_num_threads(a.threads)
+        _lower_priority()
+    t0 = time.time()
+    model = load_external(a.external, a.device)
+    items = generate_suite_external(model, a.max_new)
+    p = write_outputs(run_dir, run, 0, checkpoint_label(a.external), "external chat", a.device, items, time.time() - t0)
+    print(f"  {checkpoint_label(a.external)}  {time.time() - t0:6.1f}s  {sum(i['n_new'] for i in items)} tokens  -> {p}", flush=True)
+
+
 def write_outputs(run_dir: Path, run: str, tokens: int, checkpoint: str, stage: str, device: str, items: list[dict], seconds: float) -> Path:
     """Write quality/outputs/<tokens>.jsonl (header line + one line per prompt) and refresh summary.json.
     Shared by the CLI (saved checkpoints) and the trainer's milestone hook (the live model)."""
@@ -217,6 +254,10 @@ def write_outputs(run_dir: Path, run: str, tokens: int, checkpoint: str, stage: 
 
 
 def cmd_generate(a: argparse.Namespace) -> None:
+    if a.external:
+        return cmd_generate_external(a)
+    if not a.run:
+        raise SystemExit("generate: --run is required (or --external)")
     run_dir = Path(a.runs_root) / a.run
     meta = run_meta(run_dir)
     stage, tools = run_stage(meta), run_tools(meta)
@@ -457,7 +498,8 @@ def main() -> None:
     ap.add_argument("--runs-root", default="runs")
     sub = ap.add_subparsers(dest="cmd", required=True)
     g = sub.add_parser("generate", help="run the suite on checkpoints and write outputs")
-    g.add_argument("--run", required=True)
+    g.add_argument("--run", default=None)
+    g.add_argument("--external", default=None, help="an external chat model (slm.eval.external); --run defaults to ext_<name>")
     g.add_argument("--checkpoints", nargs="*", default=None, help="checkpoint file names (default: every snapshot + final.pt)")
     g.add_argument("--every", type=int, default=1, help="use every k-th snapshot")
     g.add_argument("--no-final", action="store_true")

@@ -14,6 +14,11 @@ position inside its column (1 = best, 0 = worst, 0.5 when the column has a singl
 
 Every file that measured a cell (not only the winner) is kept per row for the detail pages (`cell_refs`, `detail`,
 services/eval_detail.py).
+
+External comparison models (slm.eval.external) live in `runs/ext_<name>/` beside a `model.json` (the registry entry):
+the same result file names, `"checkpoint": "external:<name>"`. Their rows carry `group: "external models"`, stage
+`external`, the registry's params, the published training tokens and a `model` block (hf id, params, license, chat or
+base) for the hover card, and sort after ours; the colour scale spans all rows. Our rows carry `group: "ours"`.
 """
 
 from __future__ import annotations
@@ -79,6 +84,8 @@ _SUFFIX_CKPT = [  # file-name suffix -> checkpoint file, for a result file witho
     (re.compile(r"_snap([A-Za-z0-9]+)\.json$"), lambda m: f"snap_{m.group(1)}.pt"),
 ]
 _STAGE_RANK = {"base": 0, "sft": 1, "reasoning": 2, "tool": 2, "rl": 3}
+EXTERNAL_GROUP = "external models"
+_MODEL_FIELDS = ("name", "hf_id", "params", "license", "is_chat", "max_positions", "train_tokens", "notes")
 _LABEL_PREF = ("final.pt", "best.pt")
 
 
@@ -158,7 +165,7 @@ class EvalIndex:
             fs = []
             for p in d.iterdir():
                 n = p.name
-                if p.is_file() and (n in ("run.json", "bench_ll.json", "pass_at_k.json") or _LM_RE.match(n) or _FACTS_RE.match(n)
+                if p.is_file() and (n in ("run.json", "model.json", "bench_ll.json", "pass_at_k.json") or _LM_RE.match(n) or _FACTS_RE.match(n)
                                     or _REASON_RE.match(n) or _MT_RE.match(n) or _NEEDLE_RE.match(n) or _SWARM_RE.match(n)):
                     fs.append(p)
             for extra in (d / "quality" / "summary.json", d / "checkpoints" / "index.json"):
@@ -243,7 +250,7 @@ class EvalIndex:
         for run, fs in files.items():
             for p in fs:
                 n = p.name
-                if n in ("run.json", "index.json") or (n == "summary.json"):
+                if n in ("run.json", "index.json", "model.json") or (n == "summary.json"):
                     continue
                 d = _read(p)
                 if d is None:
@@ -412,10 +419,14 @@ class EvalIndex:
         summaries, metas = self._run_info()
         out = []
         self._cells = {}
+        ext_cache: dict[str, dict | None] = {}
         for r in rows.values():
             if not r["cells"]:
                 continue
             run = r["run"]
+            if run not in ext_cache:
+                ext_cache[run] = _read(self.root / run / "model.json")
+            ext = ext_cache[run]
             meta = metas.get(run) or {}
             stage = run_stage(meta) if meta else "base"
             if stage in ("sft", "reasoning") and run_tools(meta):
@@ -431,12 +442,17 @@ class EvalIndex:
                     r["cells"][k]["detail"] += " · also measured: " + "; ".join(alts)
             row = {"run": run, "checkpoint": label, "aliases": sorted(n for n in names if n != label and n != "latest.pt"),
                    "stage": stage, "params": s.get("n_params") or (meta.get("n_params") if meta else None),
-                   "own_tokens": own, "tokens": cum, "cells": r["cells"]}
+                   "own_tokens": own, "tokens": cum, "cells": r["cells"], "group": "ours"}
+            if ext is not None:  # an external comparison model: its registry entry, not a run of ours
+                tt = _num(ext.get("train_tokens"))
+                row.update(stage="external", group=EXTERNAL_GROUP, params=ext.get("params"), own_tokens=int(tt) if tt else None,
+                           tokens=int(tt) if tt else None, model={k: ext.get(k) for k in _MODEL_FIELDS})
             out.append(row)
             refs = {k: [x for _, x in sorted(enumerate(v), key=lambda iv: (-iv[1]["prio"], iv[0]))] for k, v in r["_refs"].items()}
             for n in names | set(r["referenced"]):
                 self._cells[(run, n)] = {"row": row, "refs": refs}
-        out.sort(key=lambda r: (-(r["params"] or 0), _STAGE_RANK.get(r["stage"], 9), r["run"], r["own_tokens"] or 0, r["checkpoint"]))
+        out.sort(key=lambda r: (r["group"] == EXTERNAL_GROUP, -(r["params"] or 0), _STAGE_RANK.get(r["stage"], 9), r["run"], r["own_tokens"] or 0,
+                                r["checkpoint"]))
         cols = []
         for c in COLUMNS:
             vals = [r["cells"][c["key"]]["value"] for r in out if c["key"] in r["cells"]]

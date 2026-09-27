@@ -16,6 +16,9 @@ Per test set, six numbers from the same k samples:
 The gaps between these say where to work: oracle - oracle_verified is what verification throws away,
 oracle_verified - in_prompt what the prompt budget throws away, in_prompt - selector what the selector still
 gets wrong. An untrained selector is expected to sit near majority; the RL `select` family is meant to move it.
+
+`--external <name>` (slm.eval.external, chat models): the same prompts, k, temperature and budget through the model's own
+chat template; greedy / majority / oracle only -- no sandbox, no trained selector, so the rest are null.
 """
 
 from __future__ import annotations
@@ -29,7 +32,8 @@ from pathlib import Path
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--checkpoint", required=True)
+    ap.add_argument("--checkpoint", default=None)
+    ap.add_argument("--external", default=None, help="an external chat model (slm.eval.external): greedy / majority / oracle only")
     ap.add_argument("--tokenizer", default=r"C:\slm-data\tokenizer\v1")
     ap.add_argument("--gsm8k", type=int, default=50)
     ap.add_argument("--svamp", type=int, default=50)
@@ -40,6 +44,13 @@ def main() -> None:
     ap.add_argument("--out", default=None)
     ap.add_argument("--mode", default="both", choices=["select", "tournament", "both"], help="which selection paths to run on the same samples")
     a = ap.parse_args()
+    if a.external:
+        from slm.eval.external import swarm_external
+
+        swarm_external(a.external, a.gsm8k, a.svamp, a.k, a.temperature, a.max_new, a.seed, a.out)
+        return
+    if not a.checkpoint:
+        ap.error("--checkpoint is required (or --external)")
 
     import torch
 
