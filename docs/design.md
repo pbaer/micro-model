@@ -176,6 +176,17 @@ len_mean, len_correct, len_wrong, malformed_rate, length_term_rate, kl, entropy,
 `summary()` derives status, progress (tokens, or steps for RL), ETA, cumulative tokens along the
 `init_from` chain, and the latest GPU state.
 
+### z-loss (`optim.z_loss`, 2026-09-27)
+
+`slm.model.loss.chunked_cross_entropy(..., z_loss)` adds PaLM's `z_loss * (log Z)^2` per valid token inside each
+chunk, `Z` the softmax normaliser. Cross-entropy is invariant to a shared logit offset, so over a long bf16 run the
+logits can drift up together until `exp` overflows; the term pulls `log Z` toward 0 and changes nothing the model
+predicts. Off by default (0 = byte-identical to every run before it; `tests/test_zloss.py` checks the formula on
+both the chunked and the single-chunk path and that one gradient step shrinks `log Z`). The trainer passes it only
+into the *training* forward, so `val_loss` stays plain cross-entropy and comparable across runs, and every eval
+record carries `val_logz_mean` / `val_logz_max` from the first val batch whether or not the term is on. Set at
+1e-4 (PaLM's value) for the third base and its ablations.
+
 ## 6. RL trainer (`slm/train/rl.py`, `slm/rl/`)
 
 **Tasks** (`tasks.py`): generators yield `{id, prompt, answer, task, meta}`. `make_tasks` splits

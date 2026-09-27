@@ -139,9 +139,14 @@ context-extended base once the curriculum settles.
    public benchmarks we are a 135M-class model (the training-token ordering, 10B vs 2-18T), judged chat sits
    between the two SmolLM2 sizes, and we lead only where post-training built something specific (format
    following, tool use). The gaps are pretraining tokens -- the argument for the third base (item 3).
-3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
-   an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
-   (the current base has never seen long-form fiction).
+3. **A third base** — decided with Peter 2026-09-27 (§20 made the case: every gap to the open-weight models is
+   pretraining tokens). Plan: same 336M budget, ~30B tokens (~12 GPU-days at 28.6k tok/s, ~2 epochs of the
+   high-quality subset), z-loss 1e-4, 4K context from the start with the needle gate in-run, and what M9
+   taught baked in: conversation-count balance in the mixture, the humanized answer style, chat/tool
+   conversations in pretraining, and narrative/Gutenberg prose (open: Peter's call on fiction). Gate: close at
+   least half the gap to SmolLM2-135M base on LAMBADA / ARC-E / facts. **First** the shape ablation running now
+   (`scripts/abl_chain.sh`, 2026-09-27): 18x768 vs 26x640 vs 32x576 at the 149M budget, 600M tokens each,
+   plus 18x768 without z-loss; if deeper wins clearly the base becomes ~32x896.
 4. **Suite v1 `expect` defect** for `days`/`months`/`evens`, written against the completion prompt so a
    correct chat answer reads as wrong (`quality_eval.md`). Fixing it bumps `SUITE_VERSION` and invalidates
    every stored score, so it waits for a moment when re-judging the chain is acceptable.
