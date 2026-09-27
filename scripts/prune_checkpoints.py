@@ -38,7 +38,8 @@ CONTINUABLE = {"m8_base_4k_336m"}
 #                              for what a REAL collapse looks like, cited when the m9 guard was fixed, but the
 #                              evidence is the metrics, not the weights.
 #   m8_base_4k_336m_stub       a 55-second aborted start (524K tokens, val inf), set aside deliberately.
-NO_KEEP = {"m6_rl_gsm_tools_try1_149m", "m8_base_4k_336m_stub"}
+NO_KEEP = {"m6_rl_gsm_tools_try1_149m", "m8_base_4k_336m_stub",
+           "m9_pair_336m", "m9_rl7_336m"}  # the tournament ladder (results.md §19): format SFT + 100 RL steps, nothing to reuse
 
 # Checkpoints kept by name beyond final/best: a run's chosen output when it is a milestone snapshot rather than
 # best.pt. m9_rl5_336m step 200 is the M9 output (results.md 16e): judged 4.07 and multi-turn recall 0.562
