@@ -1,0 +1,51 @@
+# Depth-vs-width ablation at the 149M budget (2026-09-27), before the third base commits 12 GPU-days: the same
+# data, tokens, schedule and seed for three shapes -- A 18x768 (base_149m), B 26x640, D 32x576 -- plus A without
+# z-loss to confirm the term is harmless. 600M tokens each (~3 h at 58k tok/s), cosine to the end so the final
+# val loss is a decayed, comparable number; the decision reads val loss first, then HellaSwag/ARC-E/LAMBADA/PIQA
+# at limit 2000 on final.pt. Mixture: the M8 base's, shell dropped (2026-09-19), renormalised.
+run_name: m10_abl_deep_149m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/abl_deep_149m.yaml
+model:
+  max_seq_len: 2048
+  loss_chunk_size: 0
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu-10bt: 0.73, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.05, synth-retrieval: 0.04}
+  seq_len: 2048
+  val_tokens: 4000000
+optim:
+  lr: 5.0e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+  z_loss: 1.0e-4
+schedule:
+  type: cosine
+  total_tokens: 600000000
+  warmup_tokens: 12000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 8
+  tokens_per_update: 262144
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 0
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 50000000
+  gen_every_tokens: 300000000
+  gen_max_new_tokens: 64
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "The capital of France is"
+    - "def is_prime(n):
+    "
+milestone_tokens: 100000000
+notes: "B: 26x640, z-loss 1e-4"

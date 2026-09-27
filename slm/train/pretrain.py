@@ -211,9 +211,23 @@ class Trainer:
         return (loss_sum / n_sum).item()
 
     @torch.no_grad()
+    @torch.no_grad()
+    def _logz(self) -> dict:
+        """Mean / max log Z on the first val batch: the logit-scale drift that z-loss guards, logged whether or not
+        the term is on so a run without it still shows the number."""
+        from slm.model.loss import logz_stats
+
+        for x, y in self.val_loader:
+            with sdpa_context(self.cfg.runtime.sdpa_backend), torch.autocast("cuda", dtype=torch.bfloat16):
+                h = self.model.hidden_states(x)
+            mean, mx = logz_stats(h.float(), self.model.output_weight.float(), y)
+            return {"val_logz_mean": round(mean, 3), "val_logz_max": round(mx, 3)}
+        return {}
+
     def evaluate(self) -> tuple[float, float]:
         self.model.eval()
         loss = self._eval_loader(self.val_loader)
+        self.last_logz = self._logz()
         self.last_extra_val = self._eval_loader(self.extra_val) if self.extra_val is not None else None
         if self.cfg.eval.needle_lengths:
             from slm.eval.long_context import run_needle
@@ -315,7 +329,7 @@ class Trainer:
                 loss_acc = torch.zeros((), device="cuda")
                 for i, (x, y) in enumerate(batches):
                     with torch.autocast("cuda", dtype=torch.bfloat16):
-                        ls, _ = self.fwd(x, y)
+                        ls, _ = self.fwd(x, y, z_loss=cfg.optim.z_loss)  # 0 = plain CE; the eval loss is always plain
                     (ls / n_valid).backward()
                     loss_acc += ls.detach()
                 e_f1.record()
@@ -380,7 +394,7 @@ class Trainer:
                         c["best_val"] = vl
                         ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
                         ckpt.update_index(self.ckpt_dir, "best.pt", kind="best", tokens=c["tokens"], update=c["update"], val_loss=vl)
-                    self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=improved, eval_s=time.time() - t0, val_pt_loss=self.last_extra_val, **(self.last_needle or {}))
+                    self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=improved, eval_s=time.time() - t0, val_pt_loss=self.last_extra_val, **(self.last_needle or {}), **getattr(self, "last_logz", {}))
                     console(f"eval @ {fmt_tokens(c['tokens'])}: val loss {vl:.4f} ppl {ppl:.2f}{' (best)' if improved else ''}"
                             + (f" | pretrain-val {self.last_extra_val:.4f}" if self.last_extra_val is not None else "")
                             + (" | needle " + " ".join(f"{k[7:]}:{v * 100:.0f}%" for k, v in self.last_needle.items() if k.startswith("needle_") and not k.startswith("needle_min_") and k != "needle_effective") + f" (effective {self.last_needle['needle_effective']})" if self.last_needle else "")
@@ -427,7 +441,7 @@ class Trainer:
             if vl < c["best_val"]:
                 c["best_val"] = vl
                 ckpt.save_snapshot(self.ckpt_dir / "best.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
-            self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=vl <= c["best_val"], eval_s=0, val_pt_loss=self.last_extra_val, **(self.last_needle or {}))
+            self.log.log("eval", tokens=c["tokens"], update=c["update"], val_loss=vl, val_ppl=ppl, best=vl <= c["best_val"], eval_s=0, val_pt_loss=self.last_extra_val, **(self.last_needle or {}), **getattr(self, "last_logz", {}))
             self.generate_samples()
             ckpt.save_snapshot(self.ckpt_dir / "final.pt", self.model, to_dict(self.mcfg), {"tokens": c["tokens"], "val_loss": vl, "tokenizer_sha256": self.tok.sha256})
             ckpt.update_index(self.ckpt_dir, "final.pt", kind="final", tokens=c["tokens"], update=c["update"], val_loss=vl)

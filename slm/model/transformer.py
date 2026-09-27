@@ -114,11 +114,13 @@ class Transformer(nn.Module):
         cache: KVCache | None = None,
         attn_mask: torch.Tensor | None = None,
         last_only: bool = False,
+        z_loss: float = 0.0,
     ):
-        """With targets: returns (loss_sum, n_valid_tokens). Without: returns logits [B, T, V]."""
+        """With targets: returns (loss_sum, n_valid_tokens); `z_loss` > 0 adds the PaLM z-loss term (slm.model.loss).
+        Without: returns logits [B, T, V]."""
         h = self.hidden_states(idx, cache, attn_mask)
         if targets is not None:
-            return chunked_cross_entropy(h, self.output_weight, targets, self.cfg.loss_chunk_size)
+            return chunked_cross_entropy(h, self.output_weight, targets, self.cfg.loss_chunk_size, z_loss)
         if last_only:
             h = h[:, -1:, :]
         return h @ self.output_weight.t()

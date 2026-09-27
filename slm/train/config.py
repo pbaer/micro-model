@@ -33,6 +33,9 @@ class OptimConfig:
     fused: bool = True
     # Apply weight decay only to >=2-D tensors (matrices, embeddings); never to norm gains.
     decay_only_matrices: bool = True
+    # PaLM z-loss coefficient on (log Z)^2 per token; 0 = off (every run before 2026-09-27). 1e-4 is PaLM's value.
+    # Insurance against logit drift over a long bf16 run; `val_logz_mean`/`val_logz_max` in the eval records show it.
+    z_loss: float = 0.0
 
 
 @dataclass

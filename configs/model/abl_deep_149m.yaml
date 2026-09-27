@@ -1,0 +1,14 @@
+# Depth-vs-width ablation (2026-09-27): the 149M budget at 26 layers x d_model 640 (10 q / 5 kv heads, d_ff 3d).
+# 148.8M total, 127.8M non-embedding -- the same budget as base_149m (18 x 768, 123.9M non-embedding), deeper
+# and narrower, the shape SmolLM2-360M (32 x 960) and the MobileLLM results favour at small sizes.
+vocab_size: 32768
+n_layers: 26
+d_model: 640
+n_heads: 10
+n_kv_heads: 5
+head_dim: 64
+d_ff: 1920
+max_seq_len: 8192
+rope_theta: 100000.0
+qk_norm: true
+tie_embeddings: true
