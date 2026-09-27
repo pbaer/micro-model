@@ -757,3 +757,18 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (the 9-example val split crashed the trainer at startup). RL run 6 launched twice on the failed bases (each
   killed within minutes: without a `####` line the `select` reward is always 0, so the family would have
   taught nothing), then for real at 15:27 on v3.
+- RL run 6 (`m9_rl6_336m`) ran all 250 steps, 15:27-17:11: `select` reward 0.24 / 0.18 / 0.28 / 0.19 / 0.11 by
+  50-step window (its RL pool holds a correct group for 25% of prompts, so the SFT'd selector started near the
+  family's ceiling and RL did not lift it; the last window fell), chat anchor 0.88 -> 0.95, algebra/word/pytool
+  at 0.97-1.00, KL 0.005 -> 0.029, entropy 0.97 -> 0.87. Held-out never beat step 0 (0.625 -> 0.594-0.604), so
+  best.pt is the SFT base itself; final.pt (step 250) is the RL result.
+- Then five hours of idle GPU: the measurement chain waited for `finished at step` (the metrics record's
+  wording) while the console log says `FINISHED at step` -- I had changed the pattern to the wrong file's
+  case after checking the source. Found at 22:14, chain relaunched 22:15 (best.pt, final.pt, the SFT-only
+  checkpoint and step 100 all get the hard suite / swarm eval). Rule for next time: a waiter's trigger is
+  tested against the real artefact (`grep` the actual log) before the wait is armed, not read off the code.
+- Portal: the Evals tab (Opus subagent, df09316) -- every checkpoint x every benchmark and homebrew eval,
+  340 of 1056 cells measured, best -> worst colouring per column, an info card per benchmark; then sortable
+  columns, score-only cells with a hover card, and per-cell detail pages (0df5406) that show prompts,
+  responses, gold, verdicts, tool calls and judge rubric scores wherever the result files kept per-item
+  data, and say so where an eval saved only aggregates (lm-eval, the 336M reasoning files).
