@@ -490,7 +490,8 @@ export const CARDS = {
   swarm: { t: "Swarm inference", b: html`
     <p>Many attempts, then one judgement, all from the same model. The task is sampled <b>k</b> times in one batch
       (each attempt may call Python inside its think span), the attempts are <b>collapsed</b> into distinct final
-      answers with their evidence, and a second, greedy pass of the model reads that summary and <b>selects</b> the answer.</p>
+      answers with their evidence, and the same model picks the answer: one greedy pass over the whole summary
+      (<b>select</b>), a pairwise <b>tournament</b> bracket over the distinct answers, or <b>both</b> side by side.</p>
     <p>Why: a small model's single greedy answer is often wrong, yet the right answer is frequently somewhere among
       its samples. The pool has the answer; the problem is picking it. Plain voting rarely works, because the right answer
       is usually held by one or two attempts among many confident wrong ones.</p>
@@ -534,12 +535,56 @@ export const CARDS = {
       least-supported answers, never going below three.</p>
     <p>An answer dropped here cannot be selected. "in selector prompt" shows which ones survived: a right answer that
       was sampled but did not make it into the prompt is lost to the budget, not to the selector.</p>` },
+  swarm_tournament: { t: "Tournament: pairwise selection", b: html`
+    <p>Instead of one prompt that lists every distinct answer and asks for the right one, the answers play a
+      <b>single-elimination bracket</b>: each match is a prompt with just two answers (A and B, each with its support,
+      whether it was computed with code, and a short rationale), and the model replies <code>#### A</code> or
+      <code>#### B</code>. The winner of the last match, the <b>champion</b>, is the final answer.</p>
+    <p>Why: picking one of twelve is a hard decision for a small model. It has to hold every option in view at once,
+      and the right answer, usually held by one or two attempts, is buried among confident wrong ones. A pairwise
+      comparison is the easiest judgement there is: two options, one binary reply, a short prompt that fits the context
+      comfortably. The bracket turns one hard choice into about log<sub>2</sub>(n) rounds of easy ones; each round is one
+      greedy batch, so n answers cost n−1 short comparisons.</p>
+    <p><b>select</b> runs only the selector, <b>tournament</b> only the bracket, <b>both</b> runs the two and shows where
+      they disagree (the final answer then follows the bracket, as in <code>swarm_answer(mode="both")</code>).</p>
+    <p class="see">Code: <code>slm.swarm.tournament</code> / <code>compare_batch</code>; the eval is <code>scripts/swarm_eval.py --mode both</code>.</p>` },
+  swarm_seeding: { t: "Seeding and byes", b: html`
+    <p>The entrants are the distinct answers in <b>evidence order</b> (verified support first, then support), cut at
+      <b>max entrants</b> (default 16); an answer beyond the cut is not entered and cannot win.</p>
+    <p>Each round pairs <b>first against last</b>: seed #1 meets the last seed, #2 the second last, and so on, so the
+      answers with the strongest evidence meet late rather than knocking each other out in round 1. With an odd number of
+      entrants the middle one gets a <b>bye</b> and advances unopposed. The next round is the winners (in match order)
+      followed by the bye, seeded the same way again.</p>` },
+  swarm_swap: { t: "Swap every other pair", b: html`
+    <p>Small models have a <b>position bias</b>: asked "A or B?", they favour one slot regardless of content. If the
+      better seed were always A, that bias would decide the bracket.</p>
+    <p>So in every round the 2nd, 4th, ... pair is presented <b>swapped</b> (the better seed shown as B). Across the
+      bracket the bias then helps each seed as often as it hurts, and cancels instead of deciding. The bracket rows are
+      drawn in the order the model saw them, A on top; ⇄ marks a swapped pair.</p>` },
+  swarm_fallback: { t: "Evidence fallback", b: html`
+    <p>A comparison whose reply has no parsable <code>#### A</code> / <code>#### B</code> line (the model rambled, ran
+      out of its 96 tokens, or named the number instead of the letter) does not stall the bracket: the pair is decided by
+      the <b>evidence order</b>, more verified attempts first, then more support, ties to A.</p>
+    <p>Many fallbacks mean the bracket is mostly a verified-majority vote in disguise. The pairwise SFT data and the RL
+      <code>pair</code> family are what teach the model to answer in the format.</p>` },
+  swarm_bracket: { t: "Reading the bracket", b: html`
+    <ul><li><b>Columns</b> are rounds, left to right, then the champion. Each box is a match (or a bye); lines show which
+        box each entrant came from, and the champion's path is drawn in blue.</li>
+      <li><b>Rows</b>: A / B as presented, <b>#n</b> the seed, the answer, <b>×n</b> its support and <b>✓n</b> its verified
+        attempts. The winner is green, the loser struck through.</li>
+      <li><b>Header</b>: "picked A/B" is the model's reply; "no pick → evidence" means the fallback decided;
+        ⇄ marks a pair presented swapped.</li>
+      <li><b>Tags</b>: <i>maj</i> majority, <i>vmaj</i> verified majority, <i>sel</i> the selector's pick (both mode),
+        <i>exp</i> the expected answer if you gave one. Following the <i>sel</i> or <i>exp</i> row shows exactly where it was
+        eliminated.</li>
+      <li>While it runs, undecided rounds show placeholders ("winner of R1 M2") and fill in as each round's event arrives.</li></ul>` },
   swarm_oracle: { t: "Oracle ceilings", b: html`
     <p>Given the expected answer, each stage has a ceiling that bounds everything after it:</p>
     <ul><li><b>oracle (pass@k)</b>: the right answer is among the k attempts. No selector can do better.</li>
       <li><b>oracle, verified</b>: it is among the verified attempts.</li>
       <li><b>in prompt</b>: it survived into the selector prompt.</li>
-      <li><b>selector</b>: it was picked.</li></ul>
+      <li><b>selector</b>: it was picked.</li>
+      <li><b>in bracket</b> / <b>tournament</b>: it was among the entrants / it won the bracket.</li></ul>
     <p>The gaps say where to work: pass@k minus in-prompt is lost before the model judges (sampling, budget);
       in-prompt minus selector is the selector's own error. On one task these are yes/no; the eval averages them over a test set.</p>
     <p class="see"><code>scripts/swarm_eval.py</code> reports all of them per test set; docs/results.md has the numbers.</p>` },

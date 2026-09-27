@@ -115,6 +115,34 @@ nav .info:hover,nav .info.on{color:#fff}
 .swarm-cand{border:1px solid var(--border);border-radius:8px;padding:6px 8px;margin:6px 0;background:var(--bg);white-space:normal}
 pre.swarm-answer{margin:4px 0 0;padding:4px 8px;max-height:160px}
 .swarm-rationale{font-size:12px;color:#374151}
+.grp{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.br-legend{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5}
+.seg{display:inline-flex}.seg button{border-radius:0;margin-left:-1px}.seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}.seg button:last-child{border-radius:0 6px 6px 0}
+.swarm-cmp{margin-top:8px;padding:6px 10px;border-radius:6px;font-size:13px}.swarm-cmp.agree{background:#f0fdf4;color:#166534}.swarm-cmp.disagree{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
+/* tournament bracket (Bracket in components/swarm.js): absolutely placed match boxes over one SVG of elbow connectors */
+.bracket-scroll{overflow-x:auto;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px}
+.bracket{position:relative;min-width:100%}
+.br-lines{position:absolute;left:0;top:0;pointer-events:none;overflow:visible}
+.br-line{fill:none;stroke:#d1d5db;stroke-width:1.5;stroke-dasharray:4 3}.br-line.on{stroke:#9ca3af;stroke-dasharray:none}.br-line.hot{stroke:var(--accent);stroke-width:2.5}
+.br-colhead{position:absolute;top:0;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;white-space:nowrap}
+.br-live{color:var(--accent);text-transform:none;letter-spacing:0;animation:brPulse 1.2s ease-in-out infinite}
+.br-item{position:absolute;box-sizing:border-box;background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:0 0 3px;font-size:12px;overflow:hidden;animation:brIn .35s ease-out}
+.br-item.bye{border-style:dashed}.br-item.live{border-color:var(--accent);box-shadow:0 0 0 2px #dbeafe}
+.br-item.champ{border:2px dashed var(--border);display:flex;flex-direction:column;justify-content:center;padding:4px 8px}
+.br-item.champ.decided{border:2px solid var(--accent);background:#eff6ff;box-shadow:0 2px 10px rgba(37,99,235,.18)}
+.br-champ-v{font-size:18px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.br-head{display:flex;gap:6px;align-items:center;height:18px;padding:0 6px;font-size:10.5px;color:var(--muted);background:#f9fafb;border-bottom:1px solid var(--border);white-space:nowrap}
+.br-pick{margin-left:auto;font-weight:600;color:#374151}.br-swap{color:#7c3aed;font-weight:600;cursor:help}.br-fallback{color:var(--warn);cursor:help}
+.br-row{display:flex;gap:5px;align-items:center;height:22px;padding:0 6px;white-space:nowrap;margin-top:3px}
+.br-row.win{background:#dcfce7;font-weight:600}.br-row.lose{color:#9ca3af}.br-row.lose .br-ans{text-decoration:line-through}.br-row.pending{color:var(--muted);font-style:italic}
+.br-ab{display:inline-block;width:14px;text-align:center;font-size:10px;font-weight:700;color:#fff;background:#6b7280;border-radius:3px;line-height:14px}
+.br-seed{font-size:10.5px;color:var(--muted);min-width:20px}
+.br-ans{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:var(--mono)}
+.br-ev{font-size:10.5px;color:var(--muted)}.br-ver{color:var(--ok);font-weight:700}
+.br-tag{font-size:9.5px;font-weight:700;padding:0 4px;border-radius:6px;background:#e5e7eb;color:#374151}.br-tag.sel{background:#fef3c7;color:#92400e}.br-tag.gold{background:#dcfce7;color:#166534}.br-tag.vmaj{background:#dbeafe;color:#1e3a8a}
+.br-warn{font-size:10px;color:var(--bad);padding:0 6px}
+@keyframes brIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+@keyframes brPulse{50%{opacity:.4}}
+@media (prefers-reduced-motion:reduce){.br-item,.br-live{animation:none}}
 
 /* evals page (pages/evals.js): one scroll box with a sticky header block and a sticky first column; cell colour is set inline */
 .evals{--na-bg:#eceef1}

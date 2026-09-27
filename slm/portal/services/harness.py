@@ -226,21 +226,32 @@ class Harness:
     @torch.no_grad()
     def swarm(self, slot: str, text: str, k: int = 16, temperature: float = 0.8, top_p: float = 0.95, max_new_tokens: int = 512,
               max_calls: int = 6, seed: int | None = None, budget_tokens: int = 2400, max_groups: int = 12,
-              answer_suffix: bool = True, should_stop=None):
+              answer_suffix: bool = True, mode: str = "both", pair_budget_tokens: int = 1200, max_entrants: int = 16,
+              should_stop=None):
         """Swarm inference (slm.swarm) with a progress event per stage. Yields {'event': 'stage', 'stage':
-        'sampling'|'collapsed'|'selecting', ...} and finally {'event': 'done', 'result': SwarmResult.to_dict()}.
+        'sampling'|'collapsed'|'selecting'|'tournament', ...} and finally {'event': 'done', 'result': SwarmResult.to_dict()}.
 
         The stages are the calls `swarm_answer` makes, in the same order and with the same generator seeding, so a
-        seeded run here reproduces it. The k samples are one batch (splitting it would change both the throughput
-        and the random stream), so a cancel takes effect at the next stage boundary: after sampling it skips the
-        selector and `final` falls back to the verified majority. With no seed a fresh one is drawn and reported in
+        seeded run here reproduces it. `mode` is the library's: "select" (one selector prompt over all groups),
+        "tournament" (pairwise single-elimination bracket), "both" (selector, then bracket; `final` follows the bracket).
+
+        The bracket is `slm.swarm.tournament`'s loop replicated round by round so each round can be streamed: one
+        'tournament' event with `round` 0 when the bracket is seeded (entrants, no matches), then one per decided round
+        (`round` 1..n) with its matches ({a, b, swapped, pick, winner}, exactly the library's round log) and byes.
+
+        The k samples are one batch (splitting it would change both the throughput and the random stream), so a cancel
+        takes effect at the next stage boundary or bracket round: the selector / the remaining rounds are skipped, the
+        rounds already decided are kept, and `final` falls back to the verified majority in the modes where it follows
+        the bracket (the library's rule for a missing champion). With no seed a fresh one is drawn and reported in
         `result.meta.seed` (an unseeded torch.Generator always starts from the same state)."""
         from dataclasses import asdict
 
+        from slm import swarm as S
         from slm.data.answers import SUFFIX
-        from slm.swarm import SwarmResult, collapse, display_answer, majority, sample_candidates, select, selector_messages, verified_majority
         from slm.utils.sdpa import sdpa_context
 
+        if mode not in ("select", "tournament", "both"):
+            raise RuntimeError(f"swarm mode {mode!r}: expected select, tournament or both")
         s = self.slots[slot]
         if s.model is None:
             raise RuntimeError(f"slot {slot} is empty")
@@ -251,7 +262,9 @@ class Harness:
         suffix = SUFFIX if answer_suffix else None
         meta = {"slot": slot, "checkpoint": s.info.get("name"), "device": s.info.get("device"), "seed": seed, "temperature": temperature,
                 "top_p": top_p, "max_new_tokens": max_new_tokens, "max_calls": max_calls, "budget_tokens": budget_tokens,
-                "max_groups": max_groups, "answer_suffix": suffix, "cancelled": False}
+                "max_groups": max_groups, "answer_suffix": suffix, "mode": mode, "pair_budget_tokens": pair_budget_tokens,
+                "max_entrants": max_entrants, "cancelled": False}
+        stop = should_stop or (lambda: False)
 
         def n_in_prompt(msgs: list[dict]) -> int:
             return msgs[0]["content"].count("\n- Answer: ") if msgs else 0
@@ -261,34 +274,82 @@ class Harness:
             with sdpa_context("decode"):
                 msgs = [{"role": "user", "content": text + (suffix or "")}]
                 yield {"event": "stage", "stage": "sampling", "k": k, "seconds": 0.0}
-                cands = sample_candidates(model, tok, msgs, k, temperature, top_p, max_new_tokens, max_calls, seed)
-                groups = collapse(cands)
-                vm, maj = verified_majority(groups), majority(groups)
+                cands = S.sample_candidates(model, tok, msgs, k, temperature, top_p, max_new_tokens, max_calls, seed)
+                groups = S.collapse(cands)
+                vm, maj = S.verified_majority(groups), S.majority(groups)
                 yield {"event": "stage", "stage": "collapsed", "seconds": round(time.time() - t0, 2), "n_candidates": len(cands),
                        "n_parsed": sum(c.key is not None for c in cands), "n_verified": sum(c.verified for c in cands),
                        "groups": [asdict(g) for g in groups], "majority": maj, "verified_majority": vm}
-                sel_msgs = selector_messages(text, groups, tok, budget_tokens, max_groups) if groups else []
+                sel_msgs = S.selector_messages(text, groups, tok, budget_tokens, max_groups) if groups and mode != "tournament" else []
                 think, answer, parsed, n_calls = (None, "", None, 0)
-                if groups and should_stop is not None and should_stop():
+                if sel_msgs and stop():
                     meta["cancelled"] = True
-                elif groups:
+                elif sel_msgs:
                     yield {"event": "stage", "stage": "selecting", "seconds": round(time.time() - t0, 2),
                            "prompt_tokens": len(tok.encode(sel_msgs[0]["content"])), "groups_in_prompt": n_in_prompt(sel_msgs)}
-                    think, answer, parsed, n_calls = select(model, tok, sel_msgs)
-            final = display_answer(parsed) if parsed is not None else vm
-            res = SwarmResult(prompt=text, k=k, candidates=cands, groups=groups, majority=maj, verified_majority=vm, selector_messages=sel_msgs,
-                              selector_think=think, selector_answer=answer, selector_calls=n_calls, final=final,
-                              seconds=round(time.time() - t0, 2), meta=meta)
+                    think, answer, parsed, n_calls = S.select(model, tok, sel_msgs)
+                champion, rounds = None, []
+                if groups and mode != "select" and not meta["cancelled"]:
+                    champion, rounds = yield from self._tournament_rounds(model, tok, text, groups, pair_budget_tokens, max_entrants, stop, meta, t0)
+            if mode == "select":
+                final = S.display_answer(parsed) if parsed is not None else vm
+            else:
+                final = champion.answer if champion is not None else vm
+            res = S.SwarmResult(prompt=text, k=k, candidates=cands, groups=groups, majority=maj, verified_majority=vm, selector_messages=sel_msgs,
+                                selector_think=think, selector_answer=answer, selector_calls=n_calls, final=final,
+                                seconds=round(time.time() - t0, 2), meta=meta,
+                                tournament=champion.answer if champion is not None else None, rounds=rounds)
             out = res.to_dict()
             for c, cd in zip(cands, out["candidates"]):
                 cd["verified"] = c.verified  # a property, so asdict leaves it out
-            out["meta"]["selector_parsed"] = parsed is not None  # False: no '####' line from the selector, final is the verified majority
+            out["meta"]["selector_parsed"] = parsed is not None  # False: no '####' line from the selector (or no selector ran)
+            out["meta"]["selector_final"] = S.display_answer(parsed) if parsed is not None else None
             out["meta"]["groups_in_prompt"] = n_in_prompt(sel_msgs)
             out["meta"]["prompt_tokens"] = len(tok.encode(sel_msgs[0]["content"])) if sel_msgs else 0
             yield {"event": "done", "stage": "done", "result": out}
         finally:
             if next(model.parameters()).device.type == "cuda":
                 torch.cuda.empty_cache()  # generation KV caches leave reserved segments behind (CLAUDE.md)
+
+    @staticmethod
+    def _tournament_rounds(model, tok, text: str, groups: list, pair_budget_tokens: int, max_entrants: int, stop, meta: dict, t0: float):
+        """`slm.swarm.tournament` with one yielded event per round (a generator that returns (champion | None, rounds)).
+        The loop is the library's line for line -- first-vs-last seeding with a bye for the odd one out, every odd-indexed
+        pair presented swapped, the evidence order (verified, then support) when a comparison gives no parsable pick -- so
+        a bracket streamed here and one run by `swarm_answer` agree. `compare_batch` is looked up on the module at call
+        time (tests script it). A cancel is honoured between rounds: champion None, the decided rounds kept."""
+        from slm import swarm as S
+
+        entrants = list(groups[:max_entrants])
+        n, n_expected = len(entrants), 0
+        while n > 1:
+            n, n_expected = n // 2 + n % 2, n_expected + 1
+        meta.update(n_entrants=len(entrants), n_rounds_expected=n_expected, tournament_complete=False)
+        rounds: list[list[dict]] = []
+        yield {"event": "stage", "stage": "tournament", "round": 0, "n_rounds_expected": n_expected, "seconds": round(time.time() - t0, 2),
+               "entrants": [g.answer for g in entrants], "byes": [], "matches": []}
+        while len(entrants) > 1:
+            if stop():
+                meta["cancelled"] = True
+                return None, rounds
+            pairs, byes = S.seed_pairs(entrants)
+            oriented = [(b, a) if j % 2 else (a, b) for j, (a, b) in enumerate(pairs)]
+            picks = S.compare_batch(model, tok, text, oriented, pair_budget_tokens, 96)
+            winners, log = [], []
+            for j, ((x, y), pick) in enumerate(zip(oriented, picks)):
+                if pick is None:
+                    w = x if (x.verified, x.support) >= (y.verified, y.support) else y
+                else:
+                    w = x if pick == 0 else y
+                winners.append(w)
+                log.append({"a": x.answer, "b": y.answer, "swapped": bool(j % 2), "pick": pick, "winner": w.answer})
+            rounds.append(log)
+            yield {"event": "stage", "stage": "tournament", "round": len(rounds), "n_rounds_expected": n_expected,
+                   "seconds": round(time.time() - t0, 2), "entrants": [g.answer for g in entrants], "byes": [g.answer for g in byes],
+                   "matches": log}
+            entrants = winners + byes
+        meta["tournament_complete"] = True
+        return entrants[0], rounds
 
     @torch.no_grad()
     def score(self, slot: str, mode: str = "completion", text: str = "", messages: list[dict] | None = None) -> dict:

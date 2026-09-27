@@ -63,7 +63,8 @@ def test_swarm_endpoint_validates_and_streams_stages(tmp_path):
     app, c = _client(tmp_path, events)
     assert "swarm" in STREAM_METHODS
     for bad in ({"text": "q", "k": 65}, {"text": "q", "k": 0}, {"text": "q", "slot": "C"}, {"text": "q", "top_p": 0},
-                {"text": "q", "temperature": -1}, {"text": "q", "max_calls": 99}, {"text": "   "}):
+                {"text": "q", "temperature": -1}, {"text": "q", "max_calls": 99}, {"text": "   "}, {"text": "q", "mode": "vote"},
+                {"text": "q", "max_entrants": 1}, {"text": "q", "max_entrants": 65}, {"text": "q", "pair_budget_tokens": 100}):
         assert c.post("/api/model/swarm", json=bad).status_code == 422, bad
     assert app.state.worker.calls == [], "an invalid request never reaches the worker"
 
@@ -75,6 +76,12 @@ def test_swarm_endpoint_validates_and_streams_stages(tmp_path):
     method, kw = app.state.worker.calls[0]
     assert method == "swarm" and kw["text"] == "What is 3 * 4?" and kw["k"] == 4 and kw["max_new_tokens"] == 64
     assert kw["answer_suffix"] is True and kw["seed"] is None and kw["budget_tokens"] == 2400 and kw["max_groups"] == 12
+    assert kw["mode"] == "both" and kw["pair_budget_tokens"] == 1200 and kw["max_entrants"] == 16
+    _sse(c, {"text": "q", "mode": "tournament", "max_entrants": 2, "pair_budget_tokens": 800})
+    kw = app.state.worker.calls[-1][1]
+    assert kw["mode"] == "tournament" and kw["max_entrants"] == 2 and kw["pair_budget_tokens"] == 800
+    _sse(c, {"text": "q", "mode": "select", "max_entrants": 64})
+    assert app.state.worker.calls[-1][1]["mode"] == "select"
     assert app.state.streams == {}, "the stream id is released at the end"
 
     app.state.worker.events = [{"event": "error", "error": "RuntimeError: slot B is empty"}]
@@ -115,7 +122,7 @@ def test_harness_swarm_stages_scripted(tmp_path, monkeypatch):
 
     monkeypatch.setattr(S, "sample_candidates", fake_sample)
     monkeypatch.setattr(S, "select", fake_select)
-    evs = list(h.swarm("A", "What is 3 * 4?", k=4, seed=None, answer_suffix=True))
+    evs = list(h.swarm("A", "What is 3 * 4?", k=4, seed=None, answer_suffix=True, mode="select"))
     assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "selecting", "done"]
     assert seen["messages"][0]["content"] == "What is 3 * 4?" + SUFFIX and isinstance(seen["seed"], int)
     col = evs[1]
@@ -125,11 +132,12 @@ def test_harness_swarm_stages_scripted(tmp_path, monkeypatch):
     assert seen["selector_prompt"].startswith("What is 3 * 4?\n\n"), "the selector sees the task without the suffix"
     res = evs[-1]["result"]
     assert res["final"] == "12" and res["selector_calls"] == 1 and res["meta"]["selector_parsed"] and res["meta"]["seed"] == seen["seed"]
+    assert res["tournament"] is None and res["rounds"] == [] and res["meta"]["mode"] == "select"
     assert [c["verified"] for c in res["candidates"]] == [False, False, True, False]
     json.dumps(res)  # crosses the worker pipe and the SSE stream
 
     # a cancel after sampling skips the selector; final falls back to the verified majority
-    evs = list(h.swarm("A", "What is 3 * 4?", k=4, seed=3, answer_suffix=False, should_stop=lambda: True))
+    evs = list(h.swarm("A", "What is 3 * 4?", k=4, seed=3, answer_suffix=False, mode="select", should_stop=lambda: True))
     assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "done"]
     res = evs[-1]["result"]
     assert res["meta"]["cancelled"] and res["final"] == "12" and res["selector_messages"] and res["selector_think"] is None
@@ -148,5 +156,119 @@ def test_harness_swarm_real_tiny_model(tmp_path):
     res = evs[-1]["result"]
     assert res["k"] == 2 and len(res["candidates"]) == 2 and all("verified" in c and c["n_tokens"] <= 6 for c in res["candidates"])
     assert json.dumps(res)
+    assert res["meta"]["mode"] == "both"
+    if len(res["groups"]) >= 2:  # the real compare_batch ran: a complete bracket with a champion among the groups
+        assert res["rounds"] and res["tournament"] in [g["answer"] for g in res["groups"]] and res["final"] == res["tournament"]
     again = list(h.swarm("A", "What is 2 * 3?", k=2, max_new_tokens=6, max_calls=1, seed=1))[-1]["result"]
     assert [c["answer"] for c in again["candidates"]] == [c["answer"] for c in res["candidates"]], "same seed, same samples"
+
+
+# ------------------------------------------------------------------------------------------ tournament (harness)
+def _bracket_cands():
+    """Five distinct answers in evidence order 1 (verified), 2 (support 2), 3, 4, 5: the bracket of tests/test_swarm.py."""
+    return [_cand(0, "1", from_tool=True), _cand(1, "2"), _cand(2, "2"), _cand(3, "3"), _cand(4, "4"), _cand(5, "5")]
+
+
+def _scripted(monkeypatch, seen):
+    """sample_candidates -> the five-answer pool; compare_batch -> picks the larger number, no pick for a pair holding '4'
+    (so the evidence fallback decides it); select -> '#### 1'."""
+    monkeypatch.setattr(S, "sample_candidates", lambda *a, **kw: _bracket_cands())
+
+    def fake_compare(model, tok_, task_prompt, pairs, budget_tokens=1200, max_new_tokens=96):
+        seen.setdefault("compare", []).append(([(x.key, y.key) for x, y in pairs], task_prompt, budget_tokens, max_new_tokens))
+        return [None if "4" in (x.key, y.key) else (0 if float(x.key) > float(y.key) else 1) for x, y in pairs]
+
+    def fake_select(model, tok_, messages):
+        seen["selected"] = True
+        return "pick", "#### 1", "1", 0
+
+    monkeypatch.setattr(S, "compare_batch", fake_compare)
+    monkeypatch.setattr(S, "select", fake_select)
+    return fake_compare
+
+
+def test_harness_swarm_tournament_rounds_stream_and_match_the_library(tmp_path, monkeypatch):
+    h, _ = _world(tmp_path)
+    seen = {}
+    fake_compare = _scripted(monkeypatch, seen)
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="tournament", pair_budget_tokens=900))
+    assert [(e.get("stage"), e.get("round")) for e in evs] == [("sampling", None), ("collapsed", None), ("tournament", 0), ("tournament", 1),
+                                                              ("tournament", 2), ("tournament", 3), ("done", None)]
+    assert "selected" not in seen, "tournament mode runs no selector"
+    seeded = evs[2]
+    assert seeded["entrants"] == ["1", "2", "3", "4", "5"] and seeded["matches"] == [] and seeded["n_rounds_expected"] == 3
+    r1 = evs[3]
+    assert set(r1) >= {"event", "stage", "round", "n_rounds_expected", "matches", "entrants", "byes", "seconds"}
+    assert r1["entrants"] == ["1", "2", "3", "4", "5"] and r1["byes"] == ["3"] and r1["n_rounds_expected"] == 3
+    assert r1["matches"] == [{"a": "1", "b": "5", "swapped": False, "pick": 1, "winner": "5"},
+                             {"a": "4", "b": "2", "swapped": True, "pick": None, "winner": "2"}], "second pair swapped; no pick -> evidence (support 2)"
+    assert evs[4]["entrants"] == ["5", "2", "3"] and evs[4]["byes"] == ["2"] and evs[4]["matches"] == [
+        {"a": "5", "b": "3", "swapped": False, "pick": 0, "winner": "5"}]
+    assert evs[5]["entrants"] == ["5", "2"] and evs[5]["byes"] == [] and evs[5]["matches"][0]["winner"] == "5"
+    assert seen["compare"][0][1:] == ("What is it?", 900, 96), "pairwise prompts see the task without the suffix, the pair budget, 96 new tokens"
+
+    res = evs[-1]["result"]
+    assert res["tournament"] == "5" and res["final"] == "5" and res["meta"]["mode"] == "tournament" and res["meta"]["tournament_complete"]
+    assert res["selector_messages"] == [] and res["meta"]["selector_final"] is None and res["meta"]["n_entrants"] == 5
+    assert res["rounds"] == [e["matches"] for e in evs[3:6]]
+    groups = S.collapse(_bracket_cands())
+    champ, lib_rounds = S.tournament(None, None, "What is it?", groups, compare=lambda pairs: fake_compare(None, None, "q", pairs))
+    assert res["rounds"] == lib_rounds and res["tournament"] == champ.answer, "the streamed bracket is the library's bracket"
+    json.dumps(res)
+
+
+def test_harness_swarm_both_modes_and_entrant_cap(tmp_path, monkeypatch):
+    h, _ = _world(tmp_path)
+    seen = {}
+    _scripted(monkeypatch, seen)
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2))  # default mode: both
+    assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "selecting", "tournament", "tournament", "tournament", "tournament", "done"]
+    res = evs[-1]["result"]
+    assert seen["selected"] and res["meta"]["selector_final"] == "1" and res["tournament"] == "5"
+    assert res["final"] == "5", "in both modes final follows the bracket; the selector's pick is kept for comparison"
+
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="tournament", max_entrants=2))
+    rounds = [e for e in evs if e.get("stage") == "tournament"]
+    assert rounds[0]["entrants"] == ["1", "2"] and rounds[0]["n_rounds_expected"] == 1 and len(rounds) == 2
+    assert evs[-1]["result"]["tournament"] == "2" and evs[-1]["result"]["meta"]["n_entrants"] == 2
+
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="select"))
+    assert "tournament" not in [e.get("stage") for e in evs] and evs[-1]["result"]["final"] == "1"
+    with pytest.raises(RuntimeError, match="mode"):
+        list(h.swarm("A", "q", mode="vote"))
+
+
+def test_harness_swarm_tournament_cancel_at_round_boundary(tmp_path, monkeypatch):
+    h, _ = _world(tmp_path)
+    seen = {}
+    _scripted(monkeypatch, seen)
+    calls = {"n": 0}
+
+    def stop_after(n):
+        def should_stop():
+            calls["n"] += 1
+            return calls["n"] > n
+        return should_stop
+
+    # tournament mode: the check before round 1 passes, the one before round 2 cancels
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="tournament", should_stop=stop_after(1)))
+    assert [(e.get("stage"), e.get("round")) for e in evs] == [("sampling", None), ("collapsed", None), ("tournament", 0), ("tournament", 1), ("done", None)]
+    res = evs[-1]["result"]
+    assert res["meta"]["cancelled"] and not res["meta"]["tournament_complete"] and len(seen["compare"]) == 1
+    assert len(res["rounds"]) == 1 and res["tournament"] is None
+    assert res["final"] == res["verified_majority"] == "1", "no champion: the verified majority, as in the library"
+
+    # both: a cancel before the selector skips the bracket too
+    calls["n"], seen = 0, {}
+    _scripted(monkeypatch, seen)
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="both", should_stop=stop_after(0)))
+    assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "done"] and "compare" not in seen and "selected" not in seen
+    assert evs[-1]["result"]["meta"]["cancelled"] and evs[-1]["result"]["final"] == "1"
+
+    # both: selector runs (check 1), round 1 runs (check 2), cancel before round 2
+    calls["n"], seen = 0, {}
+    _scripted(monkeypatch, seen)
+    evs = list(h.swarm("A", "What is it?", k=6, seed=2, mode="both", should_stop=stop_after(2)))
+    assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "selecting", "tournament", "tournament", "done"]
+    res = evs[-1]["result"]
+    assert seen["selected"] and len(res["rounds"]) == 1 and res["tournament"] is None and res["meta"]["selector_final"] == "1"

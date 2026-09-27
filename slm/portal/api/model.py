@@ -46,7 +46,8 @@ class GenerateRequest(BaseModel):
 
 
 class SwarmRequest(BaseModel):
-    """Swarm inference (slm.swarm.swarm_answer): k samples, collapsed by answer, one selector pass."""
+    """Swarm inference (slm.swarm.swarm_answer): k samples, collapsed by answer, then one selector pass and/or a pairwise
+    single-elimination bracket over the distinct answers (`mode`)."""
     slot: Literal["A", "B"] = "A"
     text: str = ""  # the task prompt
     k: int = Field(16, ge=1, le=64)
@@ -58,6 +59,9 @@ class SwarmRequest(BaseModel):
     budget_tokens: int = Field(2400, ge=200, le=8192)  # selector prompt budget
     max_groups: int = Field(12, ge=1, le=64)
     answer_suffix: bool = True  # append slm.data.answers.SUFFIX (the '#### <number>' instruction) to the sampling prompt
+    mode: Literal["select", "tournament", "both"] = "both"  # selector prompt, pairwise bracket, or both (final follows the bracket)
+    pair_budget_tokens: int = Field(1200, ge=200, le=8192)  # pairwise prompt budget (tournament)
+    max_entrants: int = Field(16, ge=2, le=64)  # the bracket takes the first max_entrants groups (evidence order)
 
 
 class ScoreRequest(BaseModel):
@@ -199,8 +203,9 @@ async def generate(request: Request, body: GenerateRequest):
 @router.post("/swarm")
 async def swarm(request: Request, body: SwarmRequest):
     """Swarm inference on one slot (slm.swarm), as SSE: `stage` events (sampling, collapsed with the groups,
-    selecting), then `done` with the whole SwarmResult dict. Cancel (POST /streams/{id}/cancel) takes effect at
-    the next stage boundary; the k samples are one batch."""
+    selecting, then tournament: round 0 = the seeded entrants, one event per decided round with its matches), then
+    `done` with the whole SwarmResult dict. Cancel (POST /streams/{id}/cancel) takes effect at the next stage boundary
+    or bracket round; the k samples are one batch."""
     if not body.text.strip():
         raise HTTPException(422, "text (the task prompt) is empty")
     w = request.app.state.worker

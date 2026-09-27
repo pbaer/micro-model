@@ -83,7 +83,9 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 - `tests/test_portal_live.py`: SSE tail against a real uvicorn server.
 - `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU.
 - `tests/test_portal_swarm.py`: `/api/model/swarm` validation and SSE shape against a stub worker, `Harness.swarm` stages
-  with scripted sampling/selection (incl. cancel), and one real pass on a tiny CPU model.
+  with scripted sampling/selection (incl. cancel), the tournament path with a scripted `compare_batch` (round events,
+  bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), and one real pass
+  on a tiny CPU model.
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
   button clicked, every select cycled; no JS errors, no hangs, no raw template text.
 - `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
@@ -139,7 +141,8 @@ same pipeline `scripts/swarm_eval.py` measures, stage for stage and with the sam
   shows pass@k, verified pass@k, in-prompt and selector for this one task (client-side match, close to but not the
   eval's verifier).
 - **API**: `POST /api/model/swarm` with `{slot, text, k, temperature, top_p, max_new_tokens, max_calls, seed,
-  budget_tokens, max_groups, answer_suffix}` (validated: k <= 64, max_calls <= 16, non-empty text). SSE events:
+  budget_tokens, max_groups, answer_suffix, mode, pair_budget_tokens, max_entrants}` (validated: k <= 64, max_calls <= 16,
+  non-empty text, mode one of select / tournament / both, max_entrants 2-64; the tournament fields are described below). SSE events:
   `start` (stream id), `stage` (`sampling`; `collapsed` with the groups, majority and verified majority; `selecting`
   with the selector prompt's token count), `done` with the whole `SwarmResult.to_dict()` plus a per-candidate
   `verified` flag and `meta` (seed, settings, `cancelled`, `selector_parsed`, `groups_in_prompt`, `prompt_tokens`).
@@ -148,7 +151,49 @@ same pipeline `scripts/swarm_eval.py` measures, stage for stage and with the sam
 - **Cost**: the KV cache grows with k × (prompt + max new tokens). On CPU a 149M model does k=8 × 160 tokens in
   seconds; on a GPU shared with a training run, keep k and max new modest.
 - Info cards: `swarm`, `swarm_k`, `swarm_suffix`, `swarm_support`, `swarm_majority`, `swarm_selector`, `swarm_budget`,
-  `swarm_oracle`.
+  `swarm_oracle`, and for the bracket `swarm_tournament`, `swarm_seeding`, `swarm_swap`, `swarm_fallback`, `swarm_bracket`.
+
+### Tournament selection (2026-09-27)
+
+`slm.swarm.tournament` picks among the distinct answers with a **pairwise single-elimination bracket** instead of (or
+next to) the one-prompt selector: each match is a two-answer prompt (`pair_messages`, answer A / answer B with support,
+provenance and a short rationale, reply `#### A` or `#### B`), one greedy batch per round. A binary comparison is the
+easiest decision a small model can be asked for; picking one of twelve is not.
+
+- **Mode control** ("pick by"): *select* (the selector only), *tournament* (the bracket only), *both* (default: both run,
+  the final answer follows the bracket as in `swarm_answer(mode="both")`, the selector's pick is shown next to it). The
+  selector budget / max groups inputs show when the selector runs, pair budget (1200 tokens) and max entrants (16,
+  2-64) when the bracket does. The stage strip becomes sample k → collapse → select → tournament r/n → done.
+- **Bracket rules** (the library's, replicated round by round in `Harness._tournament_rounds` so each round streams):
+  the entrants are the first `max_entrants` groups in evidence order (verified support, then support); each round pairs
+  first against last (`seed_pairs`), the middle entrant of an odd count gets a bye; the 2nd, 4th, ... pair of every
+  round is presented swapped (the better seed as B) so position bias cancels; a comparison with no parsable pick falls
+  back to the evidence order (verified, then support, ties to A); the next round is the winners then the bye. A
+  seeded run in the portal and `swarm_answer` produce the same bracket (a test compares the two with a scripted
+  `compare`).
+- **Bracket diagram** (`Bracket` in `components/swarm.js`): columns = rounds, then the champion; each match box shows
+  its id (R1 M2), the two rows in the order the model saw them (A on top) with seed, answer, support (×n) and verified
+  count (✓n), the ⇄ swapped marker, "picked A/B" or "no pick → evidence"; the winner row is green, the loser struck
+  through; byes are dashed boxes; elbow lines connect each entrant to the box it came from, the champion's path in blue.
+  The seeding is drawn as soon as the groups arrive (the client replays `seed_pairs` from the groups and max entrants
+  and checks it against the server's round logs), undecided rounds show "winner of R1 M2" placeholders, and each round
+  event fills its column in (a short slide-in animation; the column being decided pulses). Tags mark the majority,
+  verified majority, the selector's pick (both mode) and the expected answer wherever they appear, so it is visible
+  where each was eliminated. The box scrolls horizontally on narrow screens.
+- **Comparison**: the final-answer panel lists tournament, selector (both mode), majority and verified majority (each
+  with yes/no against the expected answer); in both mode a banner says whether the selector and the tournament agree,
+  and if not, in which match the selector's pick lost and to what. The groups table gains a *bracket* column (champion,
+  "lost R2 to X", "(evidence)" when the fallback decided it, "not entered" beyond max entrants); the ceilings table gains
+  *in bracket* and *tournament* rows.
+- **API**: `SwarmRequest` adds `mode` (`select` | `tournament` | `both`, default `both`), `pair_budget_tokens` (1200,
+  200-8192) and `max_entrants` (16, 2-64). Extra SSE `stage` events with `stage: "tournament"`: `round: 0` once the
+  bracket is seeded (`entrants` in seed order, `matches: []`, `n_rounds_expected`), then `round: 1..n` per decided round
+  with `matches` (exactly the library's `{a, b, swapped, pick, winner}` log, `pick` 0 = A, 1 = B, null = fallback),
+  `entrants` going in, `byes` and `seconds`. `done`'s result carries `tournament` (the champion or null), `rounds`, and
+  `meta` gains `mode`, `pair_budget_tokens`, `max_entrants`, `n_entrants`, `n_rounds_expected`, `tournament_complete`
+  and `selector_final` (the selector's parsed pick, null when it gave none or did not run). Cancel is honoured before
+  the selector and at every round boundary; the decided rounds are kept and, with no champion, the final answer is the
+  verified majority (the library's rule).
 
 ## Eval tab (2026-09-26)
 
