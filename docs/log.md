@@ -800,3 +800,12 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   are listed in §19 for Peter. Also: the pairwise SFT on rl6 final.pt had val loss 1.026 vs 1.016 -- the format SFT
   costs chat again, and this time no anchored RL ran long enough to repair it, so `m9_pair`/`m9_rl7` are not
   candidates for anything and will be pruned.
+- Comparison models (§20 when all seven are in): SmolLM2-360M-Instruct measured first. Its needle read 0% at
+  every length: on a raw completion haystack its top token after "Answer:" is `<|im_end|>` in bf16, eager and
+  fp32 alike -- a chat model ending its turn, not a numerics bug (135M-Instruct happened to answer). Chat
+  models now see the haystack as one user turn of their own template (`HfChatModel.chat_frame`, exact length
+  control) with a 24-token sentence budget; both instruct models then answer at 1024 and 4096. The three chat
+  models' needle runs are queued to be redone after the chain (`scripts/needle_external_rerun.sh`).
+  Judged (Sonnet, blind): SmolLM2-360M-Instruct 4.4 overall on our suite vs our 4.11; facts probe 86% vs 71%;
+  multi-turn recall 0.734 vs 0.609; HellaSwag(n) 52.2 vs 42.9 -- but ARC-Easy 56.2 vs 57.0 and SciQ 72.7 vs
+  83.1 in our favour, and its strict-format GSM8K is 0.005 (0.075 counting the last number) vs our 0.085.
