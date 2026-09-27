@@ -772,3 +772,24 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   columns, score-only cells with a hover card, and per-cell detail pages (0df5406) that show prompts,
   responses, gold, verdicts, tool calls and judge rubric scores wherever the result files kept per-item
   data, and say so where an eval saved only aggregates (lm-eval, the 336M reasoning files).
+
+## 2026-09-27 — run 6 is the M9 output; the selector verdict; the tournament redesign; local competitors
+
+- Run 6 measured (§18): the single-prompt selector never beat majority at any checkpoint (SFT or RL), so that
+  design is closed. But run 6 final.pt is better than the M9 output on the hard suite (greedy GSM8K 0.03 ->
+  0.085 at 0.90 tool use, SVAMP tool use 0.96, multi-turn recall 0.609, misfire 0, reasoning mean 0.769) and
+  judged **4.11** (facts 4.46, task 4.45, project bests; pattern down 4.33 -> 3.50). **M9 output is now
+  `runs/m9_rl6_336m/checkpoints/final.pt`.** The selection SFT alone had cost judged 4.07 -> 3.23 (facts 1.88);
+  run 6's chat anchor repaired all of it. Backup and prune lists updated.
+- Peter's redesign for goal 5: a single-elimination tournament of pairwise comparisons (32 in parallel, then 16,
+  8, ...), and the selector retrained for the pairwise decision. Built `slm.swarm.tournament` (seeded bracket,
+  every other pair presented swapped, evidence fallback), `--mode both` in the swarm eval, pairwise SFT/RL data
+  from the saved pools (322 SFT pairs / 337 RL pairs, balanced), `scripts/pair_eval.py` for the atomic decision,
+  configs `m9_pair_336m` (v3 SFT recipe on rl6 final.pt) and `m9_rl7_336m` (run 6's mix, `pair` x3), and
+  `scripts/pair_chain.sh` (untrained pair accuracy -> SFT -> pair accuracy + swarm both modes -> RL 7 -> hard
+  suite). Portal: tournament bracket in swarm mode (subagent).
+- Peter's second ask: similarly sized open-source models run *locally in our harness* on every suite, as Evals
+  rows. Chosen: SmolLM2-135M / 360M (base + Instruct, same data family as ours), Qwen2.5-0.5B (base + Instruct),
+  gpt2-medium (a 2019 floor). Weights downloaded once like the datasets, offline at run time; anything that
+  depends on our tool protocol is n/a for them. Harness by an Opus subagent (`slm/eval/external.py`,
+  `--external`), GPU runs queued behind the tournament chain.

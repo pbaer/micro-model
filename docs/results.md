@@ -1072,3 +1072,50 @@ What it says:
 
 Crash note: the first attempt died at GSM8K problem 50 when a runaway sample produced a 400-digit number and
 `float()` overflowed in `answer_key` (9b038ce guards it). The eval's numbers above are from the rerun.
+
+## 18. Selection SFT + RL run 6: the single-prompt selector learns nothing, run 6 is the new M9 output (2026-09-26/27)
+
+The plan after §17: teach the swarm's single-prompt selector (`selector_messages`: every distinct answer with support
+and provenance, pick one) with a format SFT on the model's own pools (`slm.rl.synth_select`), then an RL `select`
+family. The SFT took three tries (log, 2026-09-26 evening): the first two learned the set's conditional tokens and
+never moved the first think token; v3 (40M tokens, lr 1.5e-5, the set at 0.15, on half the correct pools, the other
+half the RL family's) installed the format. `m9_rl6_336m` = run 5's mix + `select` x3/20, binary reward, from that
+SFT (`runs/m9_select_336m`, kept as v3; v1/v2 deleted).
+
+### Swarm evals, k=16, n=50 each (`scripts/swarm_eval.py`)
+
+| checkpoint | set | greedy | majority | verified maj. | selector | oracle | oracle verified | in prompt |
+|---|---|---|---|---|---|---|---|---|
+| rl5 step 200 (§17, untrained selector) | GSM8K | 0.00 | 0.06 | 0.08 | 0.06 | 0.30 | 0.20 | 0.30 |
+| | SVAMP | 0.10 | 0.14 | 0.12 | 0.10 | 0.58 | 0.50 | 0.54 |
+| select SFT v3 (= rl6 best.pt, step 0) | GSM8K | 0.06 | 0.06 | 0.06 | 0.04 | 0.26 | 0.18 | 0.22 |
+| | SVAMP | 0.08 | 0.12 | 0.12 | 0.10 | 0.50 | 0.42 | 0.48 |
+| rl6 step 100 | GSM8K | 0.02 | 0.08 | 0.10 | 0.06 | 0.30 | 0.28 | 0.30 |
+| | SVAMP | 0.10 | 0.16 | 0.16 | 0.14 | 0.46 | 0.44 | 0.46 |
+| **rl6 final (step 250)** | GSM8K | **0.10** | 0.10 | 0.10 | 0.04 | 0.36 | 0.32 | 0.30 |
+| | SVAMP | 0.08 | 0.14 | 0.14 | 0.08 | 0.48 | 0.48 | 0.48 |
+
+The selector never rises above majority at any checkpoint (right pick in 2 of 11 / 4 of 24 in-prompt cases for the
+SFT, versus 3/15 and 5/27 untrained), never calls the tool, and RL's `select` reward stayed at the family's ceiling
+(0.24 / 0.18 / 0.28 / 0.19 / 0.11 by 50-step window; only 25% of its pool holds a correct group). Verdict: a
+template that *announces* a pick teaches the template, not the choice, and "one of twelve" is not a decision a 336M
+model learns from 185 examples. Peter's redesign, a pairwise tournament, is §19.
+
+### The hard suite: run 6 is the new M9 output
+
+| | reasoning mean | GSM8K | SVAMP | algebra | word | mt recall | mt format | misfire | facts | HellaSwag(n) | ARC-E | needle | judged |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| rl5 step 200 (M9 output until now) | 0.757 | 0.03 / 0.74 | 0.10 / 0.84 | 1.00 / 1.00 | 1.00 / 1.00 | 0.562 | 0.938 | 0.000 | 71.6% | 42.5 | 57.6 | 3072 | 4.07 |
+| select SFT v3 (rl6 best.pt) | 0.755 | 0.05 / 0.66 | 0.06 / 0.69 | 1.00 / 1.00 | 0.97 / 0.81 | 0.531 | -- | 0.016 | 74.2% | 43.1 | 57.5 | 4096 | 3.23 |
+| **rl6 final.pt** | **0.769** | **0.085 / 0.90** | 0.10 / **0.96** | 1.00 / 1.00 | 0.99 / 1.00 | **0.609** | -- | 0.000 | 70.6% | 42.9 | 57.0 | 3072 | **4.11** |
+
+(accuracy / tool-use rate; judged = claude-sonnet-5 on the blind v1 suite.) Two things in the same run: the format SFT
+alone cost judged 4.07 -> 3.23 (facts 3.88 -> 1.88, definition 4.00 -> 2.50), and run 6's rewards -- the chat anchor
+above all -- brought it back to **4.11** (facts 4.46, task 4.45, the project's best overall; pattern 4.33 -> 3.50 is
+the one category down). Greedy GSM8K nearly tripled (0.03 -> 0.085) with tool use 0.74 -> 0.90, and SVAMP tool use
+0.84 -> 0.96: the `gsm8k` reward with the select prompts' word problems in the mix did what §16a did for algebra.
+Multi-turn recall 0.609 is the best measured. Benchmarks and needle tied; facts probe 70.6% vs 71.6% is inside noise.
+
+**Decision: `runs/m9_rl6_336m/checkpoints/final.pt` is the M9 output** (fifth application of the hard-suite-then-judge
+check: an upgrade). The selection SFT contributed nothing the selector could use, but the RL run it was built for
+did; and the SFT's chat damage being fully repaired by RL says the format-then-anchor order is safe to reuse (§19).

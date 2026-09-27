@@ -24,11 +24,11 @@ enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so
 ## Status, 2026-09-26
 
 M8 (the 336M base) and M9 (its post-training chain) are complete. The current model is
-**`runs/m9_rl5_336m/checkpoints/best.pt`** (GRPO with a chat anchor and the math families trained in the mix,
-2026-09-26; `results.md` §16). Numbers in `results.md`
+**`runs/m9_rl6_336m/checkpoints/final.pt`** (GRPO run 6: run 5's recipe plus the swarm's word-problem pools,
+2026-09-27; `results.md` §18). Numbers in `results.md`
 §10-14, narrative in `log.md`.
 
-Known state: judged quality **4.07** (step 200; correctness and pattern project bests), tool misfire 0.04, HellaSwag 42.5 (norm), ARC-Easy 57.6, PIQA 66.8, LAMBADA 33.0, OpenBookQA 30.6 (norm), SciQ 83.1, facts probe 71.6%, multi-turn recall 0.562 / format 0.938, effective context **3072**, reasoning mean 0.755 with **100% tool use** on algebra/arith/word, SVAMP 0.09 (0.84 tool use), GSM8K 0.04 greedy but 0.33-0.37 pass@32 with majority vote near useless -- the swarm question is selection by a verifier. MMLU at chance and not tracked.
+Known state (M9 output = `runs/m9_rl6_336m/checkpoints/final.pt`, 2026-09-27): judged quality **4.11** (facts and task project bests), tool misfire 0.00, HellaSwag 42.9 (norm), ARC-Easy 57.0, facts probe 70.6%, multi-turn recall **0.609** / misfire 0, effective context **3072**, reasoning mean 0.769 with **100% tool use** on algebra/arith/word, SVAMP 0.10 (0.96 tool use), GSM8K **0.085** greedy (0.90 tool use), pass@16 0.36 / 0.48 (GSM8K / SVAMP) with majority vote and the single-prompt selector both near greedy -- selection is the swarm's open problem (§18-19). MMLU at chance and not tracked.
 
 ## After the base (in order)
 
@@ -127,12 +127,13 @@ context-extended base once the curriculum settles.
    quality (run 3); widening the tool reward gap does not fix the tool-use cost (run 4); training the
    out-of-mix families in the mix does, completely (run 5). Recipe settled: verifiable rewards for every
    behaviour you want including the negative ones, and every contested surface form inside the mix.
-2b. **Goal 5, the swarm** — in progress (2026-09-26). Design settled with Peter: k parallel samples, collapse by
-   answer with sandbox evidence, then the *same* model selects from a compact prompt (no second model, per
-   goal 1). Built: `slm/swarm.py`, `scripts/swarm_eval.py` (ceilings), `slm/rl/synth_select.py` (selection SFT
-   set + RL `select` family), configs `m9_select_336m` / `m9_rl6_336m`; the chain is running
-   (`scripts/after_swarm_eval.sh`). Open: the trained selector's gain over `verified_majority`, and the portal's
-   swarm mode (subagent, in flight). Results in `docs/results.md` §17.
+2b. **Goal 5, the swarm** — in progress. Round 1 (2026-09-26, §17-18): sample / collapse / verify / single-prompt
+   select; the selector never beat majority, trained or not, though the RL run built for it (run 6) became the
+   M9 output. Round 2 (2026-09-27, Peter's redesign, §19): a single-elimination **tournament** of pairwise
+   comparisons (`slm.swarm.tournament`), pairwise SFT + RL `pair` family (`m9_pair_336m`, `m9_rl7_336m`,
+   `scripts/pair_chain.sh` running). Portal swarm mode shows both paths.
+2c. **Local competitor models** (2026-09-27, Peter): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
+   gpt2-medium run locally through our evals (`slm/eval/external.py`, `--external`), rows in the Evals tab.
 3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,
    an answer-style convention that does not leak terse templates into chat, and narrative/Gutenberg prose
    (the current base has never seen long-form fiction).

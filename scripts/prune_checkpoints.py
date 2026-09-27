@@ -43,7 +43,7 @@ NO_KEEP = {"m6_rl_gsm_tools_try1_149m", "m8_base_4k_336m_stub"}
 # Checkpoints kept by name beyond final/best: a run's chosen output when it is a milestone snapshot rather than
 # best.pt. m9_rl5_336m step 200 is the M9 output (results.md 16e): judged 4.07 and multi-turn recall 0.562
 # against best.pt's 3.84 / 0.484, everything else tied.
-KEEP_EXTRA = {"m9_rl5_336m": {"step_00200.pt"}}
+KEEP_EXTRA = {"m9_rl5_336m": {"step_00200.pt"}, "m9_rl6_336m": {"final.pt"}}
 
 
 def classify(run: Path) -> tuple[list[Path], list[Path]]:
