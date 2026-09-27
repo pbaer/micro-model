@@ -37,7 +37,7 @@ portal never launches training.
 | Evals (`#/evals`) | One table: rows = every checkpoint with at least one result file, columns = the public benchmarks (lm-eval) and the homebrew evals (facts, reasoning families, multi-turn, needle, judged, pass@k, swarm) under group headers; cells coloured per column from red (worst) to green (best), grey n/a. Details in "Eval tab" below. |
 | Data (`#/data`) | **Recipes** (default): one row per training config and per run, by stage, with a marker where the yaml no longer matches what the run started with. A recipe (`#/data/recipes/<id>`, id = `run:<name>` or `config:<path>`) is the mixture table with weight, planned and available tokens, epochs (red above 1.5), the loader's own per-source consumption when the checkpoint records carry it, the `extra_val_mixture` drift set, and for RL a prompt/reward panel with the deterministic prompt list (rendered as the exact generation prompt) and, for a run, a rollouts viewer (step selector, prompt + completion chips, reward, parsed answer, malformed flag). Clicking a mixture row opens the inspector: **raw** (a parquet row of the source it was prepared from, with a *trace* that re-runs the preparation filters and reports kept/dropped and the split), **prepared** (the stored document, or the stored SFT example with green loss-mask chips), **row** (a training row of exactly `seq_len + 1` tokens with red document — or SFT example — boundaries and the target count). **Compare** (`#/data/compare/<a>/<b>`, client-side from two recipe payloads): header diff and the union of sources with weight A / B, the delta in percentage points, planned tokens and epochs; a run's default pairing is its `init_from` parent. **Chain** (`#/data/chain/run:<name>`): the `init_from` walk back to the root, one row per stage with tokens used and per-source tokens (the loader's own counters where the run logged them, `tokens x weight` otherwise — the row says which), a totals row and a stacked bar. **Catalog** (`#/data/catalog`) lists every raw, tokenized and chat-formatted set, with unused and `*-v1` sets behind a "show unused" toggle; `#/data/source/<name>` carries raw files, prepared artifacts per tag, provenance both ways, the recipes that use it with their weights, and a **browse** panel with the old documents browser (tokenizer tag / source / split / shard or parquet file / row group; text, tokens or ids; `window`; `stats` with length percentiles and long-doc counts). The list and preview fill the viewport. |
 | Tokenizer | Playground: encode text in document or chat mode, coloured chips with offsets and ids, vocabulary lookup. |
-| Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, raw-text vs tokens view (reserved tokens stay visible), prompt scoring, cancel, release GPU. |
+| Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, raw-text vs tokens view (reserved tokens stay visible), prompt scoring, cancel, release GPU. |
 | Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs measured benchmark, LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
 
 ## Info cards (`components/info.js`, `components/cards.js`)
@@ -68,7 +68,7 @@ there is no room below) and rendered only while open, so it never shifts the lay
 `/data/tokenized/{tag}/{source}/{split}/shards|docs|doc|window|stats`,
 `/data/sft/{tag}/{set}/{split}/shards|examples|example|window|stats` · tokenizer: `GET /tokenizers`,
 `POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/token/{i}` · model:
-`GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints`, `POST /model/slots/{slot}/load|unload`,
+`GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints` (ours, then the external models), `POST /model/slots/{slot}/load|unload`,
 `POST /model/score`, `POST /model/generate` (SSE), `POST /model/swarm` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
 arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 
@@ -81,11 +81,13 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
   split by block size, facts / needle / multi-turn / pass@k / swarm rows, lm-eval aggregate-only with two sources and a
   log tail, verdict filter, search, paging, 404s, the file-size cap, mtime cache) and `/api/evals/detail`.
 - `tests/test_portal_live.py`: SSE tail against a real uvicorn server.
-- `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU.
+- `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU; external slots with a stubbed `HfChatModel`
+  behind an in-process worker (`tests/_ext_stub.py`: the listing, loading, streamed completion and chat, the refusals),
+  and a real CPU smoke test (SmolLM2-135M-Instruct through the worker subprocess, skipped when the weights are absent).
 - `tests/test_portal_swarm.py`: `/api/model/swarm` validation and SSE shape against a stub worker, `Harness.swarm` stages
   with scripted sampling/selection (incl. cancel), the tournament path with a scripted `compare_batch` (round events,
-  bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), and one real pass
-  on a tiny CPU model.
+  bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), one real pass
+  on a tiny CPU model, and an external slot's swarm (stubbed model: own template, verification n/a, majority fallback).
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
   button clicked, every select cycled; no JS errors, no hangs, no raw template text.
 - `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
@@ -194,6 +196,47 @@ easiest decision a small model can be asked for; picking one of twelve is not.
   and `selector_final` (the selector's parsed pick, null when it gave none or did not run). Cancel is honoured before
   the selector and at every round boundary; the decided rounds are kept and, with no champion, the final answer is the
   verified majority (the library's rule).
+
+## Inference page: external models in a slot (2026-09-27)
+
+Either slot can hold one of the local open-weight comparison models (`slm.eval.external`: SmolLM2-135M/360M base and
+Instruct, Qwen2.5-0.5B base and Instruct, GPT-2 medium) instead of one of our checkpoints, so the same prompt can be run
+through both side by side. Purely local: weights load from `<data root>/models/<name>/` with the offline switches on;
+a model whose weights are missing is listed but cannot be loaded (`python -m slm.eval.external download <name>`).
+
+- **Loading**: `GET /api/model/checkpoints` returns our checkpoints, then one entry per registered model with
+  `external: true`, `group: "external models"`, `path: "external:<name>"`, `hf_id`, `params`, `license`, `is_chat`,
+  `context` (position table size), `train_tokens`, `notes`, `available` (weights on disk). The dropdown shows them as
+  a second `<optgroup>` (missing ones disabled). `POST /api/model/slots/{slot}/load` with `checkpoint: "external:<name>"`
+  (404 for an unknown name or missing weights) goes through the same GPU guard as ours; `Harness.load` calls
+  `load_external` on the chosen device, bf16 on cuda (or the requested dtype), fp32 on cpu. The slot info carries
+  `external: true`, `stage: "external"` and the registry fields; the slot card shows the orange *external* badge, the
+  hf id, params, license, chat/base, context and device/dtype, and one line on what the slot supports. Unload drops the
+  model, runs `gc.collect()` and `torch.cuda.empty_cache()`.
+- **Generation** (`Harness._generate_external`, the same `prompt` / `token` / `done` events): completion mode for every
+  model (the text encoded with the model's own tokenizer, no BOS); chat mode through the model's own chat template for
+  chat models, refused for a base model with an error (a template is never invented). Tokens stream through
+  `HfChatModel.stream_ids` (our sampler and seeding, identical ids to `generate_ids`), pieces are decoded incrementally
+  (a character split across byte-level BPE ids shows up once complete, the ids before it as empty chips), special
+  tokens such as `<|im_end|>` stay visible, and log-prob / rank / entropy / top-k are the model's own over its own
+  vocabulary. A chat reply that ends on a stop token is appended to the conversation as text (no think span, no ids).
+  Our protocol does not apply: `tools`, `functions` and `think_required` are refused with an error naming the option;
+  in the UI the python tool and force-think checkboxes are greyed out and the declared-functions box disabled while an
+  external slot is part of the run (A, or A and B side by side), and the three are sent off. `session_id` is ignored.
+  Teacher-forced scoring and diagnostics are n/a (an error; the score button is disabled for an external slot A).
+- **Swarm** (`Harness.swarm`, same stages and events): chat models only. The k replies are one `batch_generate_chat`
+  batch through the model's own template (task + answer instruction, the same seed), `#### <answer>` is parsed with
+  `parse_final_span` and grouped with `slm.swarm.collapse`; a reply has no think span, so each group's rationale is its
+  shortest member's reply up to the `####` line. The selector (`selector_messages`) and each tournament round
+  (`pair_messages`, one batch per round) go through the same template as the user message, greedy; the prompt budgets
+  are measured with the model's tokenizer. There is no sandbox, so **verification is n/a**: events carry
+  `verification: "n/a"` and `external: true`; `n_verified`, `verified_majority` and each candidate's `verified` are
+  null; `meta.verification` is `"n/a"` (`"sandbox"` for ours) and `meta.max_calls` 0; every fallback that uses the
+  verified majority for ours uses the plain majority. The panel shows a notice with the badge, greys out max tool calls,
+  and shows n/a for verified counts, the verified majority, the verified oracle and the candidates' badge. A base model
+  is refused.
+- Info card `external_slot`: what an external slot is and where it is not apples-to-apples (tokenizer and token-level
+  numbers, chat template and its default system prompt, no tool protocol, no verification, scoring n/a).
 
 ## Eval tab (2026-09-26)
 

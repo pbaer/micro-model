@@ -124,7 +124,7 @@ function EntrantRow({ slot, label, info, state, tags }) {
   </div>`;
 }
 
-export function Bracket({ groups, entrants, rounds, running, champion, marks }) {
+export function Bracket({ groups, entrants, rounds, running, champion, marks, external }) {
   const info = {};
   groups.forEach((g, i) => { info[g.answer] = { seed: i + 1, support: g.support, verified: g.verified }; });
   const br = buildBracket(entrants, rounds);
@@ -177,7 +177,7 @@ export function Bracket({ groups, entrants, rounds, running, champion, marks }) 
     }))}
     <div class=${"br-item champ" + (champion != null ? " decided" : "")} style=${`left:${L.champ.x}px;top:${L.champ.y}px;width:${COL_W}px;height:${L.champ.h}px`} key=${"champ-" + champion}>
       ${champion != null ? html`<div class="br-champ-v">${champion}</div>
-        <div class="muted">seed #${champInfo.seed ?? "?"} · support ${champInfo.support ?? "?"}${champInfo.verified ? ` · verified ${champInfo.verified}` : " · not computed"} ${tagsFor(champion).map((t) => html`<span class=${"br-tag " + t[0]} key=${t[0]}>${t[1]}</span>`)}</div>`
+        <div class="muted">seed #${champInfo.seed ?? "?"} · support ${champInfo.support ?? "?"}${champInfo.verified ? ` · verified ${champInfo.verified}` : external ? " · verification n/a" : " · not computed"} ${tagsFor(champion).map((t) => html`<span class=${"br-tag " + t[0]} key=${t[0]}>${t[1]}</span>`)}</div>`
         : html`<div class="muted" style="padding:8px">${running ? "to be decided" : "no champion"}</div>`}
     </div>
   </div></div>`;
@@ -188,7 +188,7 @@ function Candidate({ c }) {
   return html`<div class="swarm-cand">
     <div class="row" style="gap:6px">
       <b>#${c.idx}</b>
-      ${c.verified ? html`<span class="stage-badge rl">verified</span>` : c.from_tool ? html`<span class="stage-badge reasoning" title="the answer came out of a call, but a call in this attempt errored">from tool, with errors</span>` : html`<span class="stage-badge">not computed</span>`}
+      ${c.verified == null ? html`<span class="stage-badge external" title="external model: no sandbox, so no verification">verification n/a</span>` : c.verified ? html`<span class="stage-badge rl">verified</span>` : c.from_tool ? html`<span class="stage-badge reasoning" title="the answer came out of a call, but a call in this attempt errored">from tool, with errors</span>` : html`<span class="stage-badge">not computed</span>`}
       <span class="muted">${c.n_tokens} tokens · ${c.n_calls} call${c.n_calls === 1 ? "" : "s"}${c.n_errors ? ` (${c.n_errors} errored)` : ""}${c.terminated ? "" : " · did not close the turn"}</span>
     </div>
     ${c.think != null && html`<pre class="think">${c.think}</pre>`}
@@ -204,12 +204,12 @@ const fateText = (f, champion, finished) => {
   return html`<span class="muted">${finished ? "-" : "still in"}</span>`;
 };
 
-function GroupRow({ g, cands, flags, open, toggle, gold, showPrompt, showBracket }) {
+function GroupRow({ g, cands, flags, open, toggle, gold, showPrompt, showBracket, external }) {
   const correct = gold != null ? answerKey(g.answer) === gold : null;
   const ncol = 5 + (showPrompt ? 1 : 0) + (showBracket ? 1 : 0);
   return html`<tr class=${"click" + (flags.final ? " sel" : "")} onClick=${toggle}>
       <td><b>${g.answer}</b> ${flags.final ? html`<span class="stage-badge rl">final</span>` : ""}${flags.majority ? html`<span class="stage-badge">majority</span>` : ""}${flags.vmaj ? html`<span class="stage-badge sft">verified maj.</span>` : ""}${flags.selector ? html`<span class="stage-badge reasoning">selector</span>` : ""}${correct ? html`<span class="stage-badge rl">expected</span>` : ""}</td>
-      <td>${g.support}</td><td>${g.verified}</td>
+      <td>${g.support}</td><td>${external ? html`<span class="muted">n/a</span>` : g.verified}</td>
       ${showPrompt && html`<td><${Mark} ok=${flags.inPrompt} /></td>`}
       ${showBracket && html`<td class="l">${flags.fate}</td>`}
       <td class="l" style="min-width:260px">${g.rationale ? html`<span class="swarm-rationale">${g.rationale}</span>` : html`<span class="muted">(no think span)</span>`}</td>
@@ -241,6 +241,8 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
   const set = (k, v) => setP({ ...p, [k]: v });
   const num = (k, attrs = {}) => html`<input type="number" value=${p[k]} onChange=${(e) => set(k, Number(e.target.value))} style="width:70px" ...${attrs} />`;
   const loaded = slots[p.slot] && slots[p.slot].checkpoint;
+  const slotInfo = slots[p.slot] || {};
+  const extSlot = !!slotInfo.external, extBase = extSlot && !slotInfo.is_chat;  // an external base model has no chat template: n/a
 
   const run = async () => {
     onError(null); setRes(null); setCollapsed(null); setSeeded(null); setRounds([]); setOpen({}); setShowUnparsed(false);
@@ -295,11 +297,13 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
   const selGroup = selectorPick != null ? groups.find((g) => answerKey(g.answer) === answerKey(selectorPick)) : null;
   const selFate = selGroup ? fate[selGroup.answer] : null;
 
+  const fbName = res && res.meta.external ? "majority (verification n/a)" : "verified majority";
   const finalSource = !res ? "" : !res.groups.length ? "no candidate produced a parsable answer"
-    : mode === "select" ? (res.meta.cancelled ? "cancelled before the selector ran: verified majority" : res.meta.selector_parsed ? "picked by the selector" : "the selector gave no '####' line: verified majority")
+    : mode === "select" ? (res.meta.cancelled ? `cancelled before the selector ran: ${fbName}` : res.meta.selector_parsed ? "picked by the selector" : `the selector gave no '####' line: ${fbName}`)
     : res.tournament != null ? `the tournament champion (${res.rounds.length} round${res.rounds.length === 1 ? "" : "s"}, ${res.meta.n_entrants} entrants)`
-    : res.meta.cancelled ? "cancelled before the bracket finished: verified majority" : "verified majority";
+    : res.meta.cancelled ? `cancelled before the bracket finished: ${fbName}` : fbName;
   const tstage = stage && stage.stage === "tournament" ? stage : null;
+  const naRun = res ? !!res.meta.external : collapsed ? !!collapsed.external : extSlot;  // the run on screen had no sandbox: verification n/a
 
   return html`<div>
     <div class="panel">
@@ -310,7 +314,7 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
         <span class="muted">temp</span>${num("temperature", { step: 0.1, min: 0, max: 2 })}
         <span class="muted">top-p</span>${num("top_p", { step: 0.05, min: 0.05, max: 1 })}
         <span class="muted">max new</span>${num("max_new_tokens", { min: 1, max: 4096 })}
-        <span class="muted">max tool calls</span>${num("max_calls", { min: 0, max: 16 })}
+        <span class="muted">max tool calls</span>${num("max_calls", { min: 0, max: 16, disabled: extSlot, title: extSlot ? "n/a: an external model has no Python tool" : "" })}
         <span class="muted">seed</span><input type="number" placeholder="random" value=${p.seed} onChange=${(e) => set("seed", e.target.value)} style="width:90px" />
       </div>
       <div class="row" style="margin-bottom:6px">
@@ -327,14 +331,16 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
       </div>
       <textarea value=${task} onInput=${(e) => setTask(e.target.value)} placeholder="the task prompt (a word problem with a single final answer works best)"></textarea>
       <div class="row" style="margin-top:6px">
-        <button class="active" onClick=${run} disabled=${busy || !loaded || !task.trim()}>run swarm</button>
+        <button class="active" onClick=${run} disabled=${busy || !loaded || !task.trim() || extBase}>run swarm</button>
         <button onClick=${cancel} disabled=${!streamId}>cancel</button>
         ${!loaded && html`<span class="muted">load a checkpoint into slot ${p.slot} first (a reasoning / RL model with the Python tool; best.pt)</span>`}
-        ${loaded && html`<span class="legend">${p.k} samples × up to ${p.max_new_tokens} tokens on ${slots[p.slot].device}${slots[p.slot].device === "cpu" ? " — slow on CPU; try k=4 and a small max new first" : ""}. Cancel takes effect at the next stage${p.mode !== "select" ? " or bracket round" : ""}.</span>`}
+        ${extBase && html`<span class="muted">swarm is n/a for ${slotInfo.name}: an external base model (it samples chat replies, and a base model gets no chat template)</span>`}
+        ${loaded && !extBase && html`<span class="legend">${p.k} samples × up to ${p.max_new_tokens} tokens on ${slots[p.slot].device}${slots[p.slot].device === "cpu" ? " — slow on CPU; try k=4 and a small max new first" : ""}. Cancel takes effect at the next stage${p.mode !== "select" ? " or bracket round" : ""}.</span>`}
       </div>
+      ${extSlot && !extBase && html`<div class="swarm-na"><span class="stage-badge external">external</span> <b>${slotInfo.name}</b>: samples, selector and pairwise prompts go through its own chat template (greedy for the judgments). <b>Verification n/a</b>: no Python tool, no sandbox, so no answer is ever verified; the verified majority is n/a and every fallback uses the plain majority.<${Info} k="external_slot" /></div>`}
       ${stage && html`<div class="stage-steps">
         ${STAGES.map(([s, label], i) => html`<span class=${"step" + (i < cur ? " past" : i === cur ? (s === "done" ? " past" : " now") : "")} key=${s}>${label}${s === "tournament" && tstage ? ` ${Math.min(tstage.round + 1, tstage.n_rounds_expected)}/${tstage.n_rounds_expected}` : ""}</span>`)}
-        <span class="muted">${t0 ? `${((now - t0) / 1000).toFixed(0)} s` : res ? `${res.seconds.toFixed(1)} s` : ""}${collapsed ? ` · ${collapsed.n_candidates} samples, ${collapsed.n_parsed} with a parsable answer, ${collapsed.n_verified} verified, ${collapsed.groups.length} distinct answers` : ""}${stage.stage === "selecting" ? ` · selector prompt ${stage.prompt_tokens} tokens, ${stage.groups_in_prompt} answers` : ""}${tstage ? ` · bracket: ${tstage.round} of ${tstage.n_rounds_expected} round${tstage.n_rounds_expected === 1 ? "" : "s"} decided` : ""}</span>
+        <span class="muted">${t0 ? `${((now - t0) / 1000).toFixed(0)} s` : res ? `${res.seconds.toFixed(1)} s` : ""}${collapsed ? ` · ${collapsed.n_candidates} samples, ${collapsed.n_parsed} with a parsable answer, ${collapsed.n_verified == null ? "verification n/a" : `${collapsed.n_verified} verified`}, ${collapsed.groups.length} distinct answers` : ""}${stage.stage === "selecting" ? ` · selector prompt ${stage.prompt_tokens} tokens, ${stage.groups_in_prompt} answers` : ""}${tstage ? ` · bracket: ${tstage.round} of ${tstage.n_rounds_expected} round${tstage.n_rounds_expected === 1 ? "" : "s"} decided` : ""}</span>
       </div>`}
     </div>
 
@@ -346,7 +352,7 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
         ${mode === "both" && html`<span>tournament: <b>${res.tournament ?? "-"}</b> ${goldKey != null && html`<${Mark} ok=${ok(res.tournament)} />`}</span>
           <span>selector: <b>${selectorPick ?? (res.meta.cancelled ? "cancelled" : "no pick")}</b> ${goldKey != null && html`<${Mark} ok=${ok(selectorPick)} />`}</span>`}
         <span>majority: <b>${res.majority ?? "-"}</b> ${goldKey != null && html`<${Mark} ok=${ok(res.majority)} />`}</span>
-        <span>verified majority: <b>${res.verified_majority ?? "-"}</b> ${goldKey != null && html`<${Mark} ok=${ok(res.verified_majority)} />`}</span><${Info} k="swarm_majority" />
+        <span>verified majority: ${naRun ? html`<span class="stage-badge external" title="external model: no sandbox">n/a</span>` : html`<b>${res.verified_majority ?? "-"}</b> ${goldKey != null && html`<${Mark} ok=${ok(res.verified_majority)} />`}`}</span><${Info} k="swarm_majority" />
       </div>
       ${mode === "both" && res.tournament != null && selectorPick != null && html`<div class=${"swarm-cmp " + (disagree ? "disagree" : "agree")}>
         ${disagree ? html`<b>The selector and the tournament disagree.</b> The selector picked <b>${selectorPick}</b>; ${!selGroup ? "that is not one of the sampled answers, so it could not enter the bracket" : !selFate ? `it was not entered in the bracket (seed #${groups.indexOf(selGroup) + 1}, beyond max entrants ${maxEntrants})` : selFate.lost ? html`in the bracket it lost in round ${selFate.lost.round} (${selFate.lost.id}) to <b>${selFate.lost.to}</b>${selFate.lost.pick == null ? ", decided by the evidence fallback" : ""}` : "in the bracket it did not lose a match"}. The final answer follows the tournament.`
@@ -357,7 +363,7 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
     ${res && goldKey != null && html`<h2>Ceilings for this task<${Info} k="swarm_oracle" /></h2>
       <table style="max-width:640px"><tr><th>stage</th><th class="l">the expected answer ...</th><th>holds</th></tr>
         <tr><td>oracle (pass@k)</td><td class="l">is among the ${res.k} samples</td><td><${Mark} ok=${cands.some((c) => answerKey(c.parsed) === goldKey)} /></td></tr>
-        <tr><td>oracle, verified</td><td class="l">is among the verified samples</td><td><${Mark} ok=${cands.some((c) => c.verified && answerKey(c.parsed) === goldKey)} /></td></tr>
+        <tr><td>oracle, verified</td><td class="l">is among the verified samples</td><td>${naRun ? html`<span class="muted">n/a</span>` : html`<${Mark} ok=${cands.some((c) => c.verified && answerKey(c.parsed) === goldKey)} />`}</td></tr>
         ${hasSelector && html`<tr><td>in prompt</td><td class="l">survived into the selector prompt</td><td><${Mark} ok=${groups.some((g) => answerKey(g.answer) === goldKey && prompt.includes(`- Answer: ${g.answer} (`))} /></td></tr>
         <tr><td>selector</td><td class="l">was picked by the selector</td><td><${Mark} ok=${ok(selectorPick)} /></td></tr>`}
         ${hasBracket && html`<tr><td>in bracket</td><td class="l">was among the ${res.meta.n_entrants ?? entrants.length} entrants</td><td><${Mark} ok=${entrants.some((a) => answerKey(a) === goldKey)} /></td></tr>
@@ -368,7 +374,7 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
     ${hasBracket && groups.length > 0 && html`<h2>Tournament bracket${entrants.length ? ` (${entrants.length} entrant${entrants.length === 1 ? "" : "s"}${groups.length > entrants.length ? ` of ${groups.length} answers` : ""})` : ""}<${Info} k="swarm_bracket" /></h2>
       ${entrants.length === 1 ? html`<div class="muted">Only one distinct answer: it is the champion without a comparison.</div>`
         : html`<${Bracket} groups=${groups} entrants=${entrants} rounds=${bracketRounds} running=${running} champion=${champion}
-          marks=${{ gold: goldKey, selector: mode === "both" && selectorPick != null ? (groups.find((g) => answerKey(g.answer) === answerKey(selectorPick)) || {}).answer : null, majority: (res || collapsed || {}).majority, vmaj: (res || collapsed || {}).verified_majority }} />`}
+          external=${naRun} marks=${{ gold: goldKey, selector: mode === "both" && selectorPick != null ? (groups.find((g) => answerKey(g.answer) === answerKey(selectorPick)) || {}).answer : null, majority: (res || collapsed || {}).majority, vmaj: (res || collapsed || {}).verified_majority }} />`}
       <div class="br-legend">Seeds are the evidence order (verified support, then support): #1 meets the last seed, #2 the second last,
         the middle one of an odd count gets a bye<${Info} k="swarm_seeding" />. Rows are shown in the order the model saw them (A on top);
         ⇄ marks a pair presented swapped<${Info} k="swarm_swap" />; "no pick → evidence" is a comparison decided by the fallback<${Info} k="swarm_fallback" />.
@@ -376,8 +382,8 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
 
     ${groups.length > 0 && html`<h2>Distinct answers (${groups.length})<${Info} k="swarm_support" /></h2>
       <table>
-        <tr><th>answer</th><th>support</th><th>verified</th>${hasSelector && html`<th>in selector prompt<${Info} k="swarm_budget" /></th>`}${hasBracket && html`<th class="l">bracket<${Info} k="swarm_bracket" /></th>`}<th class="l">representative rationale</th><th>members</th></tr>
-        ${groups.map((g) => html`<${GroupRow} key=${g.key} g=${g} cands=${cands} gold=${goldKey} open=${!!open[g.key] && cands.length > 0} showPrompt=${hasSelector} showBracket=${hasBracket}
+        <tr><th>answer</th><th>support</th><th>verified${naRun ? " (n/a)" : ""}</th>${hasSelector && html`<th>in selector prompt<${Info} k="swarm_budget" /></th>`}${hasBracket && html`<th class="l">bracket<${Info} k="swarm_bracket" /></th>`}<th class="l">representative rationale</th><th>members</th></tr>
+        ${groups.map((g) => html`<${GroupRow} key=${g.key} g=${g} external=${naRun} cands=${cands} gold=${goldKey} open=${!!open[g.key] && cands.length > 0} showPrompt=${hasSelector} showBracket=${hasBracket}
           toggle=${() => cands.length && setOpen({ ...open, [g.key]: !open[g.key] })}
           flags=${{ final: res && finalKey != null && answerKey(g.answer) === finalKey, majority: g.answer === (res || collapsed).majority, vmaj: g.answer === (res || collapsed).verified_majority,
             selector: mode === "both" && selectorPick != null && answerKey(g.answer) === answerKey(selectorPick),
@@ -386,7 +392,7 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
       <div class="legend">Sorted by verified support, then support (this is also the bracket's seed order). Click a row for its member samples (think span, tool calls with results, answer).</div>`}
     ${res && unparsed.length > 0 && html`<div style="margin-top:6px"><a href="#" onClick=${(e) => { e.preventDefault(); setShowUnparsed(!showUnparsed); }}>${showUnparsed ? "hide" : "show"} ${unparsed.length} sample${unparsed.length === 1 ? "" : "s"} with no parsable answer</a>
       ${showUnparsed && unparsed.map((c) => html`<${Candidate} c=${c} key=${c.idx} />`)}</div>`}
-    ${res && res.groups.length === 0 && html`<div class="panel warn" style="margin-top:8px">No sample produced a parsable final answer, so there was nothing to select. Check that the slot holds a reasoning / RL checkpoint, that the answer instruction is on, and that max new tokens leaves room to finish.</div>`}
+    ${res && res.groups.length === 0 && html`<div class="panel warn" style="margin-top:8px">No sample produced a parsable final answer, so there was nothing to select. ${naRun ? "An external model has to end its reply with a '#### <answer>' line: keep the answer instruction on and leave max new tokens room to finish." : "Check that the slot holds a reasoning / RL checkpoint, that the answer instruction is on, and that max new tokens leaves room to finish."}</div>`}
 
     ${res && res.selector_messages.length > 0 && html`<h2>Selector pass<${Info} k="swarm_selector" /></h2>
       <details><summary class="muted">selector prompt (${res.meta.prompt_tokens} tokens, ${res.meta.groups_in_prompt} of ${res.groups.length} answers, budget ${res.meta.budget_tokens})</summary><pre>${prompt}</pre></details>

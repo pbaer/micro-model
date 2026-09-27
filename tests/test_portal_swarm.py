@@ -272,3 +272,50 @@ def test_harness_swarm_tournament_cancel_at_round_boundary(tmp_path, monkeypatch
     assert [e.get("stage") for e in evs] == ["sampling", "collapsed", "selecting", "tournament", "tournament", "done"]
     res = evs[-1]["result"]
     assert seen["selected"] and len(res["rounds"]) == 1 and res["tournament"] is None and res["meta"]["selector_final"] == "1"
+
+
+# ------------------------------------------------------------------------------------------ external slot
+def test_harness_swarm_external_slot_has_no_verification(tmp_path, monkeypatch):
+    """A stubbed external chat model: k replies in one batch through its own template, '#### <answer>' parsed and
+    collapsed as for ours, selector and pairwise prompts through the same template, greedy -- and verification n/a
+    everywhere (no sandbox): null n_verified / verified_majority / per-candidate verified, the plain majority as fallback."""
+    from _ext_stub import patch_external
+
+    patch_external(monkeypatch)
+    h = H.Harness(tmp_path / "tokenizer")
+    h.load("A", "external:smollm2-135m-instruct", device="cpu")
+    stub = h.slots["A"].ext
+    evs = list(h.swarm("A", "What is 3 * 4?", k=4, max_new_tokens=48, max_calls=6, seed=9, temperature=0.9))
+    assert [(e.get("stage"), e.get("round")) for e in evs] == [("sampling", None), ("collapsed", None), ("selecting", None), ("tournament", 0),
+                                                              ("tournament", 1), ("done", None)]
+    assert all(e["verification"] == "n/a" and e["external"] for e in evs[:3])
+    sample = stub.log[0]
+    assert sample[:5] == ("batch", 4, 48, 0.9, 9) and sample[5] == ["What is 3 * 4?" + SUFFIX] * 4, "k copies of task + suffix, one batch, seeded"
+    col = evs[1]
+    assert [g["answer"] for g in col["groups"]] == ["10", "12"] and col["majority"] == "10"
+    assert col["n_verified"] is None and col["verified_majority"] is None and col["n_parsed"] == 3
+    assert col["groups"][0]["rationale"] == "Ten." and col["groups"][1]["rationale"] == "Twelve, from 3 * 4.", "the shortest member reply, up to its #### line"
+    sel = [x for x in stub.log if x[0] == "chat"]
+    assert len(sel) == 1 and sel[0][1].startswith("What is 3 * 4?\n\n" + S.SELECT_INTRO) and sel[0][3] == 0.0, "selector: greedy, own template"
+    assert "- Answer: 12 (agreed by 1 attempt; not computed with code)\n  Reasoning: Twelve, from 3 * 4." in sel[0][1]
+    pair = [x for x in stub.log if x[0] == "batch"][-1]
+    assert pair[1] == 1 and pair[2] == 96 and pair[3] == 0.0 and S.PAIR_ASK in pair[5][0], "one greedy pairwise batch per round"
+    assert evs[4]["matches"] == [{"a": "10", "b": "12", "swapped": False, "pick": 1, "winner": "12"}]
+
+    res = evs[-1]["result"]
+    assert res["tournament"] == "12" and res["final"] == "12" and res["meta"]["selector_final"] == "12" and res["majority"] == "10"
+    assert res["verified_majority"] is None and all(c["verified"] is None for c in res["candidates"])
+    assert res["meta"]["external"] and res["meta"]["verification"] == "n/a" and res["meta"]["max_calls"] == 0
+    assert res["meta"]["checkpoint"] == "smollm2-135m-instruct" and res["meta"]["prompt_tokens"] == len(res["selector_messages"][0]["content"])
+    assert res["candidates"][3]["parsed"] is None and res["candidates"][0]["think"] is None and res["selector_calls"] == 0
+    json.dumps(res)
+
+    # select mode with an unparsable selector reply: the plain majority (there is no verified one)
+    stub.selector_reply = "I am not sure."
+    res = list(h.swarm("A", "What is 3 * 4?", k=4, seed=9, mode="select"))[-1]["result"]
+    assert res["final"] == "10" and not res["meta"]["selector_parsed"] and res["tournament"] is None
+
+    # a base model: swarm is n/a (it samples chat replies, and no template is invented)
+    h.load("B", "external:smollm2-135m", device="cpu")
+    with pytest.raises(RuntimeError, match="base model"):
+        list(h.swarm("B", "What is 3 * 4?", k=2))

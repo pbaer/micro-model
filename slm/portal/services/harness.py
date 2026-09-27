@@ -1,8 +1,15 @@
 """Model harness that runs INSIDE the worker subprocess: checkpoint slots, streaming generation
-with per-token log-probs and top-k alternatives, teacher-forced scoring, and diagnostics."""
+with per-token log-probs and top-k alternatives, teacher-forced scoring, and diagnostics.
+
+A slot can also hold an external comparison model (`external:<name>`, slm.eval.external): an `HfChatModel` with its
+own tokenizer and chat template. It streams completions (any model) and chat replies (chat models only: a base model
+is never given a template), and runs swarm sampling with majority, selector and tournament through its own template.
+Our protocol (the Python tool, declared functions, the forced think span) is refused for it, there is no sandbox
+verification (n/a, not approximated), and teacher-forced scoring and diagnostics are n/a."""
 
 from __future__ import annotations
 
+import gc
 import time
 from pathlib import Path
 
@@ -18,6 +25,7 @@ from slm.tools.pysandbox import PySession
 
 MAX_SESSIONS = 32
 TOOL_RESULT_ROOM = 48  # cache slots reserved per allowed tool call for inserted result tokens
+EXTERNAL_PREFIX = "external:"  # LoadRequest.checkpoint of an external comparison model (slm.eval.external)
 
 
 class Slot:
@@ -25,7 +33,96 @@ class Slot:
         self.name = name
         self.model: Transformer | None = None
         self.tok: SlmTokenizer | None = None
+        self.ext = None  # slm.eval.external.HfChatModel when the slot holds an external comparison model
         self.info: dict = {}
+
+    @property
+    def loaded(self) -> bool:
+        return self.model is not None or self.ext is not None
+
+    def require(self, what: str | None = None) -> None:
+        """Raise unless something is loaded; with `what`, also unless it is one of our checkpoints."""
+        if not self.loaded:
+            raise RuntimeError(f"slot {self.name} is empty")
+        if what and self.ext is not None:
+            raise RuntimeError(f"{what} is n/a for an external slot (slot {self.name} holds {self.ext.name}): it needs one of our checkpoints")
+
+
+class _Pieces:
+    """Incremental detokenizer for an HF tokenizer: the text each new id adds. Byte-level BPE splits a character
+    across ids, so a piece is emitted only once the text decodes cleanly (the ids before it fold into that piece and
+    show as empty chips)."""
+
+    def __init__(self, tokenizer) -> None:
+        self.tokenizer = tokenizer
+        self.ids: list[int] = []
+        self.prefix = self.read = 0
+
+    def decode(self, ids: list[int]) -> str:
+        return self.tokenizer.decode(ids, skip_special_tokens=False, clean_up_tokenization_spaces=False)
+
+    def push(self, i: int) -> str:
+        self.ids.append(int(i))
+        prev, new = self.decode(self.ids[self.prefix : self.read]), self.decode(self.ids[self.prefix :])
+        if len(new) > len(prev) and not new.endswith("�"):
+            self.prefix, self.read = self.read, len(self.ids)
+            return new[len(prev) :]
+        return ""
+
+
+class _PlainEncoder:
+    """`tok.encode` for the swarm prompt budgets, measured with the external model's own tokenizer."""
+
+    def __init__(self, ext) -> None:
+        self.encode = ext.encode_plain
+
+
+def _special_ids(ext) -> set[int]:
+    return set(getattr(ext.tokenizer, "all_special_ids", None) or []) | set(ext.eos_ids)
+
+
+def _external_candidates(ext, msgs: list[dict], k: int, temperature: float, top_p: float, max_new_tokens: int, seed: int) -> list:
+    """k chat replies in one batch through the model's own template, as swarm Candidates: the reply is the answer
+    (no think span), `#### <answer>` parsed as for ours, never from a tool, so never verified."""
+    from slm import swarm as S
+    from slm.rl.rewards import parse_final_span
+
+    gens = ext.batch_generate_chat([msgs] * k, max_new_tokens, temperature=temperature, top_p=top_p, top_k=0, seed=seed, batch_size=max(1, k))
+    out = []
+    for j, g in enumerate(gens):
+        parsed = parse_final_span(g.text)
+        out.append(S.Candidate(idx=j, think=None, answer=g.text, parsed=parsed, key=S.answer_key(parsed), terminated=g.terminated,
+                               n_calls=0, n_errors=0, calls=[], from_tool=False, n_tokens=g.n_tokens))
+    return out
+
+
+def _fill_rationales(groups: list, cands: list, max_chars: int = 240) -> None:
+    """An external reply has no think span, so `collapse` leaves every rationale empty: use the shortest member's reply
+    up to its '####' line, so the selector and pairwise prompts carry the reasoning as they do for ours."""
+    from slm import swarm as S
+
+    for g in groups:
+        if g.rationale:
+            continue
+        rep = min((cands[i] for i in g.members), key=lambda c: len(c.answer))
+        g.rationale = S._trim(rep.answer.split("####")[0].strip(), max_chars)
+
+
+def _external_select(ext, sel_msgs: list[dict]):
+    """The selector pass through the model's own template, greedy: (think, answer, parsed, n_calls) like slm.swarm.select."""
+    from slm.rl.rewards import parse_final_span
+
+    answer = ext.generate_chat(sel_msgs, max_new_tokens=384, temperature=0.0)
+    return None, answer, parse_final_span(answer), 0
+
+
+def _external_compare(ext, text: str, pairs: list, enc, pair_budget_tokens: int, max_new_tokens: int = 96) -> list[int | None]:
+    """One greedy batch of pairwise prompts (slm.swarm.pair_messages) through the model's own template."""
+    from slm import swarm as S
+
+    msgs = [S.pair_messages(text, a, b, enc, pair_budget_tokens) for a, b in pairs]
+    gens = ext.batch_generate_chat(msgs, max_new_tokens, temperature=0.0, batch_size=max(1, len(msgs)))
+    return [S.parse_pick(g.text) for g in gens]
 
 
 class Harness:
@@ -66,6 +163,8 @@ class Harness:
         return self._toks[chosen], chosen, matched
 
     def load(self, slot: str, checkpoint: str, device: str = "cuda", dtype: str = "bf16", tokenizer_tag: str | None = None) -> dict:
+        if checkpoint.startswith(EXTERNAL_PREFIX):
+            return self._load_external(slot, checkpoint[len(EXTERNAL_PREFIX) :], device, dtype)
         s = self.slots[slot]
         self.unload(slot)
         t0 = time.time()
@@ -95,15 +194,46 @@ class Harness:
         del ck, sd
         return s.info
 
+    def _load_external(self, slot: str, name: str, device: str, dtype: str) -> dict:
+        """An external comparison model from its local directory (never the network): bf16 (or the requested dtype)
+        on cuda, fp32 on cpu. `load_external` is looked up on the module at call time (tests stub it)."""
+        from slm.eval import external as E
+
+        s = self.slots[slot]
+        self.unload(slot)
+        if name not in E.EXTERNAL_MODELS:
+            raise RuntimeError(f"unknown external model {name!r}; known: {', '.join(E.EXTERNAL_MODELS)}")
+        entry = E.EXTERNAL_MODELS[name]
+        if device == "cuda" and not torch.cuda.is_available():
+            device = "cpu"
+        dt = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[dtype] if device == "cuda" else torch.float32
+        t0 = time.time()
+        try:
+            m = E.load_external(name, device=device, dtype=dt)
+        except SystemExit as e:  # the registry's clean exits (weights missing) must not end the worker loop
+            raise RuntimeError(str(e)) from None
+        s.ext = m
+        s.info = {
+            "slot": slot, "checkpoint": EXTERNAL_PREFIX + name, "name": name, "external": True, "stage": "external", "run": None,
+            "hf_id": entry.hf_id, "params": entry.params, "license": entry.license, "is_chat": entry.is_chat, "context": entry.max_positions,
+            "train_tokens": entry.train_tokens, "notes": entry.notes, "device": getattr(m, "device", device),
+            "dtype": str(dt).replace("torch.", ""), "tokens": None, "val_loss": None, "tokenizer": f"own ({entry.hf_id})", "tokenizer_matched": True,
+            "load_s": time.time() - t0, "vram_gib": torch.cuda.memory_allocated() / 2**30 if device == "cuda" else 0.0,
+        }
+        return s.info
+
     def unload(self, slot: str) -> dict:
         s = self.slots[slot]
-        s.model, s.tok, s.info = None, None, {}
+        had_ext = s.ext is not None
+        s.model, s.tok, s.ext, s.info = None, None, None, {}
+        if had_ext:
+            gc.collect()  # the HF module graph holds reference cycles: free its weights now, not at the next collection
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
         return {"slot": slot, "loaded": False}
 
     def status(self) -> dict:
-        return {"slots": {k: (v.info if v.model is not None else {"slot": k, "loaded": False}) for k, v in self.slots.items()},
+        return {"slots": {k: (v.info if v.loaded else {"slot": k, "loaded": False}) for k, v in self.slots.items()},
                 "cuda": torch.cuda.is_available(), "vram_gib": torch.cuda.memory_allocated() / 2**30 if torch.cuda.is_available() else 0.0}
 
     # --------------------------------------------------------------- prompts
@@ -130,10 +260,15 @@ class Harness:
         it to the conversation verbatim.
 
         `functions` (chat mode) are declared functions as dicts ({name, signature, comment}): their masked
-        <|python_def|> blocks open the prompt and the 'prompt' event carries the segments that mark them."""
+        <|python_def|> blocks open the prompt and the 'prompt' event carries the segments that mark them.
+
+        An external slot streams through `_generate_external` (the same events, no tool calls)."""
         s = self.slots[slot]
-        if s.model is None:
-            raise RuntimeError(f"slot {slot} is empty")
+        s.require()
+        if s.ext is not None:
+            yield from self._generate_external(s, mode, text, messages, temperature, top_p, top_k, max_new_tokens, seed, logprobs_topk,
+                                               think_required, tools, functions, should_stop)
+            return
         model, tok = s.model, s.tok
         device = next(model.parameters()).device
         tools = bool(tools) and mode == "chat"
@@ -223,6 +358,68 @@ class Harness:
                                  "tool_errors": sum(not c["ok"] for c in calls)}
         yield done
 
+    def _generate_external(self, s: Slot, mode: str, text: str, messages: list[dict] | None, temperature: float, top_p: float, top_k: int,
+                           max_new_tokens: int, seed: int | None, logprobs_topk: int, think_required: bool, tools: bool, functions: list | None,
+                           should_stop):
+        """`generate` for an external slot, with the same prompt / token / done events. Completion mode encodes the text
+        with the model's tokenizer (no BOS: what its tokenizer does by default); chat mode renders the messages with the
+        model's own chat template and is refused for a base model. Log-prob, rank, entropy and top-k are the model's own,
+        over its own vocabulary. The Python tool, declared functions and the forced think span are our protocol: refused."""
+        m = s.ext
+        bad = [n for n, v in (("the Python tool (tools)", tools), ("declared functions (functions)", functions),
+                              ("forced <|think|> (think_required)", think_required)) if v]
+        if bad:
+            one = len(bad) == 1
+            raise RuntimeError(f"slot {s.name} holds an external model ({m.name}): {', '.join(bad)} {'is' if one else 'are'} part of our "
+                               f"chat/tool protocol and {'does' if one else 'do'} not apply to it. Turn {'it' if one else 'them'} off for this slot.")
+        if mode == "chat":
+            if not m.is_chat:
+                raise RuntimeError(f"chat mode is n/a for {m.name}: it is a base model, and a base model is never given a chat template "
+                                   "(none is invented for it). Use completion mode.")
+            ids = m.encode_chat([{"role": x.get("role", "user"), "content": x.get("content") or ""} for x in (messages or [])])
+        elif mode == "completion":
+            ids = m.encode_text(text)
+        else:
+            raise RuntimeError(f"mode {mode!r}: expected completion or chat")
+        if not ids:
+            raise RuntimeError("empty prompt: an external model's tokenizer adds no BOS, so there is nothing to continue from")
+        if len(ids) >= m.max_positions:
+            raise RuntimeError(f"the prompt ({len(ids)} tokens) fills {m.name}'s context of {m.max_positions}")
+        special = _special_ids(m)
+        pp = _Pieces(m.tokenizer)
+        yield {"event": "prompt", "ids": ids, "pieces": [pp.push(i) for i in ids], "n": len(ids), "segments": [], "external": True}
+        dec = _Pieces(m.tokenizer)
+        seed = seed if seed is not None else int(time.time() * 1000) % 2**31
+        stream = m.stream_ids(ids, max_new_tokens, temperature, top_p, top_k, seed, stop_ids=m.eos_ids, logprobs_topk=logprobs_topk)
+        gen_ids: list[int] = []
+        reason = "length"
+        t0 = time.time()
+        try:
+            for ev in stream:
+                nid = ev["id"]
+                gen_ids.append(nid)
+                yield {"event": "token", "id": nid, "piece": dec.push(nid), "logprob": ev["logprob"], "rank": ev["rank"], "entropy": ev["entropy"],
+                       "topk": [{"id": i, "piece": dec.decode([i]), "logprob": lp} for i, lp in ev["topk"]], "special": nid in special,
+                       "inserted": False}
+                if nid in m.eos_ids:
+                    reason = "stop"
+                    break
+                if should_stop is not None and should_stop():
+                    reason = "cancelled"
+                    break
+        finally:
+            stream.close()
+        dt = time.time() - t0
+        n = len(gen_ids)
+        done = {"event": "done", "n": n, "n_total": n, "seconds": dt, "tok_s": n / dt if dt > 0 else 0.0, "reason": reason, "calls": [],
+                "external": True}
+        if mode == "chat":
+            body = gen_ids[:-1] if gen_ids and gen_ids[-1] in m.eos_ids else gen_ids
+            ok = reason == "stop"
+            done["assistant"] = {"think": None, "answer": m.decode(body), "terminated": ok, "malformed": False, "well_formed": ok, "ids": None,
+                                 "n_calls": 0, "tool_errors": 0}
+        yield done
+
     @torch.no_grad()
     def swarm(self, slot: str, text: str, k: int = 16, temperature: float = 0.8, top_p: float = 0.95, max_new_tokens: int = 512,
               max_calls: int = 6, seed: int | None = None, budget_tokens: int = 2400, max_groups: int = 12,
@@ -243,7 +440,13 @@ class Harness:
         takes effect at the next stage boundary or bracket round: the selector / the remaining rounds are skipped, the
         rounds already decided are kept, and `final` falls back to the verified majority in the modes where it follows
         the bracket (the library's rule for a missing champion). With no seed a fresh one is drawn and reported in
-        `result.meta.seed` (an unseeded torch.Generator always starts from the same state)."""
+        `result.meta.seed` (an unseeded torch.Generator always starts from the same state).
+
+        An external slot (chat models only) runs the same stages through the model's own chat template: k replies in one
+        batch (`batch_generate_chat`), `#### <answer>` parsed and collapsed as for ours, the selector and the pairwise
+        prompts' content as the user message, greedy. There is no sandbox, so nothing is verified: `verified_majority` is
+        null, `n_verified` and every candidate's `verified` are null, `meta.verification` is "n/a", and the fallbacks
+        that use the verified majority for ours use the plain majority. The tool budget (`max_calls`) does not apply."""
         from dataclasses import asdict
 
         from slm import swarm as S
@@ -253,18 +456,31 @@ class Harness:
         if mode not in ("select", "tournament", "both"):
             raise RuntimeError(f"swarm mode {mode!r}: expected select, tournament or both")
         s = self.slots[slot]
-        if s.model is None:
-            raise RuntimeError(f"slot {slot} is empty")
+        s.require()
         if not text.strip():
             raise RuntimeError("empty task prompt")
-        model, tok = s.model, s.tok
+        ext, model, tok = s.ext, s.model, s.tok
+        if ext is not None and not ext.is_chat:
+            raise RuntimeError(f"swarm is n/a for {ext.name}: it is a base model, swarm samples chat replies, and a base model is never "
+                               "given a chat template (none is invented for it)")
         seed = int(seed) if seed is not None else int(time.time() * 1000) % 2**31
         suffix = SUFFIX if answer_suffix else None
         meta = {"slot": slot, "checkpoint": s.info.get("name"), "device": s.info.get("device"), "seed": seed, "temperature": temperature,
-                "top_p": top_p, "max_new_tokens": max_new_tokens, "max_calls": max_calls, "budget_tokens": budget_tokens,
+                "top_p": top_p, "max_new_tokens": max_new_tokens, "max_calls": max_calls if ext is None else 0, "budget_tokens": budget_tokens,
                 "max_groups": max_groups, "answer_suffix": suffix, "mode": mode, "pair_budget_tokens": pair_budget_tokens,
-                "max_entrants": max_entrants, "cancelled": False}
+                "max_entrants": max_entrants, "cancelled": False, "external": ext is not None, "verification": "sandbox" if ext is None else "n/a"}
         stop = should_stop or (lambda: False)
+        if ext is None:  # module attributes looked up at call time (tests script them)
+            enc = tok
+            sample = lambda m: S.sample_candidates(model, tok, m, k, temperature, top_p, max_new_tokens, max_calls, seed)  # noqa: E731
+            select = lambda m: S.select(model, tok, m)  # noqa: E731
+            compare = None
+        else:
+            enc = _PlainEncoder(ext)
+            sample = lambda m: _external_candidates(ext, m, k, temperature, top_p, max_new_tokens, seed)  # noqa: E731
+            select = lambda m: _external_select(ext, m)  # noqa: E731
+            compare = lambda pairs: _external_compare(ext, text, pairs, enc, pair_budget_tokens)  # noqa: E731
+        na = {"verification": "n/a", "external": True} if ext is not None else {}
 
         def n_in_prompt(msgs: list[dict]) -> int:
             return msgs[0]["content"].count("\n- Answer: ") if msgs else 0
@@ -273,51 +489,58 @@ class Harness:
         try:
             with sdpa_context("decode"):
                 msgs = [{"role": "user", "content": text + (suffix or "")}]
-                yield {"event": "stage", "stage": "sampling", "k": k, "seconds": 0.0}
-                cands = S.sample_candidates(model, tok, msgs, k, temperature, top_p, max_new_tokens, max_calls, seed)
+                yield {"event": "stage", "stage": "sampling", "k": k, "seconds": 0.0, **na}
+                cands = sample(msgs)
                 groups = S.collapse(cands)
-                vm, maj = S.verified_majority(groups), S.majority(groups)
+                if ext is not None:
+                    _fill_rationales(groups, cands)
+                maj = S.majority(groups)
+                vm = S.verified_majority(groups) if ext is None else None
+                fallback = vm if ext is None else maj
                 yield {"event": "stage", "stage": "collapsed", "seconds": round(time.time() - t0, 2), "n_candidates": len(cands),
-                       "n_parsed": sum(c.key is not None for c in cands), "n_verified": sum(c.verified for c in cands),
-                       "groups": [asdict(g) for g in groups], "majority": maj, "verified_majority": vm}
-                sel_msgs = S.selector_messages(text, groups, tok, budget_tokens, max_groups) if groups and mode != "tournament" else []
+                       "n_parsed": sum(c.key is not None for c in cands), "n_verified": sum(c.verified for c in cands) if ext is None else None,
+                       "groups": [asdict(g) for g in groups], "majority": maj, "verified_majority": vm, **na}
+                sel_msgs = S.selector_messages(text, groups, enc, budget_tokens, max_groups) if groups and mode != "tournament" else []
                 think, answer, parsed, n_calls = (None, "", None, 0)
                 if sel_msgs and stop():
                     meta["cancelled"] = True
                 elif sel_msgs:
                     yield {"event": "stage", "stage": "selecting", "seconds": round(time.time() - t0, 2),
-                           "prompt_tokens": len(tok.encode(sel_msgs[0]["content"])), "groups_in_prompt": n_in_prompt(sel_msgs)}
-                    think, answer, parsed, n_calls = S.select(model, tok, sel_msgs)
+                           "prompt_tokens": len(enc.encode(sel_msgs[0]["content"])), "groups_in_prompt": n_in_prompt(sel_msgs), **na}
+                    think, answer, parsed, n_calls = select(sel_msgs)
                 champion, rounds = None, []
                 if groups and mode != "select" and not meta["cancelled"]:
-                    champion, rounds = yield from self._tournament_rounds(model, tok, text, groups, pair_budget_tokens, max_entrants, stop, meta, t0)
+                    champion, rounds = yield from self._tournament_rounds(model, tok, text, groups, pair_budget_tokens, max_entrants, stop, meta, t0,
+                                                                          compare=compare)
             if mode == "select":
-                final = S.display_answer(parsed) if parsed is not None else vm
+                final = S.display_answer(parsed) if parsed is not None else fallback
             else:
-                final = champion.answer if champion is not None else vm
+                final = champion.answer if champion is not None else fallback
             res = S.SwarmResult(prompt=text, k=k, candidates=cands, groups=groups, majority=maj, verified_majority=vm, selector_messages=sel_msgs,
                                 selector_think=think, selector_answer=answer, selector_calls=n_calls, final=final,
                                 seconds=round(time.time() - t0, 2), meta=meta,
                                 tournament=champion.answer if champion is not None else None, rounds=rounds)
             out = res.to_dict()
             for c, cd in zip(cands, out["candidates"]):
-                cd["verified"] = c.verified  # a property, so asdict leaves it out
+                cd["verified"] = c.verified if ext is None else None  # a property, so asdict leaves it out; null = n/a (no sandbox)
             out["meta"]["selector_parsed"] = parsed is not None  # False: no '####' line from the selector (or no selector ran)
             out["meta"]["selector_final"] = S.display_answer(parsed) if parsed is not None else None
             out["meta"]["groups_in_prompt"] = n_in_prompt(sel_msgs)
-            out["meta"]["prompt_tokens"] = len(tok.encode(sel_msgs[0]["content"])) if sel_msgs else 0
+            out["meta"]["prompt_tokens"] = len(enc.encode(sel_msgs[0]["content"])) if sel_msgs else 0
             yield {"event": "done", "stage": "done", "result": out}
         finally:
-            if next(model.parameters()).device.type == "cuda":
+            if s.info.get("device") == "cuda":
                 torch.cuda.empty_cache()  # generation KV caches leave reserved segments behind (CLAUDE.md)
 
     @staticmethod
-    def _tournament_rounds(model, tok, text: str, groups: list, pair_budget_tokens: int, max_entrants: int, stop, meta: dict, t0: float):
+    def _tournament_rounds(model, tok, text: str, groups: list, pair_budget_tokens: int, max_entrants: int, stop, meta: dict, t0: float,
+                           compare=None):
         """`slm.swarm.tournament` with one yielded event per round (a generator that returns (champion | None, rounds)).
         The loop is the library's line for line -- first-vs-last seeding with a bye for the odd one out, every odd-indexed
         pair presented swapped, the evidence order (verified, then support) when a comparison gives no parsable pick -- so
         a bracket streamed here and one run by `swarm_answer` agree. `compare_batch` is looked up on the module at call
-        time (tests script it). A cancel is honoured between rounds: champion None, the decided rounds kept."""
+        time (tests script it); `compare(pairs) -> picks` replaces it (an external slot). A cancel is honoured between
+        rounds: champion None, the decided rounds kept."""
         from slm import swarm as S
 
         entrants = list(groups[:max_entrants])
@@ -334,7 +557,7 @@ class Harness:
                 return None, rounds
             pairs, byes = S.seed_pairs(entrants)
             oriented = [(b, a) if j % 2 else (a, b) for j, (a, b) in enumerate(pairs)]
-            picks = S.compare_batch(model, tok, text, oriented, pair_budget_tokens, 96)
+            picks = compare(oriented) if compare is not None else S.compare_batch(model, tok, text, oriented, pair_budget_tokens, 96)
             winners, log = [], []
             for j, ((x, y), pick) in enumerate(zip(oriented, picks)):
                 if pick is None:
@@ -353,10 +576,9 @@ class Harness:
 
     @torch.no_grad()
     def score(self, slot: str, mode: str = "completion", text: str = "", messages: list[dict] | None = None) -> dict:
-        """Teacher-forced per-token log-probs of a text/conversation under the slot's model."""
+        """Teacher-forced per-token log-probs of a text/conversation under the slot's model (n/a for an external slot)."""
         s = self.slots[slot]
-        if s.model is None:
-            raise RuntimeError(f"slot {slot} is empty")
+        s.require("teacher-forced scoring")
         model, tok = s.model, s.tok
         device = next(model.parameters()).device
         if mode == "chat":
@@ -385,8 +607,7 @@ class Harness:
         from slm.eval.diagnostics import run_diagnostics
 
         s = self.slots[slot]
-        if s.model is None:
-            raise RuntimeError(f"slot {slot} is empty")
+        s.require("diagnostics")
         device = next(s.model.parameters()).device
         vl = ValLoader(MixtureSpec(Path(tokenized_root), {source: 1.0}, "val"), seq_len, mb, seq_len * mb * n_batches, device=device)
         batches = list(vl)[:n_batches]

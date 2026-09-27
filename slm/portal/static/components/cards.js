@@ -457,6 +457,21 @@ export const CARDS = {
     <p>Two checkpoints loaded side by side (A and B) to compare on the same prompt. The badge is the stage it came from:
       <b>base</b> has never seen chat tokens and should be used in completion mode; <b>sft</b> chats; <b>reasoning</b> and
       <b>rl</b> open every answer with a think span. For RL runs prefer <code>best.pt</code> over training snapshots.</p>` },
+  external_slot: { t: "External model in a slot", b: html`
+    <p>A slot can hold one of the open-weight comparison models (SmolLM2, Qwen2.5, GPT-2 medium; <code>slm.eval.external</code>)
+      instead of one of our checkpoints, loaded from its local copy under the data root: nothing goes online. It runs
+      through our sampler, so temperature, top-p, top-k and seed mean what they mean for ours and none of the model's own
+      generation defaults leak in.</p>
+    <p>Where the comparison is not apples-to-apples:</p>
+    <ul><li><b>Tokenizer</b>: its own vocabulary (Qwen's is 151K tokens, ours 32K), so token counts, max new tokens and
+        per-token log-probs, entropy and top-k are measured in its tokens. Compare texts, not token scores.</li>
+      <li><b>Chat template</b>: chat mode uses the model's own template (SmolLM2 and Qwen add a default system prompt).
+        A base model gets completion mode only; no template is ever invented for it.</li>
+      <li><b>No tool protocol</b>: the Python tool, declared functions and the forced think span are ours, so they are off.</li>
+      <li><b>Swarm</b>: answers are parsed from <code>#### &lt;answer&gt;</code> and collapsed as for ours, but with no sandbox
+        nothing is verified (n/a), and the selector and pairwise prompts are formats it was never trained on.</li>
+      <li><b>Scoring</b>: teacher-forced scoring is n/a for an external slot.</li></ul>
+    <p class="see">The Evals tab scores the same models on our evals: the "external models" group.</p>` },
   sampling: { t: "Sampling", b: html`
     <ul><li><b>temperature</b> scales the logits: 0 is greedy (always the most likely token, deterministic), 1 samples the
         model's own distribution, higher flattens it.</li>

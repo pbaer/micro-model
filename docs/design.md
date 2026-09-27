@@ -341,7 +341,9 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   file shape to `runs/ext_<name>/` with `"checkpoint": "external:<name>"` and a `"model"` block. What depends on our
   tool protocol or think span (tool-use rates, sandbox verification, the selector, multi-turn misfire) is null, not
   approximated. `scripts/measure_external.sh <name>` runs them all; the Evals tab shows the rows as a separate
-  "external models" group after ours.
+  "external models" group after ours. The portal's Inference tab loads them into a slot (`external:<name>`) next to
+  our checkpoints; `HfChatModel.stream_ids` is its token-streaming path (same sampler, seeding and stop rule as
+  `generate_ids`), see `docs/command_center.md`.
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
 

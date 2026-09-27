@@ -108,7 +108,7 @@ def status(request: Request) -> dict:
     st["gpu"] = gpu_info()
     st["live_runs"] = request.app.state.runs.live_runs()
     for info in st.get("slots", {}).values():  # stage/run of each loaded checkpoint, for the chat-mode warning
-        if info.get("checkpoint"):
+        if info.get("checkpoint") and not info.get("external"):
             info.update(_stage_of(request, info["checkpoint"]))
     return st
 
@@ -130,8 +130,21 @@ def worker_stop(request: Request) -> dict:
 
 
 
+def external_models() -> list[dict]:
+    """The local open-weight comparison models (slm.eval.external), as checkpoint entries of the group "external models":
+    `path` is what LoadRequest.checkpoint takes (`external:<name>`), `available` whether the weights are on disk. The
+    registry module is torch-free; importing it forces the Hugging Face offline switches on (nothing here goes online)."""
+    from slm.eval import external as E
+
+    return [{"path": E.checkpoint_label(m.name), "name": m.name, "kind": "external", "group": "external models", "external": True,
+             "stage": "external", "run": None, "hf_id": m.hf_id, "params": m.params, "license": m.license, "is_chat": m.is_chat,
+             "context": m.max_positions, "train_tokens": m.train_tokens, "notes": m.notes, "available": m.available(),
+             "local_dir": str(m.local_dir), "tokens": None, "val_loss": None} for m in E.EXTERNAL_MODELS.values()]
+
+
 @router.get("/checkpoints")
 def checkpoints(request: Request) -> list[dict]:
+    """Our checkpoints (every run's, stage-tagged), then the external comparison models (`external: true`)."""
     out = []
     ri = request.app.state.runs
     for name in ri.names():
@@ -143,24 +156,37 @@ def checkpoints(request: Request) -> list[dict]:
             c["run"] = name
             c["stage"] = stage
             out.append(c)
-    return out
+    return out + external_models()
 
 
 @router.post("/slots/{slot}/load")
 async def load(request: Request, slot: str, body: LoadRequest) -> dict:
+    """Load one of our checkpoints (a .pt path) or an external comparison model (`external:<name>`) into a slot."""
     if slot not in ("A", "B"):
         raise HTTPException(400, "slot must be A or B")
-    p = Path(body.checkpoint)
-    if not p.exists() or p.suffix != ".pt":
-        raise HTTPException(404, "checkpoint not found")
+    external = body.checkpoint.startswith("external:")
+    if external:
+        name = body.checkpoint.split(":", 1)[1]
+        entry = next((m for m in external_models() if m["name"] == name), None)
+        if entry is None:
+            raise HTTPException(404, f"unknown external model {name!r}")
+        if not entry["available"]:
+            raise HTTPException(404, f"{name}: no weights under {entry['local_dir']}; run `python -m slm.eval.external download {name}` once")
+        ck = body.checkpoint
+    else:
+        p = Path(body.checkpoint)
+        if not p.exists() or p.suffix != ".pt":
+            raise HTTPException(404, "checkpoint not found")
+        ck = str(p)
     device, reason = _gpu_decision(request, body.device, body.force_cuda)
     w = request.app.state.worker
     try:
-        info = await anyio.to_thread.run_sync(lambda: w.call("load", slot=slot, checkpoint=str(p), device=device, dtype=body.dtype, tokenizer_tag=body.tokenizer_tag))
+        info = await anyio.to_thread.run_sync(lambda: w.call("load", slot=slot, checkpoint=ck, device=device, dtype=body.dtype, tokenizer_tag=body.tokenizer_tag))
     except RuntimeError as e:
         raise HTTPException(500, str(e)) from None
     info["device_reason"] = reason
-    info.update(_stage_of(request, str(p)))  # which kind of model this is, so the UI can warn about chat mode on a base checkpoint
+    if not external:
+        info.update(_stage_of(request, ck))  # which kind of model this is, so the UI can warn about chat mode on a base checkpoint
     return info
 
 

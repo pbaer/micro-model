@@ -267,6 +267,53 @@ class HfChatModel:
             res.append(Generation(text, c, t, len(c)))
         return res
 
+    def stream_ids(self, prompt: list[int], max_new_tokens: int, temperature: float = 0.0, top_p: float = 1.0, top_k: int = 0,
+                   seed: int = 0, stop_ids: set[int] | None = None, logprobs_topk: int = 0):
+        """One prompt, one token at a time (the portal's streaming path). Yields per sampled token {id, logprob, rank,
+        entropy, topk: [(id, logprob)]} under the model's own distribution (before temperature / top-p). Same sampler,
+        seeding, budget and stop rule as `generate_ids` with one prompt, so the streamed ids equal
+        `generate_ids([prompt], ...)[0].ids`; the stop token is the last item yielded. Close the generator to stop early."""
+        import torch
+
+        from slm.eval.sampling import sample_next
+
+        stop_ids = self.eos_ids if stop_ids is None else stop_ids
+        budget = max(0, min(int(max_new_tokens), self.max_positions - len(prompt)))
+        if budget == 0 or not prompt:
+            return
+        dev = self.device
+        gen = torch.Generator(device=dev)
+        gen.manual_seed(int(seed))
+        try:
+            with torch.no_grad():
+                ids = torch.tensor([prompt], dtype=torch.long, device=dev)
+                mask = torch.ones_like(ids)
+                pos = torch.arange(len(prompt), device=dev)[None]
+                o = self.model(input_ids=ids, attention_mask=mask, position_ids=pos, use_cache=True, logits_to_keep=1)
+                past, logits = o.past_key_values, o.logits[:, -1, :].float()
+                nxt_pos = pos[:, -1:] + 1
+            for step in range(budget):
+                with torch.no_grad():
+                    nxt = sample_next(logits, temperature, top_p, top_k, gen)
+                    t = int(nxt[0])
+                    logp = torch.log_softmax(logits[0], dim=-1)
+                    ev = {"id": t, "logprob": float(logp[t]), "rank": int((logp > logp[t]).sum()),
+                          "entropy": float(-(logp.exp() * logp).nan_to_num().sum()), "topk": []}
+                    if logprobs_topk > 0:
+                        top = torch.topk(logp, min(int(logprobs_topk), logp.shape[-1]))
+                        ev["topk"] = [(int(i), float(v)) for v, i in zip(top.values, top.indices)]
+                yield ev
+                if t in stop_ids or step == budget - 1:
+                    return
+                with torch.no_grad():
+                    mask = torch.cat([mask, torch.ones((1, 1), dtype=mask.dtype, device=dev)], dim=1)
+                    o = self.model(input_ids=nxt[:, None], attention_mask=mask, position_ids=nxt_pos, past_key_values=past, use_cache=True)
+                    past, logits = o.past_key_values, o.logits[:, -1, :].float()
+                    nxt_pos = nxt_pos + 1
+        finally:
+            if dev != "cpu":
+                torch.cuda.empty_cache()  # the KV cache's segments stay reserved otherwise (CLAUDE.md, WDDM)
+
     def generate_text(self, prompt_text: str, max_new_tokens: int = 128, temperature: float = 0.0, top_p: float = 1.0, top_k: int = 0,
                       seed: int = 0, stop: list[str] | None = None) -> str:
         """Completion prompt -> continuation (stops at the tokenizer's EOS or a stop string)."""

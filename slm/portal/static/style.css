@@ -118,6 +118,7 @@ pre.swarm-answer{margin:4px 0 0;padding:4px 8px;max-height:160px}
 .grp{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}.br-legend{font-size:11.5px;color:var(--muted);margin-top:4px;line-height:1.5}
 .seg{display:inline-flex}.seg button{border-radius:0;margin-left:-1px}.seg button:first-child{border-radius:6px 0 0 6px;margin-left:0}.seg button:last-child{border-radius:0 6px 6px 0}
 .swarm-cmp{margin-top:8px;padding:6px 10px;border-radius:6px;font-size:13px}.swarm-cmp.agree{background:#f0fdf4;color:#166534}.swarm-cmp.disagree{background:#fffbeb;color:#92400e;border:1px solid #fcd34d}
+.swarm-na{margin:6px 0;padding:6px 10px;border-radius:6px;font-size:13px;background:#fff7ed;color:#7c2d12;border:1px solid #fed7aa}
 /* tournament bracket (Bracket in components/swarm.js): absolutely placed match boxes over one SVG of elbow connectors */
 .bracket-scroll{overflow-x:auto;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:8px}
 .bracket{position:relative;min-width:100%}

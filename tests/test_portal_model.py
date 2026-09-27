@@ -1,11 +1,14 @@
-"""Worker-based model harness tests on CPU with the tiny config and a synthetic tokenizer."""
+"""Worker-based model harness tests on CPU with the tiny config and a synthetic tokenizer, and external slots (a stubbed
+HfChatModel behind an in-process worker, plus one real CPU smoke test through the worker subprocess)."""
 
 import json
 import threading
 
+import pytest
 import torch
 from fastapi.testclient import TestClient
 
+import slm.eval.external as E
 from slm.config import ModelConfig, load_config, to_dict
 from slm.data.tokenizer import SlmTokenizer, train_bpe
 from slm.model import Transformer
@@ -78,5 +81,109 @@ def test_worker_load_generate_score_cancel(tmp_path):
         assert c.post("/api/model/slots/B/unload").json()["loaded"] is False
         assert c.post("/api/model/worker/stop").json()["worker"] is False
         assert c.get("/api/model/status").json()["worker"] is False
+    finally:
+        app.state.worker.stop()
+
+
+# ------------------------------------------------------------------------------------------ external slots
+def _sse_events(c, body, url="/api/model/generate"):
+    out = []
+    with c.stream("POST", url, json=body) as r:
+        assert r.status_code == 200
+        for line in r.iter_lines():
+            if line.startswith("data:"):
+                out.append(json.loads(line[5:]))
+    return out[1:-1]  # drop start / end
+
+
+def test_external_slot_list_load_generate_and_refusals(tmp_path, monkeypatch):
+    """Stubbed HfChatModel behind an in-process worker: the external group in /checkpoints, loading, streaming
+    completion and chat, and the refusals (base model in chat, our tool protocol, scoring)."""
+    from _ext_stub import InProcWorker, patch_external
+
+    from slm.portal.services.harness import Harness
+
+    loads = patch_external(monkeypatch)
+    (tmp_path / "runs").mkdir()
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=tmp_path, gpu_policy="cpu", open_browser=False))
+    h = Harness(tmp_path / "tokenizer")
+    app.state.worker = InProcWorker(h)
+    c = TestClient(app)
+
+    ext = [x for x in c.get("/api/model/checkpoints").json() if x.get("external")]
+    assert [x["name"] for x in ext] == list(E.EXTERNAL_MODELS)
+    for x in ext:
+        m = E.get(x["name"])
+        assert x["path"] == f"external:{m.name}" and x["group"] == "external models" and x["stage"] == "external"
+        assert (x["hf_id"], x["params"], x["license"], x["is_chat"], x["context"]) == (m.hf_id, m.params, m.license, m.is_chat, m.max_positions)
+        assert x["available"] is (m.name != "gpt2-medium")
+    r = c.post("/api/model/slots/A/load", json={"checkpoint": "external:gpt2-medium", "device": "cpu"})
+    assert r.status_code == 404 and "download" in r.json()["detail"]
+    assert c.post("/api/model/slots/A/load", json={"checkpoint": "external:llama-7b", "device": "cpu"}).status_code == 404
+    assert loads == [], "nothing reaches the worker for a missing or unknown model"
+
+    info = c.post("/api/model/slots/A/load", json={"checkpoint": "external:smollm2-135m-instruct", "device": "cpu"}).json()
+    assert loads == [("smollm2-135m-instruct", "cpu", torch.float32)], "fp32 on cpu"
+    assert info["external"] is True and info["stage"] == "external" and info["device"] == "cpu" and info["dtype"] == "float32"
+    assert (info["hf_id"], info["params"], info["license"], info["is_chat"], info["context"]) == (
+        "HuggingFaceTB/SmolLM2-135M-Instruct", 134_515_008, "Apache-2.0", True, 8192)
+    st = c.get("/api/model/status").json()
+    assert st["slots"]["A"]["external"] and st["slots"]["A"]["stage"] == "external", "the run/stage lookup leaves an external slot alone"
+
+    # completion: prompt event, one token event per id with the stub's pieces and log-probs, then done
+    evs = _sse_events(c, {"slots": ["A"], "mode": "completion", "text": "The capital of France is", "max_new_tokens": 32, "seed": 5})
+    assert evs[0]["event"] == "prompt" and evs[0]["n"] == len("The capital of France is") and "".join(evs[0]["pieces"]) == "The capital of France is"
+    toks = [e for e in evs if e["event"] == "token"]
+    assert "".join(t["piece"] for t in toks) == "Paris.<|im_end|>" and [t["special"] for t in toks] == [False] * 6 + [True]
+    assert all(t["logprob"] == -0.25 and len(t["topk"]) == 2 and t["slot"] == "A" and not t["inserted"] for t in toks)
+    done = evs[-1]
+    assert done["event"] == "done" and done["n"] == 7 and done["reason"] == "stop" and done["external"] and "assistant" not in done
+    stub = h.slots["A"].ext
+    assert stub.log[-1] == ("stream", len("The capital of France is"), 32, 0.8, 5)
+
+    # chat through the model's own template: a well-formed turn with no think span and no ids to carry
+    evs = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "hi", "ids": [1, 2]}], "max_new_tokens": 16})
+    assert "".join(evs[0]["pieces"]) == "[user]hi[assistant]"
+    a = evs[-1]["assistant"]
+    assert a == {"think": None, "answer": "Paris.", "terminated": True, "malformed": False, "well_formed": True, "ids": None, "n_calls": 0, "tool_errors": 0}
+    evs = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "hi"}], "max_new_tokens": 3})
+    assert evs[-1]["reason"] == "length" and not evs[-1]["assistant"]["well_formed"]
+
+    # our protocol is refused, one message per option set
+    for opt, needle in (({"tools": True}, "Python tool"), ({"functions": [{"name": "f", "signature": "def f()", "comment": "x"}]}, "declared functions"),
+                        ({"think_required": True}, "think")):
+        evs = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "hi"}], **opt})
+        assert [e["event"] for e in evs] == ["error"] and needle in evs[0]["error"] and "external model" in evs[0]["error"], opt
+    r = c.post("/api/model/score", json={"slot": "A", "mode": "completion", "text": "hello"})
+    assert r.status_code == 500 and "n/a for an external slot" in r.json()["detail"]
+
+    # a base model: completion works, chat is refused (no template is invented)
+    c.post("/api/model/slots/B/load", json={"checkpoint": "external:smollm2-135m", "device": "cpu"})
+    evs = _sse_events(c, {"slots": ["B"], "mode": "chat", "messages": [{"role": "user", "content": "hi"}]})
+    assert [e["event"] for e in evs] == ["error"] and "base model" in evs[0]["error"] and "completion mode" in evs[0]["error"]
+    evs = _sse_events(c, {"slots": ["A", "B"], "mode": "completion", "text": "x", "max_new_tokens": 4, "temperature": 0.0})
+    assert {e["slot"] for e in evs if e["event"] == "token"} == {"A", "B"}, "two external slots side by side"
+
+    assert c.post("/api/model/slots/A/unload").json()["loaded"] is False and h.slots["A"].ext is None
+    assert c.get("/api/model/status").json()["slots"]["A"] == {"slot": "A", "loaded": False}
+
+
+@pytest.mark.skipif(not E.get("smollm2-135m-instruct").available(), reason="smollm2-135m-instruct weights not on disk")
+def test_external_slot_real_cpu_smoke(tmp_path):
+    """The real worker subprocess and the real SmolLM2-135M-Instruct on the CPU: load, then a 16-token greedy chat reply."""
+    (tmp_path / "runs").mkdir()
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=tmp_path, gpu_policy="cpu", open_browser=False))
+    c = TestClient(app)
+    try:
+        info = c.post("/api/model/slots/A/load", json={"checkpoint": "external:smollm2-135m-instruct", "device": "cpu"}).json()
+        assert info["external"] and info["device"] == "cpu" and info["dtype"] == "float32" and info["name"] == "smollm2-135m-instruct"
+        evs = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "What is the capital of France?"}],
+                              "max_new_tokens": 16, "temperature": 0.0})
+        assert evs[0]["event"] == "prompt" and "<|im_start|>" in "".join(evs[0]["pieces"])
+        toks = [e for e in evs if e["event"] == "token"]
+        done = evs[-1]
+        assert 0 < len(toks) <= 16 and done["event"] == "done" and done["n"] == len(toks)
+        assert all(t["logprob"] <= 0 and len(t["topk"]) == 5 for t in toks)
+        assert done["assistant"]["answer"].strip() and done["assistant"]["think"] is None
     finally:
         app.state.worker.stop()
