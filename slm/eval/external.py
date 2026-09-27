@@ -192,6 +192,19 @@ class HfChatModel:
     def encode_chat(self, messages: list[dict]) -> list[int]:
         return list(self.tokenizer(self.render_chat(messages), add_special_tokens=False)["input_ids"])
 
+    _FRAME_SENTINEL = "ZQXJVK"
+
+    def chat_frame(self) -> tuple[list[int], list[int]]:
+        """(head, tail): the template's token ids before and after a single user turn's content, tail including
+        the generation prompt, so a prompt can be assembled from raw content ids with exact length control:
+        `head + content_ids + tail` is what `encode_chat([{"role": "user", "content": ...}])` would produce."""
+        ids = self.encode_chat([{"role": "user", "content": self._FRAME_SENTINEL}])
+        mark = self.encode_plain(self._FRAME_SENTINEL)
+        for i in range(len(ids) - len(mark) + 1):
+            if ids[i : i + len(mark)] == mark:
+                return ids[:i], ids[i + len(mark):]
+        raise ValueError(f"{self.name}: the chat template did not keep the sentinel content as its own tokens")
+
     def decode(self, ids: list[int]) -> str:
         return self.tokenizer.decode(ids, skip_special_tokens=True)
 

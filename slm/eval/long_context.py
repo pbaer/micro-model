@@ -14,7 +14,8 @@ is much easier because the needle is the only thing that changes).
 The trainer runs the same measurement periodically for extension runs (`eval.needle_lengths`) and logs
 `needle_<L>` (mean over depths) and `needle_min_<L>` (worst depth) into its eval records.
 
-External models (slm.eval.external, `--external <name>`): the length axis is counted in *the model's own* tokens, so a
+External models (slm.eval.external, `--external <name>`): chat models see the haystack as one user turn of their own
+template and answer in the assistant turn; base models get the completion form. The length axis is counted in *the model's own* tokens, so a
 4096 cell is a 4096-token prompt for that model too. Each case makes exactly the random draws ours makes (secret, shard,
 window), so the secrets and the place in the corpus where the haystack starts are the ones our checkpoints see; the
 window is decoded to text, continued contiguously from the same shard, re-encoded with the model's tokenizer and cut to
@@ -252,8 +253,12 @@ def _external_case(model, tok: SlmTokenizer, L: int, d: float, rng: random.Rando
         chunk = np.concatenate([chunk, more[~np.isin(more, haystack.drop)]])
     q_ids = model.encode_plain("\n\nQuestion: " + question + "\nAnswer:")
     n_ids = model.encode_plain(" " + needle + " ")
-    prefix = model.prefix_ids()
-    budget = L - reserve - len(q_ids) - len(n_ids) - len(prefix)
+    # A chat model gets the same text as ONE user turn in its own template, and answers in its assistant turn: on a
+    # raw completion prompt SmolLM2-360M-Instruct's top token after "Answer:" is <|im_end|> in every precision
+    # (2026-09-27), i.e. it ends the turn instead of answering, and the eval read that as 0% recall. Base models
+    # keep the completion form, which is their native one (and ours).
+    head, tail = model.chat_frame() if getattr(model, "is_chat", False) else (model.prefix_ids(), [])
+    budget = L - reserve - len(q_ids) - len(n_ids) - len(head) - len(tail)
     text = tok.decode(chunk.astype(np.int64).tolist(), skip_special=True)
     filler = model.encode_plain(text)
     extra = random.Random(case_seed)  # end of a shard: more windows from a private rng (never disturbs the shared one)
@@ -263,7 +268,7 @@ def _external_case(model, tok: SlmTokenizer, L: int, d: float, rng: random.Rando
         filler = model.encode_plain(text)
     filler = filler[:budget]
     pos = int(len(filler) * d)
-    return [*prefix, *filler[:pos], *n_ids, *filler[pos:], *q_ids], secret
+    return [*head, *filler[:pos], *n_ids, *filler[pos:], *q_ids, *tail], secret
 
 
 def _answer_all_external(model, prompts: list[list[int]], max_batch_tokens: int, max_new: int = 12) -> list[str | None]:
@@ -308,7 +313,9 @@ def run_needle_external(model, tok: SlmTokenizer, lengths: list[int], haystack: 
             for i in range(n):
                 cases.append((d, *_external_case(model, tok, L, d, rng, haystack, f"{seed}-{L}-{j}-{i}")))
         assert all(len(c[1]) == L - 16 for c in cases), "external needle prompts must be exactly L - 16 of the model's tokens"
-        outs = _answer_all_external(model, [c[1] for c in cases], max_batch_tokens)
+        # a chat model answers in a sentence ("The secret number mentioned in the text is 240891."), so it gets
+        # twice the completion budget; the check is the same (the secret appears in the answer)
+        outs = _answer_all_external(model, [c[1] for c in cases], max_batch_tokens, max_new=24 if getattr(model, "is_chat", False) else 12)
         for j, d in enumerate(depths):
             hits, failures, n_oom = 0, [], 0
             for (_, _, gold), out in zip(cases[j * n : (j + 1) * n], outs[j * n : (j + 1) * n]):

@@ -156,3 +156,19 @@ def test_base_model_never_gets_a_chat_template():
     with pytest.raises(ValueError):
         base.render_chat([{"role": "user", "content": "hi"}])
     assert base.generate_text("The capital of France is", max_new_tokens=4).strip()
+
+
+def test_chat_frame_reassembles_the_template_exactly(tmp_path):
+    """head + content + tail must equal encode_chat of the same content, for a content that tokenizes on its own."""
+    import pytest
+
+    from slm.eval.external import EXTERNAL_MODELS, load_external
+
+    name = "smollm2-135m-instruct"
+    if not (EXTERNAL_MODELS[name].local_dir / "config.json").exists():
+        pytest.skip("weights not downloaded")
+    m = load_external(name, device="cpu")
+    head, tail = m.chat_frame()
+    assert head and tail, "a chat template has tokens on both sides of the user content"
+    content = "The secret number is 123456. What is the secret number?"
+    assert head + m.encode_plain(content) + tail == m.encode_chat([{"role": "user", "content": content}])
