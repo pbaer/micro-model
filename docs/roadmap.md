@@ -130,8 +130,10 @@ context-extended base once the curriculum settles.
 2b. **Goal 5, the swarm** — in progress. Round 1 (2026-09-26, §17-18): sample / collapse / verify / single-prompt
    select; the selector never beat majority, trained or not, though the RL run built for it (run 6) became the
    M9 output. Round 2 (2026-09-27, Peter's redesign, §19): a single-elimination **tournament** of pairwise
-   comparisons (`slm.swarm.tournament`), pairwise SFT + RL `pair` family (`m9_pair_336m`, `m9_rl7_336m`,
-   `scripts/pair_chain.sh` running). Portal swarm mode shows both paths.
+   comparisons; the atomic pairwise decision stayed at chance through SFT and RL (0.507 / 0.487). Selection by
+   the model's own judgment is closed at this size. Next, in cost order (§19): cross-method agreement as a
+   mechanical selector; a 10x larger pairwise set to test data-starvation; or parallel sampling only where an
+   external verifier exists. Portal swarm mode shows both paths with a live bracket.
 2c. **Local competitor models** (2026-09-27, Peter): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
    gpt2-medium run locally through our evals (`slm/eval/external.py`, `--external`), rows in the Evals tab.
 3. **A third base**, with what M9 taught baked in from the start: conversation-count balance in the mixture,

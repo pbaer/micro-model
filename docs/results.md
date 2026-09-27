@@ -1119,3 +1119,41 @@ Multi-turn recall 0.609 is the best measured. Benchmarks and needle tied; facts 
 **Decision: `runs/m9_rl6_336m/checkpoints/final.pt` is the M9 output** (fifth application of the hard-suite-then-judge
 check: an upgrade). The selection SFT contributed nothing the selector could use, but the RL run it was built for
 did; and the SFT's chat damage being fully repaired by RL says the format-then-anchor order is safe to reuse (§19).
+
+## 19. The tournament: the pairwise decision is at chance, trained or not (2026-09-27)
+
+Peter's redesign of the swarm's selection: a single-elimination bracket of pairwise comparisons ("Answer A ...
+Answer B ... which is correct? `#### A`/`#### B`"), rounds in parallel, so the model never faces more than a binary
+choice. `slm.swarm.tournament` (seeded first-vs-last, every other pair presented swapped, evidence fallback when no
+pick parses), `scripts/pair_eval.py` (the atomic decision on its own: accuracy on gold-vs-wrong pairs from the
+model's own pools, balanced 50/50 so chance is 0.5 and the A-share reads the position bias), and the same training
+ladder as §18 on run 6's final.pt: pairwise SFT `m9_pair_336m` (322 pairs, v3 recipe), then RL `m9_rl7_336m` with a
+`pair` family (337 disjoint pairs, binary reward) in run 6's mix.
+
+| checkpoint | pair accuracy (n=300) | parsed | A-share | tournament GSM8K / SVAMP | majority | greedy |
+|---|---|---|---|---|---|---|
+| rl6 final (untrained) | 0.12 (≈0.49 of the parsed) | 0.24 | 0.11 | -- | | |
+| rl5 step 200 (untrained, the §17 base) | -- | | | 0.06 / 0.08 | 0.06 / 0.14 | 0.00 / 0.10 |
+| pair SFT (m9_pair final) | **0.507** | 0.997 | 0.475 | 0.08 / 0.08 | 0.08 / 0.10 | 0.08 / 0.10 |
+| rl7 step 100 | **0.487** | 1.000 | 0.043 | 0.08 / 0.14 | 0.08 / 0.12 | 0.06 / 0.12 |
+
+- The SFT installed the format completely (99.7% parsable picks, position bias gone at 0.475) and the decision not
+  at all: 0.507, chance, on every source (GSM8K 0.53, SVAMP 0.48).
+- RL run 7 had the ideal GRPO signal -- a balanced binary reward at chance means every group has spread -- and its
+  `pair` reward went 0.43 / 0.55 / 0.48 / 0.58 by 20-step window while the A-share fell to 0.04: the policy drifted
+  to the constant answer, which is what a policy does when no feature in the prompt predicts the label. Stopped at
+  step 100 (checkpoint kept); the remaining GPU went to the comparison models (§20).
+- The bracket itself is correct (unit-tested against a scripted judge, and the portal's streamed bracket matches
+  `swarm_answer` round for round); it inherits the atomic decision, so tournament = majority ± noise.
+
+**Verdict.** At 336M, judging which of two worked rationales is right is not learned from 322 imitation pairs plus
+100 RL steps, and the pool's evidence (support, sandbox provenance) does not separate right from wrong either (§17:
+9-12 of 16 candidates "verified" because a wrong setup computes correctly). The swarm's ceiling is real (oracle
+0.30-0.36 GSM8K, 0.48-0.66 SVAMP at k=16) and nothing at this scale reaches it by judgment. What is left to try,
+in order of cost: (1) *cross-method agreement* as a mechanical selector -- an answer reached both by a code path and a
+prose path, or by two differently-worded re-askings of the problem, is right more often than support alone says
+(needs a k=16 sweep with candidates stored; cheap); (2) a much larger pairwise set -- every GSM8K-train pool at k=8
+(~1.2K correct pools, ~5K pairs) plus host-generated "spot the wrong step" pairs from the synthetic families, to
+test whether the judge is data-starved rather than incapable; (3) accept selection as out of reach at this size and
+use parallel sampling only where an external verifier exists (unit tests, constraints), which the RL families already
+do. The training ladder is reusable as is: a format SFT then the chat-anchored RL (§18) costs nothing measurable.

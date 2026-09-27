@@ -793,3 +793,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   gpt2-medium (a 2019 floor). Weights downloaded once like the datasets, offline at run time; anything that
   depends on our tool protocol is n/a for them. Harness by an Opus subagent (`slm/eval/external.py`,
   `--external`), GPU runs queued behind the tournament chain.
+- The tournament (§19): pairwise SFT installed the format (99.7% parsable, no position bias) and left the decision
+  at chance (0.507); RL run 7's balanced binary `pair` reward stayed at 0.43-0.58 while the A-share fell to 0.04
+  (constant-answer drift). Stopped at step 100, measured (pair 0.487, tournament = majority), GPU released to the
+  comparison models at 03:08. Selection by the model's own judgment is closed at this size; three cheaper routes
+  are listed in §19 for Peter. Also: the pairwise SFT on rl6 final.pt had val loss 1.026 vs 1.016 -- the format SFT
+  costs chat again, and this time no anchored RL ran long enough to repair it, so `m9_pair`/`m9_rl7` are not
+  candidates for anything and will be pruned.
