@@ -11,6 +11,7 @@ Per test set, six numbers from the same k samples:
   oracle            a correct answer exists among the k samples (pass@k: the ceiling of any selector)
   oracle_verified   a correct answer exists among the VERIFIED candidates (the ceiling after the sandbox filter)
   in_prompt         the correct answer's group survived into the selector prompt (the ceiling of the selector)
+  tournament        (--mode both/tournament) the pairwise bracket's champion (slm.swarm.tournament)
 
 The gaps between these say where to work: oracle - oracle_verified is what verification throws away,
 oracle_verified - in_prompt what the prompt budget throws away, in_prompt - selector what the selector still
@@ -37,6 +38,7 @@ def main() -> None:
     ap.add_argument("--max-new", type=int, default=512)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
+    ap.add_argument("--mode", default="both", choices=["select", "tournament", "both"], help="which selection paths to run on the same samples")
     a = ap.parse_args()
 
     import torch
@@ -47,7 +49,8 @@ def main() -> None:
     from slm.eval.quality import load_model
     from slm.eval.reasoning import gsm8k_tasks, svamp_tasks
     from slm.rl.rewards import verify_answer
-    from slm.swarm import swarm_answer
+    from slm.rl.rewards import parse_final_span
+    from slm.swarm import display_answer, swarm_answer
     from slm.tools.loop import sample_with_tools
     from slm.utils.sdpa import sdpa_context
 
@@ -72,11 +75,11 @@ def main() -> None:
                 pid = format_chat(tok, [{"role": "user", "content": t.prompt + SUFFIX}], add_generation_prompt=True, think_required=True).ids
                 gen = torch.Generator(device="cuda"); gen.manual_seed(0)
                 tc = sample_with_tools(model, tok, [pid], a.max_new, 1.0, 1.0, 1, gen, max_calls=6)[0]
-                from slm.rl.rewards import parse_final_span
                 greedy = parse_final_span(parse_assistant(tok, tc.ids)["answer"])
                 # the swarm
                 res = swarm_answer(model, tok, t.prompt, k=a.k, temperature=a.temperature, max_new_tokens=a.max_new,
-                                   seed=a.seed * 100003 + i, answer_suffix=SUFFIX)
+                                   seed=a.seed * 100003 + i, answer_suffix=SUFFIX, mode=a.mode)
+                sel_final = display_answer(parse_final_span(res.selector_answer)) if parse_final_span(res.selector_answer) is not None else res.verified_majority
                 correct_keys = {g.key for g in res.groups if ok(g.answer, t.answer)}
                 verified_correct = any(c.verified and ok(c.parsed, t.answer) for c in res.candidates)
                 in_prompt = any(f"- Answer: {g.answer} (" in (res.selector_messages[0]["content"] if res.selector_messages else "") for g in res.groups if g.key in correct_keys)
@@ -85,7 +88,9 @@ def main() -> None:
                     "greedy": ok(greedy, t.answer),
                     "majority": ok(res.majority, t.answer),
                     "verified_majority": ok(res.verified_majority, t.answer),
-                    "selector": ok(res.final, t.answer),
+                    "selector": ok(sel_final, t.answer),
+                    "tournament": ok(res.tournament, t.answer) if res.tournament is not None else ok(res.verified_majority, t.answer),
+                    "tournament_rounds": len(res.rounds), "tournament_answer": res.tournament,
                     "selector_called_tool": res.selector_calls > 0,
                     "oracle": any(ok(c.parsed, t.answer) for c in res.candidates),
                     "oracle_verified": verified_correct,
@@ -97,8 +102,8 @@ def main() -> None:
                 if (i + 1) % 10 == 0:
                     m = lambda key: statistics.fmean(r[key] for r in rows)
                     print(f"  {name} {i + 1}/{len(tasks)}: greedy {m('greedy'):.2f} majority {m('majority'):.2f} vmaj {m('verified_majority'):.2f} "
-                          f"selector {m('selector'):.2f} | oracle {m('oracle'):.2f} verified {m('oracle_verified'):.2f} in-prompt {m('in_prompt'):.2f} [{time.time() - t0:.0f}s]", flush=True)
-            keys = ("greedy", "majority", "verified_majority", "selector", "oracle", "oracle_verified", "in_prompt", "selector_called_tool")
+                          f"selector {m('selector'):.2f} tournament {m('tournament'):.2f} | oracle {m('oracle'):.2f} verified {m('oracle_verified'):.2f} in-prompt {m('in_prompt'):.2f} [{time.time() - t0:.0f}s]", flush=True)
+            keys = ("greedy", "majority", "verified_majority", "selector", "tournament", "oracle", "oracle_verified", "in_prompt", "selector_called_tool")
             summary = {k: round(statistics.fmean(r[k] for r in rows), 3) for k in keys}
             summary.update({"n": len(rows), "k": a.k, "mean_groups": round(statistics.fmean(r["n_groups"] for r in rows), 1),
                             "mean_verified": round(statistics.fmean(r["n_verified"] for r in rows), 1), "seconds": round(time.time() - t0, 1)})
@@ -107,7 +112,7 @@ def main() -> None:
 
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
-        Path(a.out).write_text(json.dumps({"checkpoint": a.checkpoint, "k": a.k, "temperature": a.temperature, "results": results}, indent=1), encoding="utf-8")
+        Path(a.out).write_text(json.dumps({"checkpoint": a.checkpoint, "k": a.k, "temperature": a.temperature, "mode": a.mode, "results": results}, indent=1), encoding="utf-8")
         print(f"wrote {a.out}")
 
 
