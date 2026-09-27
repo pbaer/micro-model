@@ -37,3 +37,29 @@ def test_groups_round_trip_through_the_prompt_and_think_opens_with_the_fixed_pre
         line = think_line(back, answer_key(gold), 5)
         assert line.startswith(THINK_PREFIX), "the first think token is fixed so greedy decoding opens the span"
         assert (gold in line) or gold == "99"
+
+
+def test_pair_rebuild_is_balanced_and_disjoint(tmp_path):
+    from slm.rl.synth_select import rebuild_pairs
+    from slm.rl.tasks import POOLED, pair_pool
+    from slm.swarm import Candidate, answer_key, collapse, selector_messages
+
+    def cand(i, parsed, from_tool=False):
+        return Candidate(idx=i, think=f"think {parsed}", answer=f"#### {parsed}", parsed=parsed, key=answer_key(parsed), terminated=True,
+                         n_calls=int(from_tool), n_errors=0, calls=[["1", parsed]] if from_tool else [], from_tool=from_tool, n_tokens=5)
+    rows = []
+    for q, gold, others in (("How many?", "12", ["10", "7"]), ("What is 5+5?", "10", ["11", "9", "8"]), ("Twice 4?", "8", ["6"]), ("Unsolved?", "99", ["1", "2"])):
+        groups = collapse([cand(0, gold, True)] + [cand(i + 1, o) for i, o in enumerate(others)]) if q != "Unsolved?" else collapse([cand(i, o) for i, o in enumerate(others)])
+        rows.append({"prompt": selector_messages(q, groups, tok=None)[0]["content"], "gold": gold, "source": "t", "split": "train", "has_correct": q != "Unsolved?"})
+    pool = tmp_path / "select_pool.jsonl"
+    pool.write_text("\n".join(__import__("json").dumps(r) for r in rows) + "\n", encoding="utf-8")
+    import slm.rl.synth_select as ss
+    ss.SFT_DIR = tmp_path / "sft"
+    m = rebuild_pairs(str(pool), "pairs", r"C:\slm-data\tokenizer\v1", sft_permille=500)
+    total = m["counts"].get("sft:train", 0) + m["counts"].get("rl_pool", 0)
+    assert total == 2 + 3 + 1, "one pair per wrong group; the unsolved pool gives none"
+    assert m["counts"]["no_correct"] == 1
+    tasks = pair_pool(tmp_path / "sft" / "v1" / "pairs" / "pair_pool_rl.jsonl")
+    assert all(t.answer in ("A", "B") and t.task == "pair" and t.meta["answer_style"] == "free" for t in tasks)
+    assert all("Answer A:" in t.prompt and "Answer B:" in t.prompt and "Reasoning: think" in t.prompt for t in tasks), "rationales are carried into the pair prompt"
+    assert "pair" in POOLED

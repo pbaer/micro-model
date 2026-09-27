@@ -1,0 +1,66 @@
+# M9 pairwise-selection SFT: the tournament's atomic decision, installed as a format on run 6's final.pt.
+#
+# The single-prompt selector (m9_select / rl6) learned its template but not the choice: swarm selector 0.04-0.10
+# against majority 0.06-0.14 (docs/results.md §18). Peter's redesign: a single-elimination bracket of PAIRWISE
+# comparisons ("Answer A ... Answer B ... which is correct? '#### A'/'#### B'"), 32 in parallel, then 16, 8...
+# Binary, balanced labels, and the SFT target IS the discrimination -- not an announcement of a pick. Data from
+# the same pools (slm.rl.synth_select --rebuild-from --pairs): gold group vs each wrong group, sides alternating.
+# Same recipe as the v3 selection SFT (40M tokens, 1.5e-5, the set at 0.15 on the SFT half of the pools; the RL
+# half is the `pair` family's), which is what it took to move a first-token decision.
+# Base: rl6 final.pt -- greedy GSM8K 0.03 -> 0.085 with 0.90 tool use, multi-turn recall 0.609, misfire 0.
+run_name: m9_pair_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m9_rl6_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    pair-sft: 0.15                                # the pairwise format set (half of the correct pools; see above)
+    smoltalk-smol-magpie-ultra-4k-direct: 0.20
+    smoltalk-openhermes-100k-4k-direct: 0.12
+    smoltalk-systemchats-30k-short: 0.12
+    synthetic-python-tools: 0.10
+    smoltalk-openhermes-100k-short: 0.06
+    smoltalk-smol-constraints-4k-think: 0.06
+    gsm8k-tools: 0.06
+    synthetic-reasoning-tools: 0.05
+    synthetic-multiturn-tools: 0.04
+    synthetic-reasoning: 0.04
+  seq_len: 4096
+  val_tokens: 1000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.5e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 40000000
+  warmup_tokens: 2000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 7
+  log_every_updates: 10
+ckpt:
+  every_minutes: 10
+eval:
+  every_tokens: 10000000
+  gen_every_tokens: 10000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 5
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+notes: "Pairwise-selection format SFT on rl6 final.pt; the base for RL run 7 (pair family)."

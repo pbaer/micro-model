@@ -204,7 +204,33 @@ def select_pool(path=None) -> list[Task]:
     return _SELECT_POOL
 
 
-POOLED = {"gsm8k": gsm8k_pool, "chat": chat_pool, "select": select_pool}  # families drawn from a fixed pool rather than a generator
+_PAIR_POOL = None
+PAIR_POOL_FILE = "pair-sft/pair_pool_rl.jsonl"  # written by slm.rl.synth_select --rebuild-from --pairs (disjoint from its SFT prompts)
+
+
+def pair_pool(path=None) -> list[Task]:
+    """Pairwise prompts (tournament mode): the task, Answer A and Answer B with support, provenance and rationale,
+    gold = the letter of the correct one. Binary and balanced -- the decision a small model can learn."""
+    global _PAIR_POOL
+    if _PAIR_POOL is None or path is not None:
+        import json
+
+        from slm.data.sft import SFT_DIR
+
+        p = Path(path) if path is not None else SFT_DIR / "v1" / PAIR_POOL_FILE
+        pool = []
+        if p.exists():
+            for i, line in enumerate(p.read_text(encoding="utf-8").splitlines()):
+                if line.strip():
+                    r = json.loads(line)
+                    pool.append(Task(id=f"pair-{i}", prompt=r["prompt"], answer=str(r["gold"]), task="pair", meta={"answer_style": "free", "source": r.get("source")}))
+        if path is not None:
+            return pool
+        _PAIR_POOL = pool
+    return _PAIR_POOL
+
+
+POOLED = {"gsm8k": gsm8k_pool, "chat": chat_pool, "select": select_pool, "pair": pair_pool}  # families drawn from a fixed pool rather than a generator
 
 
 def _constraints(rng: random.Random):

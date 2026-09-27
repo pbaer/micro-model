@@ -31,6 +31,7 @@ from collections import Counter
 from pathlib import Path
 
 from slm.data.sft import SFT_DIR, SftShardWriter
+from slm.swarm import SELECT_INTRO
 
 
 def svamp_train_tasks(n: int, seed: int):
@@ -88,6 +89,8 @@ def groups_from_prompt(prompt: str):
         if m:
             ans, sup, ver = m.group(1), int(m.group(2)), int(m.group(3) or 0)
             out.append(Group(key=answer_key(ans), answer=ans, support=sup, verified=ver, members=[], rationale=""))
+        elif line.startswith("  Reasoning: ") and out:
+            out[-1].rationale = line[len("  Reasoning: "):]
     return out
 
 
@@ -128,6 +131,60 @@ def rebuild(pool_path: str, name: str, tokenizer: str, k: int, sft_permille: int
     (out / "select_pool.jsonl").write_bytes(Path(pool_path).read_bytes())
     m = {"name": name, "source": "synth_select.rebuild", "sft_permille": sft_permille, "pool": str(pool_path), "tokenizer_sha256": tok.sha256, "k": k, "think_prefix": THINK_PREFIX,
          "think_required": True, "tools": True, "counts": dict(stats),
+         "train_examples": writers["train"].total_examples, "train_tokens": writers["train"].total_tokens, "train_targets": writers["train"].total_targets,
+         "val_examples": writers["val"].total_examples, "val_tokens": writers["val"].total_tokens, "val_targets": writers["val"].total_targets}
+    (out / "manifest.json").write_text(json.dumps(m, indent=1), encoding="utf-8")
+    return m
+
+
+PAIR_THINK = "Comparing the two answers."  # fixed, short: the decision is the '#### A'/'#### B' token, not the think
+
+
+def rebuild_pairs(pool_path: str, name: str, tokenizer: str, sft_permille: int = 500, max_pairs_per_pool: int = 4) -> dict:
+    """Pairwise data from an existing pool file: for every pool with a correct group, the gold group against each
+    wrong group (up to `max_pairs_per_pool`, the strongest-evidence wrong ones first), A/B side alternating so
+    the labels are balanced. The same prompt-hash split as `rebuild`: SFT pools -> shards `name`, the rest ->
+    `pair_pool_rl.jsonl` (prompt, gold letter) for the RL `pair` family. Pools with no correct group give no
+    pair (there is no right side to pick) and are left out of both."""
+    from slm.data.chat import format_chat
+    from slm.data.tokenizer import SlmTokenizer
+    from slm.swarm import answer_key, pair_messages
+
+    tok = SlmTokenizer.load(tokenizer)
+    out = SFT_DIR / Path(tokenizer).name / name
+    writers = {"train": SftShardWriter(out / "train"), "val": SftShardWriter(out / "val")}
+    stats = Counter()
+    side = 0
+    rl_f = open(out / "pair_pool_rl.jsonl", "w", encoding="utf-8")
+    for line in Path(pool_path).read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        r = json.loads(line)
+        gold_key = answer_key(str(r["gold"]))
+        groups = groups_from_prompt(r["prompt"])
+        gold = next((g for g in groups if g.key == gold_key), None)
+        if gold is None:
+            stats["no_correct"] += 1
+            continue
+        task_prompt = r["prompt"].split("\n\n" + SELECT_INTRO[:40], 1)[0]
+        bucket = int.from_bytes(hashlib.sha1(("sft:" + r["prompt"]).encode()).digest()[:4], "little") % 1000
+        to_sft = bucket < sft_permille
+        for wrong in [g for g in groups if g.key != gold_key][:max_pairs_per_pool]:
+            a, b, letter = (gold, wrong, "A") if side == 0 else (wrong, gold, "B")
+            side ^= 1
+            msgs = pair_messages(task_prompt, a, b, tok)
+            if to_sft:
+                enc = format_chat(tok, msgs + [{"role": "assistant", "think": PAIR_THINK, "content": f"#### {letter}"}], think_required=True, tools=True)
+                writers[r["split"]].add(enc.ids, enc.loss_mask)
+                stats[f"sft:{r['split']}"] += 1
+            else:
+                rl_f.write(json.dumps({"prompt": msgs[0]["content"], "gold": letter, "source": r.get("source"), "split": r["split"]}, ensure_ascii=False) + "\n")
+                stats["rl_pool"] += 1
+    for w in writers.values():
+        w.flush()
+    rl_f.close()
+    m = {"name": name, "source": "synth_select.rebuild_pairs", "pool": str(pool_path), "tokenizer_sha256": tok.sha256, "sft_permille": sft_permille,
+         "max_pairs_per_pool": max_pairs_per_pool, "think": PAIR_THINK, "think_required": True, "tools": True, "counts": dict(stats),
          "train_examples": writers["train"].total_examples, "train_tokens": writers["train"].total_tokens, "train_targets": writers["train"].total_targets,
          "val_examples": writers["val"].total_examples, "val_tokens": writers["val"].total_tokens, "val_targets": writers["val"].total_targets}
     (out / "manifest.json").write_text(json.dumps(m, indent=1), encoding="utf-8")
@@ -220,7 +277,11 @@ def main() -> None:
     ap.add_argument("--max-new", type=int, default=512)
     ap.add_argument("--device", default="cuda")
     ap.add_argument("--sft-permille", type=int, default=500, help="rebuild: share of correct pools that go to SFT; the rest are the RL pool")
+    ap.add_argument("--pairs", action="store_true", help="with --rebuild-from: write the pairwise set (tournament mode) instead of the selection set")
     a = ap.parse_args()
+    if a.rebuild_from and a.pairs:
+        print(json.dumps(rebuild_pairs(a.rebuild_from, a.name, a.tokenizer, a.sft_permille), indent=1))
+        return
     if a.rebuild_from:
         print(json.dumps(rebuild(a.rebuild_from, a.name, a.tokenizer, a.k, a.sft_permille), indent=1))
         return
