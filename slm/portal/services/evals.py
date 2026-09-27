@@ -11,6 +11,9 @@ other is listed in the cell's detail.
 Returned shape: `{columns: [{key, label, group, super, higher_is_better, fmt, min, max}], rows: [{run, checkpoint,
 aliases, stage, params, own_tokens, tokens, cells: {key: {value, source, detail, t}}}]}`. `t` in [0, 1] is the colour
 position inside its column (1 = best, 0 = worst, 0.5 when the column has a single distinct value).
+
+Every file that measured a cell (not only the winner) is kept per row for the detail pages (`cell_refs`, `detail`,
+services/eval_detail.py).
 """
 
 from __future__ import annotations
@@ -138,7 +141,11 @@ class EvalIndex:
         self.runs = run_index
         self._sig: tuple | None = None
         self._table: dict | None = None
+        # (run, checkpoint name) -> {"row": row, "refs": {key: [ref, ...]}}: every file that measured a cell, winner
+        # first, with what the detail page needs to find the item inside it (rebuilt with the table)
+        self._cells: dict[tuple[str, str], dict] = {}
         self.lock = threading.Lock()
+        self._detail = None
 
     # -------------------------------------------------------------------------------- file discovery
     def _files(self) -> dict[str, list[Path]]:
@@ -182,6 +189,20 @@ class EvalIndex:
                 self._sig = sig
             return self._table
 
+    def cell_refs(self, run: str, checkpoint: str) -> dict | None:
+        """{"row", "refs"} for a row by any of its checkpoint names (label or alias), or None."""
+        self.table()
+        with self.lock:
+            return self._cells.get((run, checkpoint))
+
+    def detail(self, run: str, checkpoint: str, key: str, **kw) -> dict:
+        """Everything stored for one (checkpoint, column) cell: see services/eval_detail.py."""
+        from slm.portal.services.eval_detail import EvalDetail
+
+        if self._detail is None:
+            self._detail = EvalDetail(self)
+        return self._detail.detail(run, checkpoint, key, **kw)
+
     # -------------------------------------------------------------------------------- build
     def _build(self, files: dict[str, list[Path]]) -> dict:
         rows: dict[tuple, dict] = {}
@@ -199,15 +220,16 @@ class EvalIndex:
             r = rows.get(key)
             if r is None and create:
                 same = sorted(n for n, v in idx.items() if tok is not None and (v or {}).get("tokens") == tok)
-                r = rows[key] = {"run": run, "own_tokens": tok, "names": set(same) | {ckpt}, "referenced": [], "cells": {}, "_prio": {}, "_alt": {}}
+                r = rows[key] = {"run": run, "own_tokens": tok, "names": set(same) | {ckpt}, "referenced": [], "cells": {}, "_prio": {}, "_alt": {}, "_refs": {}}
             if r is not None and ckpt not in r["referenced"]:
                 r["referenced"].append(ckpt)
             return r
 
-        def put(r: dict, key: str, value, source: str, detail: str, prio: float = 0.0) -> None:
+        def put(r: dict, key: str, value, source: str, detail: str, prio: float = 0.0, ref: dict | None = None) -> None:
             v = _num(value)
             if v is None:
                 return
+            r["_refs"].setdefault(key, []).append({"source": source, "value": v, "prio": prio, "detail": detail, **(ref or {})})
             cur = r["_prio"].get(key)
             if cur is not None and cur >= prio:
                 r["_alt"].setdefault(key, []).append(f"{source} = {v:.4g}")
@@ -266,11 +288,12 @@ class EvalIndex:
                 det = (f"judged {c.get('n_scored')}/{c.get('n_items')} prompts ({c.get('checkpoint')}, {c.get('stage', '')}) by "
                        f"{', '.join(q.get('judges') or []) or '?'} · correctness {c.get('correctness')}, coherence {c.get('coherence')}, task {c.get('task')}"
                        + (f" · excludes {', '.join(q.get('excluded_from_overall') or [])}" if q.get("excluded_from_overall") else ""))
-                put(r, "judged", c.get("overall"), src, det)
+                qref = {"tokens": c.get("tokens"), "qckpt": c.get("checkpoint")}
+                put(r, "judged", c.get("overall"), src, det, ref=qref)
                 if _num(c.get("tool_misfire")) is not None:
                     cats = ", ".join(c.get("tool_misfire_cats") or [])
                     put(r, "judged_misfire", c.get("tool_misfire"), src,
-                        f"share of {c.get('tool_misfire_n')} no-tool prompts answered with a tool call" + (f" (misfired on: {cats})" if cats else ""))
+                        f"share of {c.get('tool_misfire_n')} no-tool prompts answered with a tool call" + (f" (misfired on: {cats})" if cats else ""), ref=qref)
 
         return self._finish(rows)
 
@@ -388,6 +411,7 @@ class EvalIndex:
     def _finish(self, rows: dict) -> dict:
         summaries, metas = self._run_info()
         out = []
+        self._cells = {}
         for r in rows.values():
             if not r["cells"]:
                 continue
@@ -405,9 +429,13 @@ class EvalIndex:
             for k, alts in r["_alt"].items():
                 if k in r["cells"] and alts:
                     r["cells"][k]["detail"] += " · also measured: " + "; ".join(alts)
-            out.append({"run": run, "checkpoint": label, "aliases": sorted(n for n in names if n != label and n != "latest.pt"),
-                        "stage": stage, "params": s.get("n_params") or (meta.get("n_params") if meta else None),
-                        "own_tokens": own, "tokens": cum, "cells": r["cells"]})
+            row = {"run": run, "checkpoint": label, "aliases": sorted(n for n in names if n != label and n != "latest.pt"),
+                   "stage": stage, "params": s.get("n_params") or (meta.get("n_params") if meta else None),
+                   "own_tokens": own, "tokens": cum, "cells": r["cells"]}
+            out.append(row)
+            refs = {k: [x for _, x in sorted(enumerate(v), key=lambda iv: (-iv[1]["prio"], iv[0]))] for k, v in r["_refs"].items()}
+            for n in names | set(r["referenced"]):
+                self._cells[(run, n)] = {"row": row, "refs": refs}
         out.sort(key=lambda r: (-(r["params"] or 0), _STAGE_RANK.get(r["stage"], 9), r["run"], r["own_tokens"] or 0, r["checkpoint"]))
         cols = []
         for c in COLUMNS:

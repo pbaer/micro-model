@@ -11,7 +11,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from slm.eval.quality import item_id
 from slm.portal.app import create_app
+from slm.portal.services import eval_detail
+from slm.portal.services.eval_detail import EvalDetail
 from slm.portal.services.evals import COLUMNS, EvalIndex, effective_context
 from slm.portal.settings import PortalSettings
 
@@ -172,7 +175,7 @@ def test_every_eval_column_has_an_info_card():
     """The page asks for `ev_<key>` (swarm columns share `ev_sw_<method>`, pass@k shares `ev_pass_at_k`); each must exist."""
     cards = Path("slm/portal/static/components/cards.js").read_text(encoding="utf-8")
     keys = set(re.findall(r"^  (ev_[a-z0-9_]+): \{", cards, re.M))
-    want = {"ev_table", "ev_colour"}
+    want = {"ev_table", "ev_colour", "ev_sort", "ev_detail"}
     for c in COLUMNS:
         want.add("ev_sw_" + c["method"] if c["key"].startswith("sw_") else "ev_pass_at_k" if c["key"].startswith("pk_") else "ev_" + c["key"])
     assert want <= keys, sorted(want - keys)
@@ -189,3 +192,191 @@ def test_evals_js_modules_parse():
         shutil.copy(f, tmp)
         r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
         assert r.returncode == 0, f"{f}: {r.stderr[:400]}"
+
+
+# ------------------------------------------------------------------------------------------------ detail pages
+def _jsonl(p: Path, rows: list) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("\n".join(json.dumps(x) for x in rows) + "\n", encoding="utf-8")
+
+
+def _conv(fact: str, rec: bool, fmt: bool, mis: int) -> dict:
+    asst = [{"answer": "ok", "think": "t", "terminated": True, "tool_calls": 0, "n_tokens": 3}] * 2
+    asst.append({"answer": fact if rec else "no idea", "think": "", "terminated": fmt, "tool_calls": mis, "n_tokens": 4})
+    return {"fact": fact, "turns": [f"My number is {fact}.", "Hi?", "What is my number?"], "assistant": asst,
+            "recall": rec, "format_ok": fmt, "misfires": mis, "templated": False}
+
+
+def make_detail_tree(root: Path) -> Path:
+    """make_tree plus per-item data of every kind, added to rows that already exist (the table's rows do not change)."""
+    runs = make_tree(root)
+    base, rl = runs / "base_a", runs / "rl_b"
+    _w(base / "facts.json", {"checkpoint": "runs/base_a/checkpoints/final.pt", "accuracy": 0.5, "n": 2, "mode": "completion", "per_category": {"capitals": 0.5},
+                             "rows": [{"cat": "capitals", "completion": "The capital of France is", "question": "What is the capital of France?",
+                                       "answers": "Paris", "output": "Paris.", "correct": True},
+                                      {"cat": "capitals", "completion": "The capital of Peru is", "question": "What is the capital of Peru?",
+                                       "answers": "Lima", "output": "Quito, a city", "correct": False}]})
+    nd = _needle("runs/base_a/checkpoints/final.pt", {1024: 1.0, 2048: 0.5})
+    nd["results"] = [{"length": 1024, "depth": 0.0, "accuracy": 1.0, "n": 16, "failures": []},
+                     {"length": 2048, "depth": 0.0, "accuracy": 0.5, "n": 16, "failures": [{"gold": 123456, "out": "654321"}]}]
+    _w(base / "needle_v2.json", nd)
+    (base / "lm_eval_limit2000.log").write_text("  5%|#   | 1/20 [00:01<00:10]\nhellaswag {'acc,none': 0.25}\n", encoding="utf-8")
+    # reasoning with a --dump companion: arith2mul rows carry task "arith2", so only the block sizes separate them
+    _w(rl / "reasoning_s100.json", {"checkpoint": "runs/rl_b/checkpoints/step_00100.pt", "tools": True, "mean_accuracy": 0.75, "per_task": {
+        "arith2": {"accuracy": 1.0, "n": 2, "tool_use_rate": 1.0}, "arith2mul": {"accuracy": 0.5, "n": 2, "tool_use_rate": 0.5}}})
+    _jsonl(rl / "reasoning_dump_s100.jsonl", [
+        {"task": "arith2", "id": f"arith2-{i}", "prompt": f"What is {i} {op} 3?", "gold": g, "text": f"<<x>>#### {a}", "answer": a, "correct": g == a,
+         "malformed": False, "tool_calls": t, "tool_errors": 0, "answer_from_tool": bool(t), "tool_results": [["x", a]] if t else [], "n_tokens": 9}
+        for i, op, g, a, t in [(1, "+", "4", "4", 1), (2, "-", "-1", "-1", 1), (3, "*", "9", "9", 1), (4, "*", "12", "11", 0)]])
+    _w(rl / "multiturn.json", {"checkpoint": "runs/rl_b/checkpoints/best.pt", "summary": {"n": 3, "recall": 0.67, "format": 0.67, "misfire": 0.33},
+                               "conversations": [_conv("7", True, True, 0), _conv("8", True, False, 1), _conv("9", False, True, 0)]})
+    _w(rl / "pass_at_k.json", {"checkpoint": "runs/rl_b/checkpoints/best.pt", "temperature": 0.8, "top_p": 0.95, "results": {"gsm8k": {
+        "summary": {"k": 4, "n_problems": 2, "pass_at_k": 0.5, "pass_at_curve": {"1": 0.25, "4": 0.5}},
+        "problems": [{"id": "gsm8k-test-0", "gold": "18", "n_correct": 1, "k": 4, "any_correct": True, "pass_at": {"1": False, "4": True}},
+                     {"id": "gsm8k-test-1", "gold": "3", "n_correct": 0, "k": 4, "any_correct": False, "pass_at": {"1": False, "4": False}}]}}})
+    sw = json.loads((rl / "swarm_eval_s100.json").read_text(encoding="utf-8"))
+    sw["results"]["svamp"]["problems"] = [
+        {"id": "svamp-test-0", "gold": "27", "greedy": False, "majority": True, "verified_majority": True, "selector": True, "oracle": True,
+         "majority_answer": "27", "selector_final": "27", "n_groups": 5},
+        {"id": "svamp-test-1", "gold": "5", "greedy": False, "majority": False, "verified_majority": False, "selector": False, "oracle": True,
+         "majority_answer": "4", "selector_final": "6", "n_groups": 9}]
+    _w(rl / "swarm_eval_s100.json", sw)
+    # judged suite: outputs for tokens 50 (= step_00050.pt = best.pt) joined with scores by item id
+    q = rl / "quality"
+    head = {"header": True, "run": "rl_b", "tokens": 50, "checkpoint": "step_00050.pt", "stage": "rl +tools", "suite": "v1", "device": "cpu"}
+    _jsonl(q / "outputs" / f"{50:012d}.jsonl", [head,
+        {"id": "cap_france", "category": "facts", "mode": "chat", "prompt": "What is the capital of France?", "expect": "Paris.", "output": "Paris.",
+         "think": "", "tool_calls": 0, "termination": "stop"},
+        {"id": "gold_symbol", "category": "facts", "mode": "chat", "prompt": "Symbol for gold?", "expect": "Au.", "output": "Ag", "think": "hmm",
+         "tool_calls": 1, "termination": "stop"},
+        {"id": "add", "category": "arithmetic", "mode": "chat", "prompt": "2+2?", "expect": "4", "output": "4", "tool_calls": 1}])
+
+    def sc(pid: str, c: int, note: str, judge: str = "judge-x") -> dict:
+        return {"item_id": item_id("rl_b", 50, pid, "v1"), "tokens": 50, "prompt_id": pid, "note": note, "judge": judge,
+                "scores": {"correctness": c, "coherence": 5, "task": 4}}
+
+    _jsonl(q / "scores.jsonl", [sc("cap_france", 2, "first pass", "judge-old"), sc("cap_france", 5, "right"), sc("gold_symbol", 1, "Ag is silver"), sc("add", 3, "ok")])
+    summ = json.loads((q / "summary.json").read_text(encoding="utf-8"))
+    summ["checkpoints"][1]["categories"] = {"facts": {"n": 2, "overall": 3.5, "correctness": 3.0}}
+    _w(q / "summary.json", summ)
+    return runs
+
+
+def _detail_index(root: Path) -> EvalIndex:
+    idx = EvalIndex(make_detail_tree(root))
+    idx._detail = EvalDetail(idx)
+    idx._detail.questions = lambda name: {f"{name}-test-0": f"{name} problem zero"}  # not the real parquet
+    return idx
+
+
+def test_detail_judged_joins_outputs_scores_and_aliases(tmp_path):
+    idx = _detail_index(tmp_path)
+    d = idx.detail("rl_b", "step_00050.pt", "judged")  # an alias of best.pt
+    assert d["checkpoint"] == "best.pt" and d["requested"] == "step_00050.pt" and d["value"] == 3.5
+    assert d["source"] == "rl_b/quality/summary.json" and d["sources"][0]["winner"] and d["tables"][0]["rows"][0][0] == "facts"
+    it = d["items"]
+    assert it["available"] and it["total"] == 3 and it["counts"] == {"pass": 1, "fail": 1, "other": 1}  # correctness 5 / 1 / 3
+    rows = {r["c"]["id"]: r for r in it["rows"]}
+    assert rows["cap_france"]["c"]["correctness"] == 5 and rows["cap_france"]["c"]["mean"] == pytest.approx(14 / 3)
+    judges = [b for b in rows["cap_france"]["x"] if b["label"].startswith("judge")]
+    assert len(judges) == 2 and judges[1]["value"]["note"] == "right" and "(used)" in judges[1]["label"]  # every judge record, the last one counts
+    assert any(b["label"].startswith("what a good answer") and b["value"] == "Paris." for b in rows["cap_france"]["x"])
+    assert d["rubric_text"]
+    mis = idx.detail("rl_b", "best.pt", "judged_misfire")["items"]
+    assert {r["c"]["id"]: r["ok"] for r in mis["rows"]} == {"cap_france": True, "gold_symbol": False, "add": None}  # arithmetic is exempt
+
+
+def test_detail_reasoning_dump_is_split_by_block_size(tmp_path):
+    idx = _detail_index(tmp_path)
+    d = idx.detail("rl_b", "step_00100.pt", "r_arith2mul")
+    assert d["source"] == "rl_b/reasoning_s100.json" and d["tables"][0]["highlight"] == 1
+    it = d["items"]
+    assert it["total"] == 2 and [r["c"]["prompt"] for r in it["rows"]] == ["What is 3 * 3?", "What is 4 * 3?"]
+    assert it["counts"] == {"pass": 1, "fail": 1, "other": 0} and it["source"] == "rl_b/reasoning_dump_s100.jsonl"
+    assert any(b["kind"] == "tools" for b in it["rows"][0]["x"])
+    assert idx.detail("rl_b", "step_00100.pt", "r_mean")["items"]["total"] == 4  # the mean page lists every task
+    tu = idx.detail("rl_b", "step_00100.pt", "r_tool_use")["items"]
+    assert tu["labels"]["pass"] == "called the tool" and tu["counts"]["fail"] == 1
+    nd = idx.detail("rl_b", "best.pt", "r_gsm8k")  # no dump beside the main file: aggregates only, and the page says why
+    assert nd["items"]["available"] is False and "--dump" in nd["items"]["note"] and nd["tables"][0]["rows"]
+
+
+def test_detail_per_item_kinds_and_paging(tmp_path):
+    idx = _detail_index(tmp_path)
+    f = idx.detail("base_a", "final.pt", "facts")["items"]
+    assert f["total"] == 2 and f["rows"][0]["c"]["prompt"] == "The capital of France is"  # completion mode shows the completion form
+    wrong = idx.detail("base_a", "final.pt", "facts", filter="fail")["items"]
+    assert wrong["n_filtered"] == 1 and wrong["rows"][0]["c"]["answers"] == "Lima" and wrong["rows"][0]["i"] == 2
+    assert idx.detail("base_a", "final.pt", "facts", q="QUITO")["items"]["n_filtered"] == 1
+    page = idx.detail("base_a", "final.pt", "facts", offset=1, limit=1)["items"]
+    assert page["offset"] == 1 and len(page["rows"]) == 1 and page["n_filtered"] == 2
+
+    n = idx.detail("base_a", "final.pt", "needle")
+    assert n["value"] == 1024 and n["items"]["counts"] == {"pass": 1, "fail": 1, "other": 0}
+    assert "654321" in n["items"]["rows"][1]["x"][0]["value"]
+
+    mt = {k: idx.detail("rl_b", "best.pt", k)["items"] for k in ("mt_recall", "mt_format", "mt_misfire")}
+    assert [r["ok"] for r in mt["mt_recall"]["rows"]] == [True, True, False]
+    assert [r["ok"] for r in mt["mt_format"]["rows"]] == [True, False, True]
+    assert [r["ok"] for r in mt["mt_misfire"]["rows"]] == [True, False, True]
+    assert sum(1 for b in mt["mt_recall"]["rows"][0]["x"] if b["label"].startswith("user")) == 3
+
+    pk = idx.detail("rl_b", "best.pt", "pk_gsm8k")
+    assert pk["items"]["rows"][0]["c"]["question"] == "gsm8k problem zero" and pk["items"]["rows"][0]["c"]["correct"] == "1/4"
+    assert pk["items"]["counts"]["pass"] == 1 and "not saved" in pk["items"]["note"] and pk["tables"][0]["title"].startswith("pass@k curve")
+
+    sw = idx.detail("rl_b", "step_00100.pt", "sw_svamp_selector")["items"]
+    assert [r["ok"] for r in sw["rows"]] == [True, False] and sw["rows"][1]["c"]["selector"] == "6"
+    assert [r["ok"] for r in idx.detail("rl_b", "step_00100.pt", "sw_svamp_oracle")["items"]["rows"]] == [True, True]
+
+
+def test_detail_lm_eval_aggregate_only_sources_and_errors(tmp_path, monkeypatch):
+    idx = _detail_index(tmp_path)
+    d = idx.detail("base_a", "final.pt", "hellaswag")
+    assert d["items"]["available"] is False and "--log_samples" in d["items"]["note"]
+    assert [s["source"] for s in d["sources"]] == ["base_a/lm_eval_limit2000.json", "base_a/lm_eval.json"]  # winner first, then "also measured"
+    t = d["tables"][0]
+    assert [r[0] for r in t["rows"]] == ["hellaswag", "arc_easy"] and t["highlight"] == 0
+    assert d["log"]["file"] == "lm_eval_limit2000.log" and d["log"]["lines"] == ["hellaswag {'acc,none': 0.25}"]  # progress bars dropped
+    alt = idx.detail("base_a", "final.pt", "hellaswag", file="base_a/lm_eval.json")
+    assert alt["value"] == pytest.approx(0.28) and alt["sources"][1]["shown"] and alt["file_fields"]["limit"] is None
+    assert d["run_info"]["stage"] == "pretrain"
+    for args in [("base_a", "final.pt", "nope"), ("base_a", "missing.pt", "facts"), ("base_a", "final.pt", "r_gsm8k"), ("no_evals", "final.pt", "facts")]:
+        with pytest.raises(KeyError):
+            idx.detail(*args)
+    with pytest.raises(KeyError):
+        idx.detail("base_a", "final.pt", "hellaswag", file="base_a/facts.json")  # only files that measured the cell
+    monkeypatch.setattr(eval_detail, "MAX_FILE_BYTES", 10)
+    big = idx.detail("base_a", "final.pt", "facts")
+    assert big["items"]["available"] is False and "above the" in big["notes"][0]
+
+
+def test_detail_cache_follows_mtime(tmp_path):
+    idx = _detail_index(tmp_path)
+    p = idx.root / "base_a" / "facts.json"
+    det = idx._detail
+    a = det._load(p)
+    assert det._load(p) is a
+    d = json.loads(p.read_text(encoding="utf-8"))
+    d["rows"] = d["rows"][:1]
+    p.write_text(json.dumps(d), encoding="utf-8")
+    st = p.stat()
+    os.utime(p, ns=(st.st_atime_ns, st.st_mtime_ns + 2_000_000_000))
+    assert idx.detail("base_a", "final.pt", "facts")["items"]["total"] == 1
+
+
+def test_api_eval_detail_endpoint(tmp_path):
+    runs = make_detail_tree(tmp_path)
+    c = TestClient(create_app(PortalSettings(runs_root=runs, open_browser=False)))
+    r = c.get("/api/evals/detail", params={"run": "rl_b", "checkpoint": "best.pt", "key": "judged", "filter": "fail", "limit": 5})
+    assert r.status_code == 200
+    d = r.json()
+    assert d["items"]["n_filtered"] == 1 and d["items"]["rows"][0]["c"]["id"] == "gold_symbol" and "_s" not in d["items"]["rows"][0]
+    assert c.get("/api/evals/detail", params={"run": "rl_b", "checkpoint": "best.pt", "key": "facts"}).status_code == 404  # an n/a cell
+    assert c.get("/api/evals/detail", params={"run": "rl_b", "checkpoint": "best.pt", "key": "zzz"}).status_code == 404
+    assert c.get("/api/evals/detail", params={"run": "../x", "checkpoint": "best.pt", "key": "judged"}).status_code == 404
+    big = c.get("/api/evals/detail", params={"run": "rl_b", "checkpoint": "best.pt", "key": "judged", "limit": 10_000}).json()
+    assert big["items"]["limit"] == eval_detail.PAGE_MAX
+    page = Path("slm/portal/static/pages/evals.js").read_text(encoding="utf-8")
+    assert "/api/evals/detail?" in page and "export function EvalDetailPage" in page and "export function sortRows" in page
+    assert "EvalDetailPage" in Path("slm/portal/static/app.js").read_text(encoding="utf-8")

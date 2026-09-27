@@ -61,7 +61,7 @@ there is no room below) and rendered only while open, so it never shifts the lay
 ## API (all under `/api`)
 
 `GET /meta`, `GET /system/gpu` · runs: `GET /runs`, `/runs/{run}`, `/runs/{run}/series`, `/events`,
-`/checkpoints`, `/samples`, `/samples/{tokens}`, `/quality`, `/quality/{tokens}`, `/rollouts?step=`, `/report`, `/live` (SSE) · `GET /evals` · data: `/data/sources`,
+`/checkpoints`, `/samples`, `/samples/{tokens}`, `/quality`, `/quality/{tokens}`, `/rollouts?step=`, `/report`, `/live` (SSE) · `GET /evals`, `/evals/detail?run=&checkpoint=&key=&file=&filter=&q=&offset=&limit=` · data: `/data/sources`,
 `/data/configs`, `/data/recipes`, `/data/recipe?id=`, `/data/chain?run=`, `/data/source/{name}`,
 `/data/rl/prompts?id=&split=`, `/data/mixture` (legacy shape, kept for one release),
 `/data/raw/{source}/files|docs|doc|sample`, `POST /data/raw/{source}/trace`,
@@ -76,7 +76,10 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 
 - `tests/test_portal_runs.py`: API on synthetic runs; every JS module must parse (`node --check`).
 - `tests/test_portal_evals.py`: the eval table on a synthetic runs tree (attribution, file priority, quality rows by token
-  count, colour positions, mtime cache), `/api/evals`, an info card for every column, `node --check` of the page.
+  count, colour positions, mtime cache), `/api/evals`, an info card for every column, `node --check` of the page; the
+  detail pages on synthetic result files of every kind (judged outputs joined with scores and aliases, a reasoning dump
+  split by block size, facts / needle / multi-turn / pass@k / swarm rows, lm-eval aggregate-only with two sources and a
+  log tail, verdict filter, search, paging, 404s, the file-size cap, mtime cache) and `/api/evals/detail`.
 - `tests/test_portal_live.py`: SSE tail against a real uvicorn server.
 - `tests/test_portal_model.py`: worker load/generate/score/cancel on CPU.
 - `tests/test_portal_swarm.py`: `/api/model/swarm` validation and SSE shape against a stub worker, `Harness.swarm` stages
@@ -174,8 +177,26 @@ capability's history down one column.
 - **Colour**: per column, t = (value - min) / (max - min), flipped for `higher_is_better: false` columns (misfire), mapped
   to a hue from red (0) to green (120); a column with one distinct value is amber, n/a is grey. The server computes `t`,
   the page only paints it.
-- **Page**: sticky header block and first column inside one scroll box, group toggles, a "show sources" toggle that
-  prints `run/file` under every number, hover text with the file, n / k and the eval's details, and a "?" card per
-  column (`ev_*` in `cards.js`) plus `ev_table` and `ev_colour`.
+- **Page**: sticky header block and first column inside one scroll box, group toggles, compact cells (the score
+  only, 2-5 px padding) and a hover card per score (file, n / k / limit, the eval's details, "also measured"), a "?"
+  card per column (`ev_*` in `cards.js`) plus `ev_table`, `ev_colour`, `ev_sort` and `ev_detail`.
+- **Sorting** (client-side, `sortRows` in `pages/evals.js`): a column header cycles best first → worst first → default
+  order, respecting `higher_is_better`; n/a rows go below their own separator; ties keep the chain order. Sorted, the
+  size separators are dropped and each row shows its size instead; clicking the checkpoint header restores the default.
+  Sort and hidden groups survive a visit to a detail page (module state).
+- **Detail pages** (`#/evals/<run>/<checkpoint>/<column>`, `EvalDetailPage`; any alias of the row's checkpoint works):
+  every score links to one. `GET /api/evals/detail` (`services/eval_detail.py`, `EvalDetail`) opens a file that
+  measured the cell (the table records all of them per cell, winner first; `file=` picks another) and returns summary
+  numbers, aggregate tables with the cell's row highlighted, the file's scalar fields, the run's `run.json` config, the
+  last 40 lines of the eval's `.log` (progress bars removed), and per-item rows (`{ok, c, x}`: verdict for this column,
+  short cells, expansion blocks) paged 100 at a time (max 500), filterable by verdict and text. Where the rows come from:
+  judged = `quality/outputs/<tokens>.jsonl` joined with every `quality/scores.jsonl` record by item id (verdict:
+  correctness 4-5 / 1-2; misfire column: ran code on an eligible prompt); reasoning = the `reasoning_dump_<tag>.jsonl`
+  beside `reasoning_eval_<tag>.json`, split into tasks by the file's per-task n (arith2mul rows say "arith2"), which only
+  the M5/M6 runs have (the others: aggregates only, and the page says `--dump` was not used); facts, multi-turn (every
+  turn with its think span), needle (per cell, failures only), pass@k and swarm (flags and answers per problem, no
+  sample text; GSM8K / SVAMP problem text looked up by id in the local test parquet) inside the result file; lm-eval
+  and `bench_ll.json` never (run without `--log_samples`: per-task acc / acc_norm / stderr / n and the limit only).
+  Parsed files are cached by mtime and size (32 entries); a file above 64 MiB is refused with a note.
 - **Cache**: rebuilt only when a matching file's mtime or size changes (also `run.json` and `checkpoints/index.json`);
   a rebuild reads ~100 small JSON files in well under a second.

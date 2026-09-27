@@ -636,8 +636,8 @@ export const CARDS = {
     <p>Two kinds of columns. <b>Public benchmarks</b> make the model comparable with other people's models but saturate
       or sit at chance for a few-hundred-million-parameter model. <b>Homebrew evals</b> are built for resolution on what
       this project is for: facts, tool-using reasoning, multi-turn chat, long context, answer quality, selection.</p>
-    <p>A cell's number is only comparable within its column, and even there check the hover text: sample counts and
-      limits differ between older and newer rows.</p>
+    <p>A cell's number is only comparable within its column, and even there check the hover card: sample counts and
+      limits differ between older and newer rows. Click a score for its full results.</p>
     <p class="see">Built from <code>runs/&lt;run&gt;/*.json</code> by <code>slm/portal/services/evals.py</code>; discussion of every number in <code>docs/results.md</code>.</p>` },
   ev_colour: { t: "Cell colours", b: html`
     <p>Each column is coloured on its own: the best score in the column is green, the worst red, and every other cell
@@ -648,6 +648,33 @@ export const CARDS = {
       value (or all values equal) is all amber. Grey is n/a.</p>
     <p class="see">Differences inside the noise of an eval (e.g. ±1 point on HellaSwag at 2000 samples, ±0.09 at n=30) still
       get different colours; read the numbers before reading the colours.</p>` },
+  ev_sort: { t: "Sorting the table", b: html`
+    <p>Click a column header to sort the checkpoints by that score: first click best first, second click worst first,
+      third click back to the default order. "Best" respects the column's direction, so on a ↓ column (misfire) the lowest
+      value comes first. Checkpoints never measured on that column (n/a) always go to the bottom, below their own
+      separator; equal scores keep the default order.</p>
+    <p>Sorted, the size separators no longer hold (a 149M and a 336M row can be neighbours), so each row shows its size
+      in its second line instead. Clicking the <i>checkpoint</i> header restores the default order: size, then stage along
+      the chain, then run name and tokens.</p>` },
+  ev_detail: { t: "Reading a detail page", b: html`
+    <p>Every score links to a page with everything its result file holds: the summary numbers, aggregate tables (the
+      checkpoint's row highlighted), the source file(s), the eval's log and the run's config, and the per-item rows where
+      the eval saved them.</p>
+    <p><b>✓ / ✗</b> is the verdict <i>for this column</i>: correct / wrong on accuracy columns, recalled / missed on
+      multi-turn recall, no call / misfire on misfire columns, some sample right on pass@k, the method's pick right on a
+      swarm column, cell at or above the gate on needle. <b>·</b> = neither (a judged score of 3, an exempt prompt). The
+      filter buttons count each group over the whole file; search matches prompt and output text.</p>
+    <ul><li><b>Judged</b>: correctness, coherence and task are the judge's 1-5 scores (green 4-5, red 1-2), with its note;
+        ✓ means correctness ≥ 4. "Expect" is the reference the judge saw. <i>ran code</i> is the misfire test (a tool call,
+        or <code>&lt;&lt;</code> in the answer).</li>
+      <li><b>Reasoning</b>: <i>gold</i> is the reference answer, <i>parsed</i> what followed the model's last
+        <code>####</code>; malformed = nothing parsable. <code>&lt;&lt;code=result&gt;&gt;</code> in the output is a sandbox
+        call and its result; the tool calls block lists them.</li>
+      <li><b>Swarm</b>: per problem, whether greedy, majority, verified majority and the selector were right, plus the
+        majority and selector answers; oracle = some sample was right. <b>pass@k</b>: correct samples out of k.</li>
+      <li><b>Needle</b>: one row per length × depth cell; expanding shows each failed trial's hidden number and the output.</li></ul>
+    <p class="see">Aggregate-only evals (lm-eval, older reasoning files without <code>--dump</code>) say so in place of the
+      rows. Lists are paged 100 rows at a time.</p>` },
   ev_hellaswag: { t: "HellaSwag", b: html`
     <p>Commonsense sentence completion: a short scene (from video captions and how-to articles) and four possible
       endings, three of them machine-written traps. The model is not asked to generate; lm-evaluation-harness scores
@@ -749,7 +776,7 @@ export const CARDS = {
       checkpoint wrote it. Overall is the mean of the three rubrics over all categories except bash.</p>
     <p>It catches what the automatic evals cannot (a correct answer followed by a loop, a wrong format), at the price of
       noise: ±0.25 between neighbouring checkpoints is normal.</p>
-    <p class="see"><code>docs/quality_eval.md</code>; the run page's quality tab shows every answer and score.</p>` },
+    <p class="see"><code>docs/quality_eval.md</code>; a cell's detail page (and the run page's quality tab) shows every answer and score.</p>` },
   ev_judged_misfire: { t: "Judged suite: tool misfire", b: html`
     <p>On the judged suite, the share of prompts where running code cannot help on which the model reached for the Python
       sandbox anyway. No judge needed. <b>Lower is better</b>; the tool-SFT gate was ≤ 0.10.</p>
