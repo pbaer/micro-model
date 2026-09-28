@@ -27,7 +27,7 @@ schedule:
   warmup_tokens: 12000000
   min_lr_ratio: 0.1
 batch:
-  microbatch: 8
+  microbatch: 4               # 26x640 at mb8 reserved >15 GiB and spilled into host memory (14k tok/s vs 63k); deeper = more activations
   tokens_per_update: 262144
 runtime:
   compile: true
