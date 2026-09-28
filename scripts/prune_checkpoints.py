@@ -39,7 +39,8 @@ CONTINUABLE = {"m8_base_4k_336m"}
 #                              evidence is the metrics, not the weights.
 #   m8_base_4k_336m_stub       a 55-second aborted start (524K tokens, val inf), set aside deliberately.
 NO_KEEP = {"m6_rl_gsm_tools_try1_149m", "m8_base_4k_336m_stub",
-           "m9_pair_336m", "m9_rl7_336m"}  # the tournament ladder (results.md §19): format SFT + 100 RL steps, nothing to reuse
+           "m9_pair_336m", "m9_rl7_336m",  # the tournament ladder (results.md §19): format SFT + 100 RL steps, nothing to reuse
+           "m10_abl_wide_149m", "m10_abl_deep_149m", "m10_abl_deeper_149m", "m10_abl_wide_noz_149m"}  # shape ablation (§21): metrics are the result
 
 # Checkpoints kept by name beyond final/best: a run's chosen output when it is a milestone snapshot rather than
 # best.pt. m9_rl5_336m step 200 is the M9 output (results.md 16e): judged 4.07 and multi-turn recall 0.562

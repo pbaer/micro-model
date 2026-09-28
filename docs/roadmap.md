@@ -144,9 +144,10 @@ context-extended base once the curriculum settles.
    high-quality subset), z-loss 1e-4, 4K context from the start with the needle gate in-run, and what M9
    taught baked in: conversation-count balance in the mixture, the humanized answer style, chat/tool
    conversations in pretraining, and narrative/Gutenberg prose (open: Peter's call on fiction). Gate: close at
-   least half the gap to SmolLM2-135M base on LAMBADA / ARC-E / facts. **First** the shape ablation running now
-   (`scripts/abl_chain.sh`, 2026-09-27): 18x768 vs 26x640 vs 32x576 at the 149M budget, 600M tokens each,
-   plus 18x768 without z-loss; if deeper wins clearly the base becomes ~32x896.
+   least half the gap to SmolLM2-135M base on LAMBADA / ARC-E / facts. Shape ablation done (§21, 2026-09-28):
+   18x768 beat 26x640 and 32x576 at the 149M budget (val 3.261 / 3.271 / 3.303) and is 15-18% faster per
+   token; z-loss cost 0.002 nats and pulled log Z down 1.2. **Shape stays 24x1024, z-loss on.** Waiting on
+   Peter: the 12-day commitment and whether fiction goes in.
 4. **Suite v1 `expect` defect** for `days`/`months`/`evens`, written against the completion prompt so a
    correct chat answer reads as wrong (`quality_eval.md`). Fixing it bumps `SUITE_VERSION` and invalidates
    every stored score, so it waits for a moment when re-judging the chain is acceptable.

@@ -813,3 +813,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   blind. We are a 135M-class model on the public benchmarks, between the two SmolLM2 sizes on judged chat, ahead
   only on format following and tool use; every gap tracks pretraining tokens. The Evals tab carries the rows; the
   Inference tab can load any of them into a slot. GPU idle from 05:07.
+
+## 2026-09-28 — shape ablation: keep 24x1024; z-loss on
+
+- Four 149M runs (§21): 18x768 < 26x640 < 32x576 in val loss at 600M tokens (3.261 / 3.271 / 3.303), benchmarks
+  inside noise, deeper shapes 15-18% slower per token. z-loss 1e-4 costs 0.002 nats and lowers log Z by 1.2.
+  Third base keeps the shape; z-loss stays on. The 26x640 run spilled at mb8 (15.6 GiB) and took ten hours at
+  14k tok/s -- depth needs a smaller microbatch at equal parameters. Ablation weights pruned.

@@ -1212,3 +1212,26 @@ model of the same size on chat and beats it on format-following and tool use -- 
 substitutes for pretraining tokens on knowledge and comprehension, which is where every gap in this table is.
 Rows and hover details are in the Evals tab (`runs/ext_<name>/`); re-run any of them with
 `scripts/measure_external.sh <name>`.
+
+## 21. Shape ablation before the third base: depth vs width at 149M, and z-loss (2026-09-27/28)
+
+Four runs, same data (the M8 mixture without shell), same 600M tokens, cosine to the end, seed 0, 2K context;
+val loss is plain cross-entropy on the 4M-token val mixture; benchmarks lm-eval zero-shot at limit 2000 on final.pt.
+
+| run | shape | non-embed params | z-loss | val loss @600M | log Z (mean) | HellaSwag(n) | ARC-E | PIQA | LAMBADA | tok/s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `m10_abl_wide_149m` | 18 x 768 (base_149m) | 123.9M | 1e-4 | **3.261** | 11.9 | 34.9 | 43.1 | 57.5 | 17.2 | 62.4k |
+| `m10_abl_deep_149m` | 26 x 640 | 127.8M | 1e-4 | 3.271 | 12.1 | 35.2 | 42.8 | 58.0 | 15.3 | (14.1k, spilled) |
+| `m10_abl_deeper_149m` | 32 x 576 | 123.9M | 1e-4 | 3.303 | 12.2 | 34.2 | 43.6 | 58.3 | 16.9 | 52.7k (mb4) |
+| `m10_abl_wide_noz_149m` | 18 x 768 | 123.9M | 0 | 3.259 | 13.1 | 34.9 | 41.9 | 58.9 | 17.2 | 62.5k |
+
+- **Depth does not win at this budget.** Val loss orders wide < deep < deeper (3.261 / 3.271 / 3.303), and the
+  benchmark differences are inside the +-1-point noise of limit 2000. The deep run's gap to wide shrank through
+  training (0.136 nats at 100M, 0.015 at 450M, 0.010 at 600M), so a longer run might close it, but there is no
+  evidence it crosses, and the deeper shapes are 15-18% slower per token -- at a fixed wall-clock budget that is
+  15-18% fewer tokens, which §20 says is the quantity that matters. **The third base keeps 24 x 1024.**
+- **z-loss is harmless and does what it says.** With it, log Z sits at 11.9 instead of 13.1 (the term pulls the
+  logit scale down by 1.2 nats) at a val-loss cost of 0.002 -- noise. It stays on at 1e-4 for the long run.
+- Engineering note: 26 x 640 at microbatch 8 reserved 15.6 GiB and spilled into host memory (14k tok/s for ten
+  hours); the run's numbers are unaffected, only its clock. Deeper shapes carry more activations per token at the
+  same parameter count -- the microbatch has to come down with depth (32 x 576 ran at mb4, 52.7k tok/s).
