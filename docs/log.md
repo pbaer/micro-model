@@ -864,3 +864,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   even relaxed. The first hour of the base run was discarded and the chain relaunched with pg19 12% + canon 3%
   (about one pass of the canon over 2B tokens). Lesson: a selection rule optimises what it measures; check the
   kept list by author before training on it.
+- `m10_base_prose_336m` mid-run (12:40): val on the new mixture 2.481 -> 2.470 over 100M-500M tokens, the old
+  distribution 2.487 (+0.02 vs phase 2's end, stable), log Z 12.96 -> 11.08 under z-loss, needle 4096 held at every
+  milestone (min-over-depths >= 0.86), 26.5k tok/s with the post-eval dip being the eval itself. Judged in completion
+  form at 250M / 500M: overall 3.33 / 3.21 (M8 base 3.06 at its end, 2.75-3.46 across its milestones), prose
+  2.58 / 2.67 vs 2.58, narrative 3.67 / 3.50 vs 4.00 -- no prose change visible, and at three items per category the
+  suite cannot show one; the base gate stays the hard suite, prose is judged after SFT in chat form.
