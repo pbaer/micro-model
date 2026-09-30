@@ -299,6 +299,10 @@ def make_tasks(names: list[str], n: int, split: str, seed: int = 0, holdout_perm
                     continue
             canon = t.prompt  # split by prompt text alone: generators overlap (arith1 vs arith2), and the
             # same question must never be in train for one and held-out for another
+            if t.meta.get("history"):  # multi-turn families repeat a handful of final questions: the conversation is the unit
+                import json
+
+                canon = t.prompt + " || " + json.dumps(t.meta["history"], sort_keys=True)
             if canon in seen or _split_of(canon, holdout_permille) != split:
                 t = None
                 continue
