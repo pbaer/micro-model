@@ -1236,3 +1236,24 @@ val loss is plain cross-entropy on the 4M-token val mixture; benchmarks lm-eval 
 - Engineering note: 26 x 640 at microbatch 8 reserved 15.6 GiB and spilled into host memory (14k tok/s for ten
   hours); the run's numbers are unaffected, only its clock. Deeper shapes carry more activations per token at the
   same parameter count -- the microbatch has to come down with depth (32 x 576 ran at mb4, 52.7k tok/s).
+
+## 22. Chat diagnostics before M10: the multi-turn behaviours we are about to train (2026-09-30)
+
+`slm.eval.multiturn` now runs four scripted kinds on held-out tables (tables and rules disjoint from the training
+families in `slm.rl.synth_chat`), greedy, no judge; the scorers are the RL verifiers themselves (`verify_recall`,
+`verify_constraints`), so a gain here is a gain the reward can see. M9 output (`m9_rl6_336m` final.pt), n=32 per
+kind, CPU:
+
+| kind | what is scored | M9 output |
+|---|---|---|
+| recall | the fact stated two turns ago is in the reply | 0.50 |
+| recall_absent | asked about something never stated: names nothing from the table *and* says so | **0.03** |
+| revise | rewrite the previous answer under 1-3 constraints: share satisfied (all satisfied) | 0.42 (0.19) |
+| sysrule | a system-prompt rule kept in a new reply: share (all) | 0.67 (0.59) |
+| format / misfire | every turn terminated / any tool call in a chat turn | 0.95 / 0.00 |
+
+The absent case is the finding: the model treats "what is my partner's hobby?" as a cue to produce *a* name from
+the history, 31 times out of 32. Nothing in its training ever showed a recall question whose answer is "you did not
+tell me" -- the same shape as the tool-misfire lesson (teach the negative case). Stage C of M10 adds the `recall`
+family with one absent case in four, plus `revise` and `sysrule`; these five numbers are its gate, alongside the
+judged suite and the hard suite.
