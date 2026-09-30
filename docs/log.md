@@ -820,3 +820,25 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   inside noise, deeper shapes 15-18% slower per token. z-loss 1e-4 costs 0.002 nats and lowers log Z by 1.2.
   Third base keeps the shape; z-loss stays on. The 26x640 run spilled at mb8 (15.6 GiB) and took ten hours at
   14k tok/s -- depth needs a smaller microbatch at equal parameters. Ablation weights pruned.
+
+## 2026-09-30 — direction: hone the 336M generalist; M10 = prose-sprinkled base + the M9 recipe replayed
+
+- Parked as future projects (roadmap): the Vulcan one-way-solver base and the quantization sub-project. Peter's
+  call: near term, make the current model a better chat generalist (coherent, multi-turn) rather than smarter.
+- Diagnosis from the M9 output's own evals: judged prose 3.42 / narrative 3.67 / pattern 3.50 (the base never saw
+  fiction), multi-turn recall 0.609 vs 0.73-0.75 for the 360M-class competitors. SFT can style prose it cannot
+  teach, so the fix starts one stage earlier: continued pretraining of the M8 base with a narrative sprinkle
+  (`m10_base_prose_336m`: from m8_base_4k latest.pt with weights + AdamW moments + data cursors, rewarm to 1/3
+  LR, 2B tokens, >= 75% replay, 15% filtered Gutenberg PG-19 + 10% long fineweb-edu, chat/tool conversations kept
+  in pretraining, z-loss on), a floor gate (benchmarks/facts/needle vs m8_base_4k), then stage A/B/C replayed by
+  config (`m10_sft` = m9_sft, `m10_tool` = m9_tool4, `m10_rl` = run 6's mix from the tool stage directly -- the
+  selection SFT is skipped). `scripts/m10_chain.sh` runs it all and is waiting on the Gutenberg set.
+- New RL families for stage C (`slm/rl/synth_chat.py`): `recall` (fact from two turns ago; one in four asks
+  about something never stated and the right answer says so -- the negative case), `revise` (rewrite the previous
+  answer under constraints, checked by the constraints checker), `sysrule` (a system-prompt rule kept across
+  replies). The earlier turns are real SmolTalk exchanges, no model writes training text; tasks carry
+  `meta["history"]` and are split by the whole conversation. Reward schemes plain / fraction / fraction.
+- Ablation night (§21) settled the shape and z-loss for any future base; the M10 base keeps 24x1024.
+- Subagents: Gutenberg PG-19 source (download, filter, tokenize, Data tab) and the multi-turn diagnostics eval
+  (`recall_absent`, `revise`, `sysrule` kinds with held-out tables, Evals columns). Three heredoc-escape incidents
+  in four days: files with backslashes now go through the Write tool (memory note).
