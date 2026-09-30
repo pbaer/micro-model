@@ -233,6 +233,52 @@ def test_portal_main_process_is_torch_free():
     assert out.stdout.strip() == "False", out.stdout
 
 
+def test_data_tab_shows_a_filtered_source(tmp_path):
+    """gutenberg-pg19: registry fields (kind, license) plus the manifest's filter block reach the source page."""
+    import numpy as np
+
+    root = _world(tmp_path / "data")
+    d = root / "tokenized" / "v1" / "gutenberg-pg19"
+    (d / "train").mkdir(parents=True)
+    np.arange(300, dtype=np.uint16).tofile(d / "train" / "shard_00000.bin")
+    np.save(d / "train" / "shard_00000.idx.npy", np.array([0, 150], dtype=np.int64))
+    flt = {"books_in": {"train": 10, "validation": 1, "test": 1}, "selected": {"train": 2, "val": 1}, "candidates": 5, "dialogue_cutoff": 0.28,
+           "config": {"target_tokens": 300}, "rules": [{"rule": "date", "threshold": 1850, "text": "t", "removed": 3, "removed_val": 0, "fails": 3, "examples": []}],
+           "kept_examples": ["A Novel (1901)"], "val_rule": "PG-19 val"}
+    (d / "manifest.json").write_text(json.dumps({"source": "gutenberg-pg19", "name": "gutenberg-pg19", "kind": "prose", "train_tokens": 300, "train_docs": 2,
+                                                 "val_tokens": 0, "files": ["a.parquet"], "books": {"train": 2, "val": 1, "mean_tokens_per_book": 150}, "filter": flt}))
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=root, configs_root=tmp_path / "configs", cache_dir=tmp_path / "cache", open_browser=False))
+    c = TestClient(app)
+    s = c.get("/api/data/source/gutenberg-pg19").json()
+    assert s["kind"] == "prose" and "public-domain" in s["license"] and s["repo"] == "deepmind/pg19"
+    p = s["prepared"]["tokenized:v1"]
+    assert p["train_tokens"] == 300 and p["manifest"]["filter"]["dialogue_cutoff"] == 0.28
+    assert "filtered to 2 + 1 val of 12 books" in p["provenance"]
+    ov = {x["name"]: x for x in c.get("/api/data/sources").json()["sources"]}
+    assert ov["gutenberg-pg19"]["prepared"]["v1"]["manifest"]["books"]["train"] == 2
+
+
+def test_trace_of_a_book_reads_the_recorded_verdict(tmp_path):
+    from slm.data.tokenizer import SlmTokenizer
+    from slm.portal.api.data import _trace_book
+
+    tok = SlmTokenizer.load(_tokenizer(tmp_path))
+    bj = tmp_path / "books.jsonl"
+    base = {"title": "T", "year": 1900, "words": 5000, "dialogue": 0.3, "caps_share": 0.0, "verse_share": 0.0, "archaic_per_1k": 0.0, "tokens": 900}
+    bj.write_text("\n".join(json.dumps({**base, "book_id": i, "selected": s, "verdict": v, "split": "train", "segments": 1})
+                            for i, s, v in [("1", True, None), ("2", False, "verse")]), encoding="utf-8")
+
+    class Reg:
+        def pieces(self, tag, ids):
+            return [{"id": i} for i in ids]
+
+    kept = _trace_book(bj, {"book_id": "1", "text": "the cat sat on the mat\n\nthe cat"}, tok, Reg(), "v1")
+    assert kept["kept"] and kept["split"] == "train" and kept["ids"][0] == tok.bos_id and "900 tokens in 1 documents" in kept["reason"]
+    dropped = _trace_book(bj, {"book_id": "2", "text": "x"}, tok, Reg(), "v1")
+    assert not dropped["kept"] and "'verse'" in dropped["reason"]
+    assert "not prepared" in _trace_book(bj, {"book_id": "3"}, tok, Reg(), "v1")["reason"]
+
+
 def test_chain_walks_init_from_back_to_the_root(tmp_path):
     """The chain is what the weights saw: this run's tokens plus the checkpoint each parent was cut at."""
     runs = tmp_path / "runs"

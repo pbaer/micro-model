@@ -393,7 +393,14 @@ def _prov_line(name: str, p: dict) -> str:
         return f"chat-formatted from {p['raw_source']} (max_len {m.get('max_len', '-')}, think {'required' if m.get('think_required') else 'optional'}{', tools' if m.get('tools') else ''})"
     raw = p.get("raw_source") or "?"
     extra = f", min_doc_tokens {m['min_doc_tokens']}" if m.get("min_doc_tokens") else ""
-    return f"tokenized from {raw}" + (f" ({p.get('raw_files', 0)} parquet files{extra})" if p.get("raw_files") else extra)
+    line = f"tokenized from {raw}" + (f" ({p.get('raw_files', 0)} parquet files{extra})" if p.get("raw_files") else extra)
+    f = m.get("filter")
+    if isinstance(f, dict) and f.get("selected"):  # a selection filter (slm.data.gutenberg): say how much of the source survived it
+        n_in = sum((f.get("books_in") or {}).values())
+        cut = f.get("dialogue_cutoff")
+        line += (f"; filtered to {f['selected'].get('train', 0):,} + {f['selected'].get('val', 0):,} val of {n_in:,} books"
+                 + (f" (dialogue density >= {cut:.3f})" if cut is not None else ""))
+    return line
 
 
 class DataCatalog:

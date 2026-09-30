@@ -31,6 +31,8 @@ class Source:
     content_via_swh: bool = False
     notes: str = ""
     extra_cols: list[str] = field(default_factory=list)
+    # Module whose `prepare` replaces the generic slm.data.prepare path (selection rules, long documents).
+    custom_prepare: str = ""
 
     @property
     def local_dir(self) -> Path:
@@ -64,6 +66,15 @@ SOURCES: dict[str, Source] = {
         Source(
             "stack-edu-shell", "HuggingFaceTB/stack-edu", "Shell/*.parquet", kind="code", license="ODC-By",
             content_via_swh=True, notes="Ids only; contents from Software Heritage S3. Bash/sh scripts.",
+        ),
+        Source(
+            "gutenberg-pg19", "deepmind/pg19", "data/*_files.txt", kind="prose",
+            license="public-domain text (Project Gutenberg, pre-1919); PG-19 release Apache-2.0",
+            custom_prepare="slm.data.gutenberg",
+            notes="PG-19: 28,602 train + 150 val/test English books published before 1919 (~11.5 GB text). The Hub repo "
+                  "holds only the split lists; `python -m slm.data.gutenberg download` fetches books with "
+                  "publication_date >= 1850 from the release's GCS bucket into parquet. Narrative-prose filter and "
+                  "dialogue-density selection in slm/data/gutenberg.py.",
         ),
         Source(
             "tinystories", "roneneldan/TinyStories", "data/*.parquet", kind="prose", license="CDLA-Sharing-1.0",

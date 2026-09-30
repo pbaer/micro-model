@@ -63,7 +63,8 @@ write into the residual stream) use std 0.02/√(2L).
 
 ## 4. Data pipeline (`slm/data/`)
 
-**Registry** (`sources.py`). `Source(name, repo, pattern, text_col, kind, license, content_via_swh)`.
+**Registry** (`sources.py`). `Source(name, repo, pattern, text_col, kind, license, content_via_swh, custom_prepare)`;
+`custom_prepare` names a module that replaces the generic preparer (PG-19, below).
 Kinds: prose, math, code, chat, math_cot, math_qa. Code datasets ship only Software Heritage blob ids;
 `swh.py` fetches contents from `s3://softwareheritage/content/<id>` (anonymous, gzip) with a thread
 pool and writes text parquet next to the ids.
@@ -85,6 +86,38 @@ The sidecar names the raw row every kept document came from — `(file_index, ro
 
 `--name` creates derived sources from the same raw files (e.g. `fineweb-edu-long` with
 `--min-doc-tokens 4096`).
+
+**Narrative prose: PG-19** (`gutenberg.py`, 2026-09-30). Project Gutenberg books from the PG-19 release,
+selected by rules rather than sampled. Per book, on the text with Gutenberg framing stripped (START/END markers
+when present; PG-19's surviving "End of the Project Gutenberg EBook" line and what follows; production-credit
+paragraphs at the top), in order, the first rule failed is the book's verdict:
+
+| rule | default | catches |
+|---|---|---|
+| `min_year` (before download) | 1850 | older register |
+| `min_words` | 2,000 | fragments, pamphlets |
+| `min_stopword_share` | 0.30 | non-English books (share of words in a small function-word list; English ~0.5) |
+| duplicate | exact, whitespace-normalised | re-issues; a val book wins over a train copy |
+| `max_caps_share` | 0.06 | plays (speaker names), indexes, tables: ALL-CAPS, table-like or mostly non-letter lines |
+| `max_verse_share` | 0.15 | verse: lines inside runs of >= `verse_run` (4) lines shorter than `verse_line_chars` (55) |
+| `max_archaic_per_1k` | 1.5 | thee/thou/thy/thine/hath/doth/dost/hast/shalt per 1K words |
+| `min_dialogue` | 0.10 | books without conversation (share of lines with `"`, curly doubles, or `'` opening a capitalised word) |
+
+Surviving train books are ranked by dialogue density and taken until `target_tokens` (5e8); the density of the
+last one taken is the cutoff. The val split is PG-19's own validation + test books through the same rules and
+cutoff (topped up in density order to 2M tokens if the cutoff leaves less), so train and val never share a book.
+Stats are measured on the hard-wrapped text; what is tokenized is `normalize()`d: `[Illustration]` tags and
+`_italic_` underscores removed and the ~70-character wraps joined inside prose paragraphs (a paragraph whose lines
+are mostly short keeps its breaks). A book is tokenized once and cut into documents of at most `segment_tokens`
+(32,768) at the nearest paragraph start within 5% of an even split, each `<|bos|> … <|eos|>`; a book's segments
+stay together and books are written in a seeded shuffle, never in density order. The manifest adds `books` (counts,
+mean tokens per book) and `filter` (thresholds, per-rule removed / fail-at-all counts with example titles, the
+funnel); `books.jsonl` beside it has every book's statistics and verdict, which the Data tab's raw trace reads.
+Stats and token counts are cached in `raw/gutenberg-pg19/book_stats.json` (keyed by the settings they depend on).
+Known noise: PG-19's `publication_date` is often the edition's, not the first publication's (a 1907 Boccaccio
+translation passes); quotation-mark density also rewards biographies that quote letters and glossaries that quote
+citations (Hobson-Jobson, 1.6M tokens, made the v1 cut); transcriber's notes and "Project Gutenberg also has an HTML
+version" notes are not stripped (present in about a third of kept books, ~0.03% of characters).
 
 **Loader** (`loader.py`). `TokenStream` memory-maps one split of one source and hands out consecutive
 windows of `seq_len + 1` tokens (windows never straddle shards; the tail of a shard shorter than one

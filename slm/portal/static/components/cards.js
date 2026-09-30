@@ -413,6 +413,24 @@ export const CARDS = {
   dropped: { t: "Dropped / too long", b: html`
     <p>Rows lost in conversion: <b>dropped</b> had no usable answer (e.g. a tool set's row without any computation to turn
       into a call); <b>too long</b> exceeded the max length.</p>` },
+  gutenberg: { t: "Narrative prose: PG-19 books", b: html`
+    <p><b>Why it was added.</b> Every prose source the bases trained on is expository: educational web pages
+      (fineweb-edu), synthetic textbooks (cosmopedia), math and code. The base had never read a page of fiction, and
+      prose and narrative were the weakest judged categories of the M9 output (results.md §18/§20: prose 3.42,
+      narrative 3.67). Post-training can style prose, not teach it, so M10 continues pretraining with Project
+      Gutenberg books in the mix.</p>
+    <p><b>What the filter keeps</b> (PG-19: English books published before 1919):</p>
+    <ul><li>published 1850 or later, so the register is closer to modern English;</li>
+      <li>the Gutenberg framing removed (production credits, the closing "End of the Project Gutenberg EBook" line);</li>
+      <li>not plays, indexes or tables (share of ALL-CAPS / table-like lines), not verse (runs of short lines),
+        few archaic forms (thee/thou/hath/doth per 1K words), and English by function-word share;</li>
+      <li>then the books with the most dialogue (share of lines with a quotation mark) first, until the token target:
+        novels and stories, where people talk.</li></ul>
+    <p>Books are joined back into paragraphs (Gutenberg wraps lines at ~70 characters), cut into documents of at most
+      32K tokens at paragraph starts, and written in a shuffled order, so the stream does not run from the most to the
+      least conversational book.</p>
+    <p class="see">The table shows each rule's threshold and how many books it removed; the val split is PG-19's own
+      validation and test books through the same rules, never trained on.</p>` },
   prepared_artifacts: { t: "Prepared artifacts", b: html`
     <p>What this source became, per tokenizer tag: shards of uint16 token ids with a document index (and a loss mask for
       SFT sets), a train and a validation split, and the step that made them.</p>` },

@@ -67,6 +67,19 @@ Heritage in a second pass. That pass is slow (hours for 200K files) and resumabl
 **`stack-edu-shell` is only needed to reproduce the first base and M8 phase 1**; shell was dropped from every
 mixture on 2026-09-19 and no current config uses it.
 
+**Narrative prose (PG-19).** `deepmind/pg19` on the Hub holds only a loading script and the split lists; the books
+(and `metadata.csv` with title and publication date) are in the release's public GCS bucket
+(`storage.googleapis.com/deepmind-gutenberg/`). The first command fetches the three split lists, the second the
+metadata and every book with `publication_date >= 1850` (the date rule runs before download, so earlier books are
+never fetched): 25,121 of 28,602 train books plus 132 of the 150 validation/test books, ~10 GB of text stored as
+~4 GB of zstd parquet under `raw/gutenberg-pg19/{train,validation,test}/`. Resumable per 1,000-book chunk; ~8
+minutes with `--workers 64`.
+
+```bash
+python -m slm.data.download gutenberg-pg19 --all          # data/{train,validation,test}_files.txt
+python -m slm.data.gutenberg download --workers 64        # metadata.csv + books -> parquet
+```
+
 Chat, math and tool data:
 
 ```bash
@@ -115,6 +128,16 @@ python scripts/eval_tokenizer.py C:/slm-data/tokenizer/v1
 python -m slm.data.prepare tinystories cosmopedia finemath python-edu --tokenizer C:/slm-data/tokenizer/v1
 python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1 --name fineweb-edu-10bt
 python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1 --min-doc-tokens 4096 --name fineweb-edu-long
+```
+
+PG-19 has its own preparer, because selection is corpus-level (rank by dialogue density, take books until a token
+target) and books are longer than the generic 65,536-token document cap (`slm.data.prepare` refuses the source and
+points here). `--dry-run` writes only the selection report (`raw/gutenberg-pg19/selection_dryrun.json`); thresholds
+are `GutenbergConfig` fields, overridable as `key=value`. Rules: [design.md](design.md) §4.
+
+```bash
+python -m slm.data.gutenberg prepare --tokenizer C:/slm-data/tokenizer/v1 --dry-run
+python -m slm.data.gutenberg prepare --tokenizer C:/slm-data/tokenizer/v1          # e.g. target_tokens=4e8
 ```
 
 Two sources in the base mixture are **generated here, not downloaded**:

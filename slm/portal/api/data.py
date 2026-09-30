@@ -380,6 +380,32 @@ async def sft_stats(request: Request, tag: str, name: str, split: str) -> dict:
     return await anyio.to_thread.run_sync(lambda: s.stats(request.app.state.data.cache))
 
 
+def _trace_book(books_jsonl: Path, r: dict, tok, reg, tag: str, head_tokens: int = 2048) -> dict:
+    """A PG-19 book's fate comes from a corpus-level ranking (dialogue density until the token target), which one
+    row cannot replay, so the trace reads the per-book verdict slm.data.gutenberg wrote next to the manifest."""
+    from slm.data.gutenberg import RULE_TEXT, normalize, strip_boilerplate
+
+    rec = None
+    if books_jsonl.exists():
+        with open(books_jsonl, encoding="utf-8") as f:
+            for line in f:
+                b = json.loads(line)
+                if b["book_id"] == r.get("book_id"):
+                    rec = b
+                    break
+    if rec is None:
+        return {"kept": False, "pipeline": "pretrain", "reason": f"book {r.get('book_id')} is not in {books_jsonl.name} for tag {tag!r} (not prepared yet)"}
+    sig = (f"dialogue {rec['dialogue']:.3f}, caps {rec['caps_share']:.3f}, verse {rec['verse_share']:.3f}, "
+           f"archaic {rec['archaic_per_1k']:.2f}/1K words, {rec['words']:,} words")
+    if not rec["selected"]:
+        return {"kept": False, "pipeline": "pretrain", "n_tokens": rec["tokens"],
+                "reason": f"dropped by rule '{rec['verdict']}': {RULE_TEXT.get(rec['verdict'], '')} ({sig})"}
+    ids = [tok.bos_id, *tok.encode(normalize(strip_boilerplate(r.get("text") or ""))[: head_tokens * 8])][:head_tokens]
+    return {"kept": True, "pipeline": "pretrain", "split": rec["split"], "n_tokens": rec["tokens"], "ids": ids,
+            "reason": f"kept -> {rec['split']}: {rec['tokens']:,} tokens in {rec['segments']} documents ({sig}); showing the first {len(ids)} tokens",
+            "pieces": reg.pieces(tag, ids)}
+
+
 @router.post("/raw/{source}/trace")
 async def raw_trace(request: Request, source: str, body: dict) -> dict:
     """Run one raw parquet row through the preparation it would get, and say what happened to it.
@@ -420,6 +446,8 @@ async def raw_trace(request: Request, source: str, body: dict) -> dict:
                     "ids": enc.ids, "n_tokens": len(enc.ids), "n_target": sum(enc.loss_mask),
                     "pieces": [{"id": i, "piece": tok.token_str(i), "special": i >= tok.base_vocab, "loss": lm} for i, lm in zip(enc.ids, enc.loss_mask)]}
         text = r.get(src.text_col) or ""
+        if src.custom_prepare == "slm.data.gutenberg":  # selection is corpus-level: read the verdict prepare recorded
+            return _trace_book(cat.tokenized_root / tag / source / "books.jsonl", r, tok, reg, tag)
         if not keep_doc(src, r):
             lang = r.get("language")
             why = "shorter than 64 characters" if len(text) < 64 else (f"language {lang!r} != en" if lang is not None and lang != "en" else "too few ASCII letters for English prose")

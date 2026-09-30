@@ -169,6 +169,9 @@ def main() -> None:
     ap.add_argument("--min-doc-tokens", type=int, default=MIN_DOC_TOKENS, help="keep only documents with at least this many tokens (long-context phase)")
     ap.add_argument("--name", default=None, help="output source name (default: source name); e.g. fineweb-edu-long")
     a = ap.parse_args()
+    for s in a.sources:
+        if SOURCES[s].custom_prepare:  # its own selection rules and document handling (e.g. books > MAX_DOC_TOKENS)
+            raise SystemExit(f"{s} is prepared by its own module: python -m {SOURCES[s].custom_prepare} prepare --tokenizer {a.tokenizer}")
     tok = SlmTokenizer.load(a.tokenizer)
     out_root = TOKENIZED_DIR / Path(a.tokenizer).name
     for s in a.sources:

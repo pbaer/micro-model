@@ -396,7 +396,7 @@ function Catalog() {
       ${!showUnused && html`<span class="muted">${nHidden} unused or *-v1 sets hidden</span>`}</div>
     <table><tr><th class="l">source</th><th>kind<${Info} k="source_kind" /></th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})<${Info} k="tokenizer_tag" /></th><th>val tokens (${t})</th><th>docs (${t})</th>`)}<th>used by</th></tr>
     ${shown.map((s) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", s.name).slice(1); }}>
-      <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
+      <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}${Object.values(s.prepared || {}).some((p) => p.manifest && p.manifest.filter) ? html` <span class="muted" title="a filtered selection of the raw books; the source page shows the rules">· filtered</span>` : ""}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
       ${ov.tags.map((t) => { const p = (s.prepared || {})[t]; return p ? html`<td>${fmtTok(p.train_tokens)}</td><td>${fmtTok(p.val_tokens)}</td><td>${fmtInt(p.train_docs)}</td>` : html`<td colspan="3" class="muted">not tokenized</td>`; })}
       <td>${nUses(s.name)}</td></tr>`)}
     </table>
@@ -430,6 +430,7 @@ function SourcePage({ name }) {
       : html`<table><tr><th>tag<${Info} k="tokenizer_tag" /></th><th>kind</th><th>made by<${Info} k="provenance" /></th><th>train tokens</th><th>train docs</th><th>val tokens</th><th>shards</th><th>loss targets<${Info} k="loss_targets" /></th><th class="l">provenance</th></tr>
       ${Object.entries(s.prepared).map(([k, p]) => html`<tr><td>${p.tag}</td><td>${p.kind}</td><td>${p.made_by}</td><td>${fmtTok(p.train_tokens)}</td><td>${fmtInt(p.train_docs)}</td><td>${fmtTok(p.val_tokens)}</td><td>${p.train_shards}</td>
         <td>${p.targets ? (p.targets / Math.max(1, p.train_tokens) * 100).toFixed(0) + "%" : "-"}</td><td class="l"><span class="legend">${p.provenance}</span></td></tr>`)}</table>`}
+    ${Object.values(s.prepared).filter((p) => p.manifest && p.manifest.filter).map((p) => html`<${SelectionFilter} p=${p} rawBytes=${s.raw_files.reduce((a, f) => a + f.bytes, 0)} />`)}
     ${s.parents.length > 0 && html`<div class="sub">derived from ${s.parents.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
     ${s.children.length > 0 && html`<div class="sub">feeds ${s.children.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
     <h2>used by</h2>
@@ -439,6 +440,34 @@ function SourcePage({ name }) {
         <td><span class=${"stage-badge " + (u.stage === "sft" ? "sft" : u.stage === "rl" ? "rl" : "")}>${u.stage}</span></td>
         <td class="l">${u.run_name}${u.kind === "config" ? html` <span class="muted">(plan)</span>` : ""}</td><td>${(u.weight * 100).toFixed(1)}%</td></tr>`)}</table>`}
     ${browse && html`<div><h2>browse</h2><${Documents} initial=${s.name} /></div>`}
+  </div>`;
+}
+
+/** The `filter` block a selecting preparer (slm/data/gutenberg.py) writes into its manifest: the funnel from the
+ *  books in the release to the books on disk, one row per rule. */
+const RULE_OP = { date: "≥", min_words: "≥", english: "≥", caps: "≤", verse: "≤", archaic: "≤", dialogue: "≥", not_selected: "≥" };
+function SelectionFilter({ p, rawBytes }) {
+  const m = p.manifest, f = m.filter, b = m.books || {}, sel = f.selected || {};
+  const nIn = Object.values(f.books_in || {}).reduce((a, x) => a + x, 0);
+  const thr = (r) => (r.threshold == null ? "-" : `${RULE_OP[r.rule] || ""} ${typeof r.threshold === "number" && r.threshold < 10 && r.rule !== "date" ? fmtNum(r.threshold, 3).replace(/0+$/, "").replace(/\.$/, "") : r.threshold}`);
+  return html`<div>
+    <h2>selection filter (${p.tag})<${Info} k="gutenberg" /></h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">books in the release</div><div class="v">${fmtInt(nIn)}</div><div class="s">${Object.entries(f.books_in || {}).map(([k, v]) => `${k} ${fmtInt(v)}`).join(" · ")}</div></div>
+      <div class="tile"><div class="k">books kept</div><div class="v">${fmtInt(sel.train)} <span class="muted" style="font-size:13px">+ ${fmtInt(sel.val)} val</span></div><div class="s">${fmtInt(f.candidates)} passed every rule</div></div>
+      <div class="tile"><div class="k">dialogue cutoff</div><div class="v">${f.dialogue_cutoff == null ? "-" : fmtNum(f.dialogue_cutoff, 3)}</div><div class="s">densest first until ${fmtTok((f.config || {}).target_tokens)} tokens</div></div>
+      <div class="tile"><div class="k">mean tokens / book</div><div class="v">${fmtTok(b.mean_tokens_per_book)}</div><div class="s">${fmtInt(m.train_docs)} train docs of ≤ ${fmtTok(b.segment_tokens)}</div></div>
+      <div class="tile"><div class="k">on disk</div><div class="v">${fmtBytes(rawBytes)}</div><div class="s">raw parquet · ${fmtBytes((m.train_tokens + m.val_tokens) * 2)} tokenized</div></div>
+    </div>
+    <table><tr><th class="l">rule</th><th>threshold</th><th>removed (train)</th><th>tokens removed</th><th>removed (val)</th><th>fail it at all</th><th class="l">what it checks · examples removed</th></tr>
+      ${f.rules.map((r) => html`<tr><td class="l">${r.rule}</td><td>${thr(r)}</td><td>${fmtInt(r.removed)}</td><td>${r.removed_tokens == null ? "-" : fmtTok(r.removed_tokens)}</td><td>${fmtInt(r.removed_val)}</td><td>${fmtInt(r.fails)}</td>
+        <td class="l"><span class="legend">${r.text}${r.examples && r.examples.length ? html`<br />${r.examples.join(" · ")}` : ""}</span></td></tr>`)}
+      <tr style="font-weight:600;border-top:2px solid #94a3b8"><td class="l">kept</td><td></td><td>${fmtInt(sel.train)}</td><td>${fmtTok(m.train_tokens)}</td><td>${fmtInt(sel.val)}</td><td></td>
+        <td class="l"><span class="legend" style="font-weight:400">${(f.kept_examples || []).join(" · ")}</span></td></tr>
+    </table>
+    <div class="legend" style="margin-top:6px">A book is counted under the first rule it fails, so "removed" adds up to the funnel; "fail it at all" is how many
+      books that rule alone would remove. The date rule ran before download (those books were never fetched). ${f.val_rule || ""}. Per-book statistics and
+      verdicts: <code>books.jsonl</code> next to the manifest.</div>
   </div>`;
 }
 
