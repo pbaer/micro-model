@@ -153,6 +153,26 @@ context-extended base once the curriculum settles.
    every stored score, so it waits for a moment when re-judging the chain is acceptable.
 5. Unit-test and logic-puzzle RL families; 26M ablations; portal P1/P2.
 
+## Future projects (parked 2026-09-30, Peter's call: hone the current 336M first)
+
+- **The Vulcan base: a one-way problem solver.** Specialise the next base for problem-solving intelligence at
+  the cost of world knowledge (§20 says stored knowledge is what 30B tokens cannot buy). Domain = closed-world
+  tasks with an executable checker: code from a spec with tests, constraints, algorithmic answers with an
+  independent check, deduction over given facts, word problems only where the model writes its own check.
+  Data = a procedural reasoning-corpus factory (host-generated, verified two ways, held-out families; no LLM
+  tokens for the data itself; ~10-15M Claude tokens of engineering for two families + evals) plus math/Python
+  text and STEM textbook prose; 0% fiction/news/general web. Evals = public no-knowledge benchmarks (BBH logic
+  subsets, CRUXEval, bAbI, ProofWriter, MBPP) reported as pass@1, verified@k and checker precision. The swarm
+  becomes search + verify (sample until the checker passes, early stop, verified trajectories as
+  rejection-sampling SFT data); the judged selector and the tournament stay retired (§18-19). Plan of record:
+  evals first (~2 days), factory (~4-5 days, Sonnet for boilerplate), downloads, then the 12-day run at 24x1024
+  with z-loss (§21).
+- **Quantization as a learning sub-project.** Our precision today: fp32 master weights + fp32 AdamW under bf16
+  autocast; snapshots and inference bf16. Sub-project: weight-only PTQ written ourselves (per-channel int8, then
+  group-wise int4 with calibration), full-suite deltas and decode tok/s at batch 1 and k=16; KV-cache int8 for
+  the swarm; W8A8 as the "why this is hard" chapter; pure-bf16/FP8 training last and optional. A day of work on
+  the M9 output once the GPU is free; results would be §22.
+
 ## Known gaps
 
 - ~~MMLU subsets not run~~ done 2026-09-22: at chance on every checkpoint, deliberately not tracked.
