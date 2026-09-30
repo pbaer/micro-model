@@ -33,10 +33,10 @@ PET_NAMES = ["Pistachio", "Waffles", "Sprocket", "Dumpling", "Mochi", "Turnip", 
              "Ziggy", "Pumpernickel", "Gadget", "Marmalade", "Tinsel", "Crumpet"]
 PEOPLE = ["Ingrid", "Tobias", "Marisol", "Kenji", "Priya", "Lukas", "Amara", "Sven", "Yusuf", "Beatrix", "Dario", "Nadia"]
 TOWNS = ["Bruges", "Dunedin", "Tromso", "Salta", "Galway", "Luang Prabang", "Rovaniemi", "Zadar", "Kandy", "Cuenca", "Hobart", "Trieste"]
-JOBS = ["ferrier", "bookbinder", "tugboat pilot", "clockmaker", "beekeeper's apprentice", "radio operator", "stonemason",
+JOBS = ["ferrier", "bookbinder", "tugboat pilot", "clockmaker", "apiary apprentice", "radio operator", "stonemason",
         "sail maker", "map engraver", "cheesemonger", "dispatcher", "orchard manager"]
 DISHES = ["shakshuka", "bibimbap", "ratatouille", "pierogi", "laksa", "moussaka", "jollof rice", "okonomiyaki", "cassoulet", "feijoada"]
-FLOORS = [str(n) for n in (2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 14, 15)]
+FLOORS = [str(n) for n in (2, 3, 4, 5, 6, 8, 9, 11, 12, 14, 15, 16)]  # no 7: it is in the eval's NUMBERS table
 
 # (statement, question, table, subject key, sibling question about a subject that was not stated)
 RECALL_FACTS = [

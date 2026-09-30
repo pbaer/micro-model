@@ -125,8 +125,10 @@ def verify_constraints(answer_text: str, gold: str) -> Verdict:
 # the whole policy drifted toward verifier-shaped output. A one-sentence answer that is nothing but a template
 # opener and a short filler is that drift; real prose that happens to start "It is ..." runs longer than this.
 _TEMPLATE_RE = re.compile(
-    r"^\s*(so the answer is|the answer is|that gives|that makes|so it comes to|the result is|it is|that would be|so it's)"
-    r"\b[^.\n]{0,40}\.?\s*$", re.I)
+    r"^\s*(?:(?:so the answer is|the answer is|that gives|that makes|so it comes to|the result is|so it's)\b[^.\n]{0,40}"
+    r"|(?:it is|that would be)\s+(?!not\b|n't\b|something\b)[^.\n]{0,25})\.?\s*$", re.I)
+# "It is Pistachio." is a template; "It is not something you told me." is an honest chat reply (the recall family's
+# negative case, 2026-09-30) -- the bare openers only count with a short value after them.
 
 
 def verify_recall(answer_text: str, gold: str) -> Verdict:
