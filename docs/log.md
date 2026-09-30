@@ -854,3 +854,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   fixed on the way: `verify_plain`'s template rule rejected "It is not something you told me." -- the exact
   honest reply the negative recall case rewards -- so the bare "it is" opener now only counts with a short value
   after it; two table overlaps with the eval removed. Baseline of the new kinds on the M9 output running on CPU.
+- Peter's check on the Gutenberg selection: a wider dynamic range than school-safe text, "a bit of spice". The
+  dialogue-density rule had done the opposite -- kept chatty juvenile series (Ruth Fielding, Polly Page, Dave
+  Dashaway) and dropped the adult canon (Flaubert 0/12, Chopin 0/9, Stoker 0/10, Melville 0/37, Conrad 3/31,
+  Tolstoy 1/32). Fix (subagent, b9b2243): `gutenberg-canon`, a curated 505-book / 63M-token supplement past the
+  dialogue rule (naturalism, sensation and gothic novels, the Russians, decadents, Hardy/Eliot/Wharton/Dreiser,
+  Lawrence/Joyce/Maugham, Ibsen/Strindberg/Shaw plays with a play-format exception, archaic cap relaxed to 3.0
+  for translations), nothing repeated from pg19; Burton's Nights, the Decameron and Ovid fail the archaic rule
+  even relaxed. The first hour of the base run was discarded and the chain relaunched with pg19 12% + canon 3%
+  (about one pass of the canon over 2B tokens). Lesson: a selection rule optimises what it measures; check the
+  kept list by author before training on it.
