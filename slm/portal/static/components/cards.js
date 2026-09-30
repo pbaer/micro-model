@@ -431,6 +431,21 @@ export const CARDS = {
       least conversational book.</p>
     <p class="see">The table shows each rule's threshold and how many books it removed; the val split is PG-19's own
       validation and test books through the same rules, never trained on.</p>` },
+  gutenberg_canon: { t: "Curated supplement: the adult literary canon", b: html`
+    <p><b>Why it exists.</b> Ranking PG-19 by dialogue density filled gutenberg-pg19 with chatty, sanitized popular
+      fiction (juvenile series by the dozen) and left out most of the adult canon: Flaubert, Zola, Chopin, Stoker,
+      Melville, George Eliot, most of Conrad and Hardy. The aim here is a wider dynamic range than school-safe text,
+      the things literature is actually about (crime, passion, adultery, violence, vice, despair, satire, the gothic),
+      not pornography, and deliberately small next to the main prose sources.</p>
+    <p><b>How it is chosen.</b> A hand-written list of authors and titles in <code>slm/data/gutenberg.py</code>
+      (<code>CANON</code>), matched against PG-19 titles; one edition per work (the longest; a complete edition over its
+      volumes), at most a few books per author, and never a book gutenberg-pg19 already holds. The hygiene rules stay
+      (1850 or later, English, no tables or indexes, no verse, a minimum length); the dialogue rule is not applied, the
+      archaic-word limit is relaxed for translations and Hardy, and a play in speaker-line format is not counted as
+      ALL-CAPS noise.</p>
+    <p class="see">The table lists every book and the rule relaxed for it ("dialogue-density cutoff": it passed every
+      rule but ranked below gutenberg-pg19's cutoff). Seed titles that are not here are listed with the reason: not in
+      PG-19, dated before 1850, failing a hygiene rule, or already in gutenberg-pg19.</p>` },
   prepared_artifacts: { t: "Prepared artifacts", b: html`
     <p>What this source became, per tokenizer tag: shards of uint16 token ids with a document index (and a loss mask for
       SFT sets), a train and a validation split, and the step that made them.</p>` },

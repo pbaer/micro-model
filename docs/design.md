@@ -119,6 +119,25 @@ translation passes); quotation-mark density also rewards biographies that quote 
 citations (Hobson-Jobson, 1.6M tokens, made the v1 cut); transcriber's notes and "Project Gutenberg also has an HTML
 version" notes are not stripped (present in about a third of kept books, ~0.03% of characters).
 
+**Curated supplement: `gutenberg-canon`** (`gutenberg.py canon`, 2026-09-30). The dialogue-density ranking skews
+gutenberg-pg19 to chatty, sanitized popular fiction and drops most of the adult literary canon (Flaubert, Zola,
+Chopin, Stoker, Melville, George Eliot, most of Conrad and Hardy). `CANON` is a hand-written list of author
+entries (a regex on the part of the PG-19 title after the last " by ") with ordered title patterns and a per-entry
+cap (`CanonConfig.per_author_cap`, 6 unless the entry sets one); an entry without titles takes the author's books in
+PG-19 id order. All hits of one title pattern are one work: one edition is kept (the longest; a "Complete" /
+"Vols. 1-4" edition, or an unmarked one >= 1.5x the largest volume, over its volumes; otherwise the longest per
+volume number). Nothing gutenberg-pg19 holds is repeated: same id, same text hash, same title, same work (author +
+title without volume markers, unless both are differently numbered volumes), or a collection titled after a work it
+holds. The hygiene rules are unchanged except: no dialogue rule, `max_archaic_per_1k` 3.0 instead of 1.5
+(translations, Hardy, Adam Bede), and a play whose speaker-name lines are >= 4% of lines, with recurring names
+covering >= 80% of them, is judged on its caps share without those lines. Val: PG-19's validation/test books, then
+seeded whole-book draws to 2% of books. Tokenized exactly like gutenberg-pg19 (one tokenization per book, <= 32K
+documents at paragraph starts, seeded shuffle). The manifest's `canon` block lists every book with the rule relaxed
+for it (`dialogue-density cutoff` = passed every rule, ranked below pg19's cutoff) and a status line for every title
+pattern (included, already in gutenberg-pg19, fails a rule, not downloaded because PG-19 dates it before 1850, not in
+PG-19). Seen while building it: gutenberg-pg19 itself holds the Casanova memoirs twice (the Complete edition and
+Vols. I-VI) and Rhoda Fleming Complete beside its volumes, because its duplicate rule is exact-text only.
+
 **Loader** (`loader.py`). `TokenStream` memory-maps one split of one source and hands out consecutive
 windows of `seq_len + 1` tokens (windows never straddle shards; the tail of a shard shorter than one
 window is skipped; wrapping increments `epoch`). `PretrainLoader` samples a source per row from the

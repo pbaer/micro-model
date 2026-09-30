@@ -391,6 +391,9 @@ def _prov_line(name: str, p: dict) -> str:
         return "templated reasoning traces for tasks " + ", ".join(p["from"])
     if p["made_by"] == "sft":
         return f"chat-formatted from {p['raw_source']} (max_len {m.get('max_len', '-')}, think {'required' if m.get('think_required') else 'optional'}{', tools' if m.get('tools') else ''})"
+    c = m.get("canon")
+    if isinstance(c, dict):  # gutenberg-canon (slm.data.gutenberg canon): a curated list, not a ranked selection
+        return f"curated supplement: {len(c.get('books') or []):,} books, adult literary canon past the dialogue rule"
     raw = p.get("raw_source") or "?"
     extra = f", min_doc_tokens {m['min_doc_tokens']}" if m.get("min_doc_tokens") else ""
     line = f"tokenized from {raw}" + (f" ({p.get('raw_files', 0)} parquet files{extra})" if p.get("raw_files") else extra)

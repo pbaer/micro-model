@@ -396,7 +396,7 @@ function Catalog() {
       ${!showUnused && html`<span class="muted">${nHidden} unused or *-v1 sets hidden</span>`}</div>
     <table><tr><th class="l">source</th><th>kind<${Info} k="source_kind" /></th><th>raw files</th><th>raw size</th><th>raw rows</th>${ov.tags.map((t) => html`<th>train tokens (${t})<${Info} k="tokenizer_tag" /></th><th>val tokens (${t})</th><th>docs (${t})</th>`)}<th>used by</th></tr>
     ${shown.map((s) => html`<tr class="click" onClick=${() => { location.hash = dataHref("source", s.name).slice(1); }}>
-      <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}${Object.values(s.prepared || {}).some((p) => p.manifest && p.manifest.filter) ? html` <span class="muted" title="a filtered selection of the raw books; the source page shows the rules">· filtered</span>` : ""}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
+      <td class="l">${s.name}${used.has(s.name) ? "" : html` <span class="muted">unused</span>`}${Object.values(s.prepared || {}).some((p) => p.manifest && p.manifest.filter) ? html` <span class="muted" title="a filtered selection of the raw books; the source page shows the rules">· filtered</span>` : ""}${Object.values(s.prepared || {}).some((p) => p.manifest && p.manifest.canon) ? html` <span class="muted" title="a hand-curated list of books; the source page lists them">· curated</span>` : ""}</td><td>${s.kind}</td><td>${s.raw_files}</td><td>${fmtBytes(s.raw_bytes)}</td><td>${fmtInt(s.raw_rows)}</td>
       ${ov.tags.map((t) => { const p = (s.prepared || {})[t]; return p ? html`<td>${fmtTok(p.train_tokens)}</td><td>${fmtTok(p.val_tokens)}</td><td>${fmtInt(p.train_docs)}</td>` : html`<td colspan="3" class="muted">not tokenized</td>`; })}
       <td>${nUses(s.name)}</td></tr>`)}
     </table>
@@ -431,6 +431,7 @@ function SourcePage({ name }) {
       ${Object.entries(s.prepared).map(([k, p]) => html`<tr><td>${p.tag}</td><td>${p.kind}</td><td>${p.made_by}</td><td>${fmtTok(p.train_tokens)}</td><td>${fmtInt(p.train_docs)}</td><td>${fmtTok(p.val_tokens)}</td><td>${p.train_shards}</td>
         <td>${p.targets ? (p.targets / Math.max(1, p.train_tokens) * 100).toFixed(0) + "%" : "-"}</td><td class="l"><span class="legend">${p.provenance}</span></td></tr>`)}</table>`}
     ${Object.values(s.prepared).filter((p) => p.manifest && p.manifest.filter).map((p) => html`<${SelectionFilter} p=${p} rawBytes=${s.raw_files.reduce((a, f) => a + f.bytes, 0)} />`)}
+    ${Object.values(s.prepared).filter((p) => p.manifest && p.manifest.canon).map((p) => html`<${CanonList} p=${p} />`)}
     ${s.parents.length > 0 && html`<div class="sub">derived from ${s.parents.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
     ${s.children.length > 0 && html`<div class="sub">feeds ${s.children.map((p) => html`<a href=${dataHref("source", p)}>${p}</a> `)}</div>`}
     <h2>used by</h2>
@@ -468,6 +469,39 @@ function SelectionFilter({ p, rawBytes }) {
     <div class="legend" style="margin-top:6px">A book is counted under the first rule it fails, so "removed" adds up to the funnel; "fail it at all" is how many
       books that rule alone would remove. The date rule ran before download (those books were never fetched). ${f.val_rule || ""}. Per-book statistics and
       verdicts: <code>books.jsonl</code> next to the manifest.</div>
+  </div>`;
+}
+
+/** The `canon` block slm.data.gutenberg's canon mode writes: every book on the curated list with the rule relaxed
+ *  for it, grouped by list entry, and the seed titles that are not in the set with the reason. */
+function CanonList({ p }) {
+  const m = p.manifest, c = m.canon, books = c.books || [];
+  const [showAbsent, setShowAbsent] = useState(false);
+  const entries = [];
+  for (const b of books) {
+    const last = entries[entries.length - 1];
+    if (last && last.entry === b.entry) last.books.push(b); else entries.push({ entry: b.entry, group: b.group, books: [b] });
+  }
+  const author = (b) => { const i = b.title.search(/ by (?!.* by )/i); return i < 0 ? "" : b.title.slice(i + 4); };
+  const absent = c.absent || [];
+  const counts = Object.entries(c.relaxed_counts || {}).sort((a, b) => b[1] - a[1]);
+  return html`<div>
+    <h2>curated list (${p.tag})<${Info} k="gutenberg_canon" /></h2>
+    <div class="tiles">
+      <div class="tile"><div class="k">books</div><div class="v">${fmtInt((m.books || {}).train)} <span class="muted" style="font-size:13px">+ ${fmtInt((m.books || {}).val)} val</span></div><div class="s">${entries.length} list entries matched · ${fmtInt(c.entries)} on the list</div></div>
+      <div class="tile"><div class="k">tokens</div><div class="v">${fmtTok(m.train_tokens)}</div><div class="s">+ ${fmtTok(m.val_tokens)} val · ${fmtInt(m.train_docs)} train docs</div></div>
+      <div class="tile"><div class="k">rule relaxed</div><div class="v" style="font-size:14px">${counts.map(([k, v]) => html`<div>${k}: ${fmtInt(v)}</div>`)}</div></div>
+      <div class="tile"><div class="k">not in the set</div><div class="v">${fmtInt(absent.length)}</div><div class="s">seed titles: absent, pre-1850, failing a rule, or already in gutenberg-pg19</div></div>
+    </div>
+    <table><tr><th class="l">group</th><th class="l">author</th><th class="l">title</th><th>year</th><th>tokens</th><th>split</th><th class="l">rule relaxed</th></tr>
+      ${entries.map((e) => e.books.map((b, i) => html`<tr style=${i === 0 ? "border-top:1px solid #cbd5e1" : ""}>
+        <td class="l muted">${i === 0 ? e.group : ""}</td><td class="l">${i === 0 ? author(b) : ""}</td><td class="l">${b.title.replace(/ by (?!.* by ).*$/i, "")}</td>
+        <td>${b.year}</td><td>${fmtTok(b.tokens)}</td><td>${b.split === "val" ? html`<b>val</b>` : "train"}</td><td class="l"><span class="legend">${(b.relaxed || []).join(", ")}</span></td></tr>`))}
+    </table>
+    <div class="row" style="margin-top:6px"><button class=${showAbsent ? "active" : ""} onClick=${() => setShowAbsent(!showAbsent)}>seed titles not in the set (${absent.length})</button></div>
+    ${showAbsent && html`<table><tr><th class="l">group</th><th class="l">author pattern</th><th class="l">title pattern</th><th class="l">why</th></tr>
+      ${absent.map((r) => html`<tr><td class="l muted">${r.group}</td><td class="l"><code>${r.author || "(any)"}</code></td><td class="l">${r.title}</td><td class="l"><span class="legend">${r.status}</span></td></tr>`)}</table>`}
+    <div class="legend" style="margin-top:6px">${(c.rules || {}).kept}; ${Object.entries((c.rules || {}).relaxed || {}).map(([k, v]) => `${k}: ${v}`).join("; ")}. ${(c.rules || {}).dedupe}. Val: ${(c.rules || {}).val}.</div>
   </div>`;
 }
 
