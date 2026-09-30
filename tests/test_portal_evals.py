@@ -439,3 +439,40 @@ def test_external_models_are_their_own_group_after_ours(tmp_path):
     assert _row(c.get("/api/evals").json(), "ext_toy-360m", ck)["model"]["params"] == 360_000_000
     page = Path("slm/portal/static/pages/evals.js").read_text(encoding="utf-8")
     assert 'const EXTERNAL = "external models"' in page and "modelLine(row.model)" in page
+
+
+def test_multiturn_kinds_columns_and_detail_rows(tmp_path):
+    """A multi-turn file with every kind (written by the eval's own scorer) fills the three new columns, attributed like
+    mt_recall, and each column's detail page lists only its kind's conversations with the given turns marked."""
+    import slm.eval.multiturn as M
+
+    runs = make_tree(tmp_path)
+    convs = M.build_conversations(list(M.KINDS), 2, seed=0)
+    finals = {"recall": lambda c: c["fact"], "recall_absent": lambda c: "You never told me that.",
+              "revise": lambda c: "Nothing, really.", "sysrule": lambda c: M.sysrule_transform("Fine, thanks. That is all there is.", c["specs"])}
+    for c in convs:
+        n_gen = len(c["turns"]) - len(c.get("given") or [])
+        c["assistant"] = [{"answer": finals[c["kind"]](c) if i == n_gen - 1 else "ok", "think": "t", "terminated": True, "tool_calls": 0,
+                           "n_tokens": 4} for i in range(n_gen)]
+    s = M._score(convs, 2, 0, 0.0)
+    _w(runs / "rl_b" / "multiturn.json", {"checkpoint": "runs/rl_b/checkpoints/best.pt", "summary": s, "conversations": convs})
+    idx = EvalIndex(runs)
+    col = {c["key"]: c for c in idx.table()["columns"]}
+    for k in ("mt_recall_absent", "mt_revise", "mt_sysrule"):
+        assert col[k]["group"] == "multi-turn" and col[k]["higher_is_better"] is True, k
+    cells = _row(idx.table(), "rl_b", "best.pt")["cells"]
+    assert cells["mt_recall"]["value"] == 1.0 and cells["mt_recall_absent"]["value"] == 1.0 and cells["mt_sysrule"]["value"] == 1.0
+    assert cells["mt_revise"]["value"] == s["revise"] and cells["mt_revise"]["source"] == "rl_b/multiturn.json"
+    assert "n=2 rewrites" in cells["mt_revise"]["detail"] and "recall_absent 2" in cells["mt_format"]["detail"]
+    assert _row(idx.table(), "rl_b", "step_00100.pt")["cells"].get("mt_revise") is None, "an old recall-only file has no revise cell"
+
+    for k, kind in (("mt_recall", "recall"), ("mt_recall_absent", "recall_absent"), ("mt_revise", "revise"), ("mt_sysrule", "sysrule")):
+        d = idx.detail("rl_b", "best.pt", k)
+        rows = d["items"]["rows"]
+        assert len(rows) == 2 and {r["c"]["kind"] for r in rows} == {kind}, k
+        assert any(t["title"] == "per kind" for t in d["tables"])
+    sr = idx.detail("rl_b", "best.pt", "mt_sysrule")["items"]["rows"][0]
+    labels = [b["label"] for b in sr["x"]]
+    assert labels[:3] == ["system prompt", "user 1", "assistant 1 (given, not generated)"] and "assistant 2" in labels
+    assert sr["ok"] is True and sr["c"]["score"] == 1.0
+    assert len(idx.detail("rl_b", "best.pt", "mt_format")["items"]["rows"]) == 8, "format and misfire list every kind"

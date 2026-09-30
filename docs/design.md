@@ -327,6 +327,19 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   writes `diagnostics.json` and `diagnostics.html`.
 - `reasoning.py`: greedy accuracy per task on held-out prompts and on GSM8K test with the chat
   format and a mandatory think span.
+- `multiturn.py`: scripted chat conversations, greedy, scored without a judge, `--n` of each `--kinds`:
+  `recall` (a fact, a distractor, a question that needs it), `recall_absent` (the last question asks about something
+  never stated; correct = names none of the stated fact's table and says so, by `slm.rl.rewards.verify_recall`, the
+  RL reward's rule), `revise` (a question with a *given* answer, then "rewrite it so that ..." with 1-3
+  `slm.rl.constraints` types; share kept and all kept by `verify_constraints`) and `sysrule` (a system-prompt rule,
+  sometimes two-part, kept by the given first answer and checked on the reply to a new question). `format` and
+  `misfire` count every generated turn of every kind. Each kind draws from its own seeded RNG, so `recall` keeps the
+  conversations it always had; the three newer kinds use material held out from `slm.rl.synth_chat` (their own
+  fact tables, 30 hand-written paragraphs instead of SmolTalk, their own rule and instruction wording, phrases and
+  banned words; `tests/test_multiturn_eval.py` asserts the disjointness on the constants). External chat models
+  run the same conversations through their template, the `sysrule` prompt through its system role (which replaces
+  the template's default system prompt). The result keeps a per-kind breakdown and every conversation for the
+  Evals detail page.
 - `lm_eval_wrapper.py`: an `lm_eval` `LM` subclass implementing `loglikelihood` (context/continuation
   split that respects BPE merges), `loglikelihood_rolling` and greedy `generate_until`; run from the
   CLI with `--tasks` and `--limit`.

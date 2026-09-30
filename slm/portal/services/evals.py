@@ -53,6 +53,9 @@ COLUMNS: list[dict] = [
     {"key": "r_mean", "label": "mean", "group": "reasoning", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
     {"key": "r_tool_use", "label": "tool use", "group": "reasoning", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
     {"key": "mt_recall", "label": "recall", "group": "multi-turn", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
+    {"key": "mt_recall_absent", "label": "not stated", "group": "multi-turn", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
+    {"key": "mt_revise", "label": "revise", "group": "multi-turn", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
+    {"key": "mt_sysrule", "label": "sysrule", "group": "multi-turn", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
     {"key": "mt_format", "label": "format", "group": "multi-turn", "super": "homebrew", "higher_is_better": True, "fmt": "frac"},
     {"key": "mt_misfire", "label": "misfire", "group": "multi-turn", "super": "homebrew", "higher_is_better": False, "fmt": "frac"},
     {"key": "needle", "label": "effective ctx", "group": "needle", "super": "homebrew", "higher_is_better": True, "fmt": "int"},
@@ -355,10 +358,18 @@ class EvalIndex:
     @staticmethod
     def _multiturn(r: dict, d: dict, src: str, note: str, put) -> None:
         s = d.get("summary") or {}
-        det = f"n={s.get('n')} conversations · seed {s.get('seed')} · templated {s.get('templated')} · {s.get('mean_answer_tokens')} tokens/turn{note}"
-        put(r, "mt_recall", s.get("recall"), src, det)
-        put(r, "mt_format", s.get("format"), src, det)
-        put(r, "mt_misfire", s.get("misfire"), src, det)
+        counts = s.get("counts") if isinstance(s.get("counts"), dict) else {"recall": s.get("n")}  # files before the kinds: recall only
+        kinds = " · ".join(f"{k} {v}" for k, v in counts.items())
+        tail = f" · seed {s.get('seed')} · {s.get('mean_answer_tokens')} tokens/turn" + (f" · system prompt: {s['system_prompt']}" if s.get("system_prompt") else "") + note
+        put(r, "mt_recall", s.get("recall"), src, f"n={counts.get('recall')} recall conversations · templated {s.get('templated')}{tail}")
+        put(r, "mt_recall_absent", s.get("recall_absent"), src,
+            f"n={counts.get('recall_absent')} conversations asking about something never stated: names nothing and says so{tail}")
+        put(r, "mt_revise", s.get("revise"), src,
+            f"n={counts.get('revise')} rewrites · mean share of constraints kept · all kept {s.get('revise_all')}{tail}")
+        put(r, "mt_sysrule", s.get("sysrule"), src,
+            f"n={counts.get('sysrule')} conversations · mean share of the system rule's parts kept · all kept {s.get('sysrule_all')}{tail}")
+        put(r, "mt_format", s.get("format"), src, f"over every kind ({kinds}){tail}")
+        put(r, "mt_misfire", s.get("misfire"), src, f"share of generated turns, every kind ({kinds}){tail}")
 
     @staticmethod
     def _needle(r: dict, d: dict, src: str, note: str, put) -> None:

@@ -247,8 +247,9 @@ capability's history down one column.
 - **Sources** (all under `runs/<run>/`): `lm_eval*.json` (HellaSwag and OpenBookQA as acc_norm, ARC-Easy, PIQA, LAMBADA
   and SciQ as acc, following `docs/results.md`; both metrics are in the hover), `bench_ll.json` (LAMBADA / OBQA / SciQ at
   limit 1000, used only where no lm-eval file has them), `facts*.json`, `reasoning_eval*.json` / `reasoning_s*.json` /
-  `reasoning_svamp.json` (per-family accuracy, the file's mean, mean tool-use rate), `multiturn*.json` (recall, format,
-  misfire), `needle_v2.json` / `needle_s*.json` (effective context = longest length whose every shorter length also has
+  `reasoning_svamp.json` (per-family accuracy, the file's mean, mean tool-use rate), `multiturn*.json` (recall, not stated
+  = `recall_absent`, revise, sysrule, and format / misfire over every kind; a file written before the kinds holds
+  recall only and leaves the three new columns n/a), `needle_v2.json` / `needle_s*.json` (effective context = longest length whose every shorter length also has
   min-over-depths >= the threshold; real-text haystack only; v1 `needle.json`, the filler control and the depth probes
   are ignored), `quality/summary.json` (judged overall and tool misfire), `pass_at_k.json`, `swarm_eval*.json`.
   MMLU and the dropped benchmark-revision tasks (§13 of results.md) are not shown.
@@ -282,7 +283,8 @@ capability's history down one column.
   correctness 4-5 / 1-2; misfire column: ran code on an eligible prompt); reasoning = the `reasoning_dump_<tag>.jsonl`
   beside `reasoning_eval_<tag>.json`, split into tasks by the file's per-task n (arith2mul rows say "arith2"), which only
   the M5/M6 runs have (the others: aggregates only, and the page says `--dump` was not used); facts, multi-turn (every
-  turn with its think span), needle (per cell, failures only), pass@k and swarm (flags and answers per problem, no
+  turn with its think span, given turns and the system prompt marked, the verifier's verdict and failed constraints;
+  each kind's column lists only that kind's conversations, format and misfire list all, plus a per-kind table), needle (per cell, failures only), pass@k and swarm (flags and answers per problem, no
   sample text; GSM8K / SVAMP problem text looked up by id in the local test parquet) inside the result file; lm-eval
   and `bench_ll.json` never (run without `--log_samples`: per-task acc / acc_norm / stderr / n and the limit only).
   Parsed files are cached by mtime and size (32 entries); a file above 64 MiB is refused with a note.

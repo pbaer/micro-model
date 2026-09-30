@@ -819,13 +819,37 @@ export const CARDS = {
       greedy, scored without a judge.</p>
     <p>Every other eval is single-turn; this is the one that checks the model uses the conversation it is in. n=64,
       so ±0.06 is noise.</p>` },
+  ev_mt_recall_absent: { t: "Multi-turn: not stated", b: html`
+    <p>The negative case of recall. Same three-turn shape (a fact, an unrelated question, a question), but the last
+      question asks about something the user never said ("My sailboat is called Kestrel" … "What is my canoe called?").
+      Correct = the answer names none of the stated fact's table (so not the sailboat's name either) <i>and</i> says it
+      was not told. Scored by <code>verify_recall</code>, the same rule the RL reward uses.</p>
+    <p>Why it matters: recall alone rewards emitting a name from the history, and a model can max it by always doing
+      that. The "teach the negative case" lesson (docs/log.md, M9 stage B misfires) is that a capability without its
+      counter-example misfires on lookalike prompts; this column is where that shows for memory.</p>
+    <p>Its facts and questions are held out from the RL <code>recall</code> family (different tables).</p>` },
+  ev_mt_revise: { t: "Multi-turn: revise", b: html`
+    <p>Can the model rework its previous answer on request? Turn 1 is a question with a <i>given</i> answer (one of
+      the eval's own 30 hand-written paragraphs, not generated), turn 2 asks to rewrite it under 1-3 machine-checkable
+      constraints (exactly N bullets or sentences, at most N sentences, leave out a word, keep a word from the answer,
+      end with a phrase, lowercase only, no commas).</p>
+    <p>The cell is the mean share of constraints kept (the RL <code>fraction</code> reward); the hover and detail page
+      also give <i>all kept</i>. Paragraphs, phrases and instruction wording are held out from the RL
+      <code>revise</code> family.</p>` },
+  ev_mt_sysrule: { t: "Multi-turn: sysrule", b: html`
+    <p>Does a system-prompt rule survive into later turns? The system prompt sets a rule (lowercase only, at most N
+      sentences, close with a phrase, never a word, no commas; sometimes two of them), turn 1 is a question whose given
+      answer already obeys it, turn 2 is a new question. The cell is the mean share of the rule's parts the reply
+      keeps; <i>all kept</i> is in the hover.</p>
+    <p>External models get the rule through their template's system role, which replaces their default system prompt.
+      Rule wording, phrases and banned words are held out from the RL <code>sysrule</code> family.</p>` },
   ev_mt_format: { t: "Multi-turn: format", b: html`
-    <p>The share of the multi-turn conversations in which every assistant turn ended properly with <code>&lt;|end|&gt;</code>
-      instead of running into the token limit or the next turn. A chat model that does not stop is unusable no matter
-      what it says.</p>` },
+    <p>The share of the multi-turn conversations in which every generated assistant turn ended properly with
+      <code>&lt;|end|&gt;</code> instead of running into the token limit or the next turn, over every kind in the file
+      (recall, not stated, revise, sysrule). A chat model that does not stop is unusable no matter what it says.</p>` },
   ev_mt_misfire: { t: "Multi-turn: misfire", b: html`
-    <p>The share of assistant turns in the multi-turn conversations that called the Python tool. These are plain chat
-      turns, so any call is a misfire: <b>lower is better</b>, 0 is the target.</p>` },
+    <p>The share of generated assistant turns in the multi-turn conversations (every kind) that called the Python tool.
+      These are plain chat turns, so any call is a misfire: <b>lower is better</b>, 0 is the target.</p>` },
   ev_needle: { t: "Needle: effective context", b: html`
     <p>A six-digit secret is hidden in real validation text at several depths of a prompt of each length, and the model
       is asked for it. Effective context is the longest length at which the <i>worst</i> depth still retrieves at

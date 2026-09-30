@@ -349,40 +349,90 @@ class EvalDetail:
     @staticmethod
     def _multiturn(d: dict, col: dict, out: dict, a: dict, src: str) -> None:
         s = d.get("summary") or {}
-        out["summary"] += [_sv("recall", s.get("recall"), "frac"), _sv("format", s.get("format"), "frac"), _sv("misfire", s.get("misfire"), "frac"),
-                           _sv("templated", s.get("templated"), "frac"), _sv("conversations", s.get("n"), "int"), _sv("seed", s.get("seed"), "int"),
+        counts = s.get("counts") if isinstance(s.get("counts"), dict) else {}
+        out["summary"] += [_sv("recall", s.get("recall"), "frac"), _sv("recall: not stated", s.get("recall_absent"), "frac"),
+                           _sv("revise (share kept)", s.get("revise"), "frac"), _sv("revise: all kept", s.get("revise_all"), "frac"),
+                           _sv("sysrule (share kept)", s.get("sysrule"), "frac"), _sv("sysrule: all kept", s.get("sysrule_all"), "frac"),
+                           _sv("format", s.get("format"), "frac"), _sv("misfire", s.get("misfire"), "frac"),
+                           _sv("templated", s.get("templated"), "frac"), _sv("conversations per kind", s.get("n"), "int"),
+                           *[_sv(f"{k} conversations", v, "int") for k, v in counts.items()], _sv("seed", s.get("seed"), "int"),
+                           _sv("system prompt", s.get("system_prompt")),
                            _sv("tokens per answer", s.get("mean_answer_tokens"), "num"), _sv("seconds", s.get("seconds"), "num")]
+        bk = s.get("by_kind") if isinstance(s.get("by_kind"), dict) else {}
+        if bk:
+            out["tables"].append({"title": "per kind", "highlight": None,
+                                  "rows": [[k, v.get("n"), v.get("score"), v.get("format"), v.get("misfire"), v.get("templated")]
+                                           for k, v in bk.items() if isinstance(v, dict)],
+                                  "columns": _cols(("kind", "kind", "text"), ("n", "n", "int"), ("score", "score", "frac"), ("format", "format", "frac"),
+                                                   ("misfire", "misfire", "frac"), ("templated", "templated", "frac"))})
         convs = d.get("conversations")
         if not isinstance(convs, list) or not convs:
             out["items"] = _none("This multi-turn file stores only the summary.")
             return
         k = col["key"]
+        want = {"mt_recall": "recall", "mt_recall_absent": "recall_absent", "mt_revise": "revise", "mt_sysrule": "sysrule"}.get(k)
         items = []
         for cv in convs:
-            turns, asst = cv.get("turns") or [], cv.get("assistant") or []
-            ok = cv.get("recall") if k == "mt_recall" else cv.get("format_ok") if k == "mt_format" else (cv.get("misfires") or 0) == 0
-            x = []
+            if not isinstance(cv, dict):
+                continue
+            kind = cv.get("kind", "recall")  # files written before the kinds hold recall conversations only
+            if want and kind != want:
+                continue
+            turns, asst, given = cv.get("turns") or [], cv.get("assistant") or [], cv.get("given") or []
+            if want in ("revise", "sysrule"):
+                ok = cv.get(f"{want}_all")
+            elif want:
+                ok = cv.get(want)
+            else:
+                ok = cv.get("format_ok") if k == "mt_format" else (cv.get("misfires") or 0) == 0
+            x = [_blk("system prompt", cv.get("system"))]
             for j, u in enumerate(turns):
                 x.append(_blk(f"user {j + 1}", u))
-                if j < len(asst) and isinstance(asst[j], dict):
-                    t = asst[j]
+                if j < len(given):
+                    x.append(_blk(f"assistant {j + 1} (given, not generated)", given[j]))
+                    continue
+                g = j - len(given)
+                if g < len(asst) and isinstance(asst[g], dict):
+                    t = asst[g]
                     x.append(_blk(f"assistant {j + 1}: think", t.get("think"), "think"))
                     x.append(_blk(f"assistant {j + 1}", t.get("answer") if t.get("answer") != "" else "(empty answer)"))
                     x.append(_blk(f"assistant {j + 1}: flags", {"ended with <|end|>": t.get("terminated"), "tool calls": t.get("tool_calls"),
                                                                  "tokens": t.get("n_tokens")}, "kv"))
             last = asst[-1] if asst and isinstance(asst[-1], dict) else {}
-            items.append(_row(ok, {"fact": cv.get("fact"), "question": _short(turns[-1] if turns else None), "answer": _short(last.get("answer")),
-                                   "recall": cv.get("recall"), "format": cv.get("format_ok"), "misfires": cv.get("misfires"),
-                                   "templated": cv.get("templated")},
-                              x + [_blk("grading", {"fact": cv.get("fact"), "recall": cv.get("recall"), "format ok": cv.get("format_ok"),
-                                                     "misfires": cv.get("misfires"), "templated": cv.get("templated")}, "kv")],
-                              " ".join(str(t) for t in turns) + " " + " ".join(str((t or {}).get("answer")) for t in asst)))
-        labels = {"mt_recall": {"pass": "recalled", "fail": "missed"}, "mt_format": {"pass": "every turn ended", "fail": "ran on"},
-                  "mt_misfire": {"pass": "no tool call", "fail": "misfired"}}[k]
-        out["items"] = _items(items, _cols(("fact", "fact", "text"), ("question", "last user turn", "text"), ("answer", "last answer", "text"),
-                                           ("recall", "recall", "bool"), ("format", "format", "bool"), ("misfires", "misfires", "int"),
-                                           ("templated", "templated", "flag")),
-                              labels, a, "Three turns per conversation; expand a row for every turn with its think span.", src)
+            if kind == "recall":
+                check, score, grading = cv.get("fact"), cv.get("recall"), {"fact": cv.get("fact"), "recall": cv.get("recall")}
+            elif kind == "recall_absent":
+                check, score = f"stated {cv.get('stated')}", cv.get("recall_absent")
+                grading = {"stated (a different subject)": cv.get("stated"), "must name none of": ", ".join(cv.get("not_these") or []),
+                           "correct": cv.get("recall_absent"), "verifier": cv.get("reason")}
+            else:
+                specs = [sp for sp in cv.get("specs") or [] if isinstance(sp, dict)]
+                failed = cv.get("failed") or []
+                check, score = cv.get("rule") or ", ".join(str(sp.get("type")) for sp in specs), cv.get(kind)
+                grading = {"constraints": json.dumps(specs, ensure_ascii=False), "failed": ", ".join(failed) or "none",
+                           "share kept": cv.get(kind), "all kept": cv.get(f"{kind}_all")}
+            items.append(_row(ok, {"kind": kind, "check": _short(check, 60), "question": _short(turns[-1] if turns else None),
+                                   "answer": _short(last.get("answer")), "score": float(score) if isinstance(score, bool) else score,
+                                   "format": cv.get("format_ok"), "misfires": cv.get("misfires"), "templated": cv.get("templated")},
+                              x + [_blk("grading", {**grading, "format ok": cv.get("format_ok"), "misfires": cv.get("misfires"),
+                                                     "templated": cv.get("templated")}, "kv")],
+                              " ".join(str(t) for t in turns) + " " + " ".join(str((t or {}).get("answer")) for t in asst) + f" {kind} {check}"))
+        labels = {"mt_recall": {"pass": "recalled", "fail": "missed"},
+                  "mt_recall_absent": {"pass": "said it was not stated", "fail": "guessed or ignored"},
+                  "mt_revise": {"pass": "every constraint kept", "fail": "missed one"}, "mt_sysrule": {"pass": "rule kept", "fail": "rule broken"},
+                  "mt_format": {"pass": "every turn ended", "fail": "ran on"}, "mt_misfire": {"pass": "no tool call", "fail": "misfired"}}[k]
+        notes = {"mt_recall": "Three turns: a fact, an unrelated question, a question that needs the fact.",
+                 "mt_recall_absent": "Three turns; the last asks about something never stated. Correct = names none of the stated fact's table "
+                                     "and says it was not told (slm.rl.rewards.verify_recall, the RL reward's rule).",
+                 "mt_revise": "A question with a given answer (not generated), then a rewrite request with 1-3 constraints; score = share "
+                              "kept, verdict = all kept.",
+                 "mt_sysrule": "A system rule, a question with a given answer that keeps it, then a new question; score = share of the "
+                               "rule's parts kept, verdict = all kept."}
+        note = notes.get(k, "Every kind; only generated turns count (given turns are marked).") + " Expand a row for every turn with its think span."
+        out["items"] = _items(items, _cols(("kind", "kind", "text"), ("check", "fact / rule", "text"), ("question", "last user turn", "text"),
+                                           ("answer", "last answer", "text"), ("score", "score", "frac"), ("format", "format", "bool"),
+                                           ("misfires", "misfires", "int"), ("templated", "templated", "flag")),
+                              labels, a, note, src)
 
     # ------------------------------------------------------------------------------------------ needle
     @staticmethod
