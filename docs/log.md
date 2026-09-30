@@ -842,3 +842,15 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Subagents: Gutenberg PG-19 source (download, filter, tokenize, Data tab) and the multi-turn diagnostics eval
   (`recall_absent`, `revise`, `sysrule` kinds with held-out tables, Evals columns). Three heredoc-escape incidents
   in four days: files with backslashes now go through the Write tool (memory note).
+- Gutenberg PG-19 in (subagent, af4b01b): 28,602 post-1850 books fetched from the release bucket, rule-filtered
+  (caps/table lines, verse, archaic rate <= 1.5 per 1K words, dialogue density >= 0.258 to reach the target) to
+  5,156 books = 500.0M train tokens + 3.2M val, hard wraps joined, books cut at paragraph starts into <= 32K-token
+  documents, seeded shuffle; Data tab has the source page with the filter panel. Known noise: edition dates,
+  quoted-letter biographies and one glossary pass the dialogue rule.
+- `m10_base_prose_336m` started 05:24 the moment the manifest landed. Watching: inheritance messages, tok/s and
+  reserved VRAM (the GPU tile read 15.4 GiB used -- the run's own reserved number is the one that matters).
+- The multi-turn diagnostics (subagent, 06a5d09): `recall_absent`, `revise`, `sysrule` kinds on held-out tables,
+  scored by the RL verifiers themselves, Evals columns `mt_recall_absent` / `mt_revise` / `mt_sysrule`. Found and
+  fixed on the way: `verify_plain`'s template rule rejected "It is not something you told me." -- the exact
+  honest reply the negative recall case rewards -- so the bare "it is" opener now only counts with a short value
+  after it; two table overlaps with the eval removed. Baseline of the new kinds on the M9 output running on CPU.

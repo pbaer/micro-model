@@ -1112,7 +1112,8 @@ model learns from 185 examples. Peter's redesign, a pairwise tournament, is §19
 (accuracy / tool-use rate; judged = claude-sonnet-5 on the blind v1 suite.) Two things in the same run: the format SFT
 alone cost judged 4.07 -> 3.23 (facts 3.88 -> 1.88, definition 4.00 -> 2.50), and run 6's rewards -- the chat anchor
 above all -- brought it back to **4.11** (facts 4.46, task 4.45, the project's best overall; pattern 4.33 -> 3.50 is
-the one category down). Greedy GSM8K nearly tripled (0.03 -> 0.085) with tool use 0.74 -> 0.90, and SVAMP tool use
+the one category down). Its weakest categories are the writing ones: prose 3.42, pattern 3.50, narrative 3.67,
+definition 4.00 -- against arithmetic 4.67, qa 4.50, facts 4.46 (the base never saw fiction; see the M10 plan). Greedy GSM8K nearly tripled (0.03 -> 0.085) with tool use 0.74 -> 0.90, and SVAMP tool use
 0.84 -> 0.96: the `gsm8k` reward with the select prompts' word problems in the mix did what §16a did for algebra.
 Multi-turn recall 0.609 is the best measured. Benchmarks and needle tied; facts probe 70.6% vs 71.6% is inside noise.
 
