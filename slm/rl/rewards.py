@@ -129,6 +129,27 @@ _TEMPLATE_RE = re.compile(
     r"\b[^.\n]{0,40}\.?\s*$", re.I)
 
 
+def verify_recall(answer_text: str, gold: str) -> Verdict:
+    """Multi-turn recall (slm.rl.synth_chat): gold is {"fact": x} -- the answer must contain x, as plain chat --
+    or {"absent": true, "not_these": [...]} -- nothing was stated, so the answer must name none of the table and
+    say so. Both forms reuse the plain-chat checks (present, no '####' line, not a verifier template)."""
+    import json
+
+    base = verify_plain(answer_text)
+    if not base.correct:
+        return base
+    g = json.loads(gold)
+    a = answer_text.lower()
+    if g.get("absent"):
+        named = [x for x in g.get("not_these", []) if x.lower() in a]
+        if named:
+            return Verdict(False, named[0], "recall: named a value that was never stated")
+        says_so = any(k in a for k in ("mention", "told", "said", "know", "haven't", "have not", "didn't", "did not", "never", "not sure", "no information", "don't have"))
+        return Verdict(says_so, None, "recall: said it was not stated" if says_so else "recall: absent fact, no acknowledgement")
+    fact = str(g["fact"]).lower()
+    return Verdict(fact in a, fact if fact in a else None, "recall: fact present" if fact in a else "recall: fact missing")
+
+
 def verify_plain(answer_text: str) -> Verdict:
     """An ordinary chat answer: present, not a `####` line, not a verifier template. There is no gold -- the
     reward is for answering like a chatbot, and the `plain` scheme adds "and without calling the tool"."""
@@ -151,6 +172,8 @@ def verify_answer(answer_text: str, gold: str, kind: str = "auto", strict: bool 
         return verify_constraints(answer_text, gold)
     if kind == "plain":
         return verify_plain(answer_text)
+    if kind == "recall":
+        return verify_recall(answer_text, gold)
     if kind == "numeric" or (kind == "auto" and is_numeric_answer(gold)):
         return verify_numeric(answer_text, gold, strict)
     if kind not in ("auto", "exact"):

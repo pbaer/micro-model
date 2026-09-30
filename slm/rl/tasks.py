@@ -239,7 +239,18 @@ def _constraints(rng: random.Random):
     return gen_constraints(rng)
 
 
+def _chat(name: str):
+    def gen(rng: random.Random):
+        from slm.rl.synth_chat import GENERATORS as CHAT  # lazy: synth_chat imports this module
+
+        return CHAT[name](rng)
+    return gen
+
+
 GENERATORS = {
+    "recall": _chat("recall"),      # multi-turn: a fact stated two turns ago (or never) -- slm.rl.synth_chat
+    "revise": _chat("revise"),      # multi-turn: rewrite the previous answer under constraints
+    "sysrule": _chat("sysrule"),    # a system-prompt rule every reply must keep
     "arith1": lambda r: gen_arith(r, 1, "+-"),
     "arith2": lambda r: gen_arith(r, 2, "+-"),
     "arith2mul": lambda r: gen_arith(r, 2, "+-*"),
@@ -309,6 +320,7 @@ def prompt_messages(t: Task) -> list[dict]:
     it); `answer_style="free"` tasks (constraints) must not, since their answer *is* the writing."""
     from slm.data.answers import SUFFIX, is_numeric_answer
 
+    history = list(t.meta.get("history") or [])  # earlier turns, environment-written (slm.rl.synth_chat)
     if t.meta.get("answer_style") == "free":
-        return [{"role": "user", "content": t.prompt}]
-    return [{"role": "user", "content": t.prompt + (SUFFIX if is_numeric_answer(t.answer) else SUFFIX_TEXT)}]
+        return history + [{"role": "user", "content": t.prompt}]
+    return history + [{"role": "user", "content": t.prompt + (SUFFIX if is_numeric_answer(t.answer) else SUFFIX_TEXT)}]
