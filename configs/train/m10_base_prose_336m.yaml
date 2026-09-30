@@ -1,0 +1,70 @@
+# M10 phase 1 (2026-09-30): continued pretraining of the M8 base with narrative prose sprinkled in, then the M9
+# post-training recipe replayed on top (m10_sft -> m10_tool -> m10_rl). Why: the M9 output's weakest judged
+# categories are prose 3.42 / narrative 3.67 / pattern 3.50 (results.md §18) and the base has never seen a page of
+# fiction; SFT can style prose it cannot teach. Continued pretraining is the principled fix and the infrastructure
+# exists for it: weights, AdamW moments AND data-stream positions all inherit from m8_base_4k's latest.pt.
+#
+# Recipe from the continual-pretraining literature (rewarm + redecay with replay): re-warm over 100M tokens to
+# ~1/3 of the stable-phase LR (4e-4 -> 1.3e-4), hold, decay over the last 40%; >= 50% of the mixture replays the
+# phase-2 sources so the loss on the old distribution stays flat (extra_val_mixture watches it), and the four
+# public benchmarks + facts + needle are the floor gate before any SFT starts. New prose = 25%: filtered
+# Gutenberg (PG-19, post-1850 narrative with dialogue, archaic forms capped) and long fineweb-edu documents;
+# multi-turn chat and tool conversations stay in pretraining as phase 2 had them (smoltalk-chat is the multi-turn
+# SmolTalk subsets, tool-chat-v3 the sandbox conversations). z-loss on (results.md §21).
+run_name: m10_base_prose_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  loss_chunk_size: 4096
+init_from: runs/m8_base_4k_336m/checkpoints/latest.pt
+init_optimizer: true                                              # AdamW moments: this is a continuation, not a new run
+init_loader_from: runs/m8_base_4k_336m/checkpoints/latest.pt     # data-stream positions: never re-read what phase 2 read
+data:
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture: {fineweb-edu-10bt: 0.45, cosmopedia: 0.08, finemath: 0.05, python-edu: 0.05, synth-retrieval: 0.02, smoltalk-chat: 0.08, tool-chat-v3: 0.02, gutenberg-pg19: 0.15, fineweb-edu-long: 0.10}
+  seq_len: 4096
+  val_tokens: 4000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}  # the old distribution: drift here is the cost of the sprinkle
+optim:
+  lr: 1.3e-4
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+  z_loss: 1.0e-4
+schedule:
+  type: wsd
+  total_tokens: 2000000000
+  warmup_tokens: 100000000
+  min_lr_ratio: 0.1
+  decay_frac: 0.4
+batch:
+  microbatch: 2
+  tokens_per_update: 524288   # 2 x 4096 x 64 accum, as phase 2
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 2
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 100000000
+  gen_every_tokens: 250000000
+  gen_max_new_tokens: 96
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "The history of the Roman Empire begins"
+    - "It was late in the evening when the door opened and"
+    - "def fibonacci(n):"
+    - "<|user|>What is 17 + 26?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  quality_suite: true
+  needle_source: fineweb-edu-b
+milestone_tokens: 250000000
+notes: "Gate before SFT: benchmarks, facts and needle within noise of m8_base_4k final.pt (results.md §20 row for ours), judged completion-form prose up."

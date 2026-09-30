@@ -1,0 +1,74 @@
+# M10 stage B: the M9 stage-B v4 recipe (m9_tool4_336m) replayed. Compare to m9_tool4 on the same suite.
+run_name: m10_tool_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m10_sft_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    smoltalk-smol-magpie-ultra-4k-direct: 0.23    # long-form rehearsal, keeps stage A's chat ability
+    smoltalk-openhermes-100k-4k-direct: 0.15
+    smoltalk-systemchats-30k-short: 0.15          # short prompts, prose think, never a tool call
+    synthetic-python-tools: 0.10                  # the permitted subset: loops, defs, strings, declared functions
+    smoltalk-openhermes-100k-short: 0.07
+    metamathqa-reasoning: 0.04                    # MetaMathQA rephrases GSM8K/MATH; gsm8k-reasoning covers it
+    smoltalk-smol-constraints-4k-think: 0.06      # restored: "without using max()" is a constraint, not a bug
+    synthetic-reasoning-tools: 0.05
+    gsm8k-tools: 0.05                             # a word problem answered via the sandbox
+    synthetic-reasoning: 0.035                    # restored in full: algebra accuracy tracks THIS set's
+                                              # conversation count (v1 58.5k -> 0.44, v3 33.5k -> 0.22)
+    synthetic-multiturn-tools: 0.03
+    gsm8k-reasoning: 0.02
+    smoltalk-everyday-conversations-short: 0.01
+    metamathqa-tools: 0.005
+  seq_len: 4096
+  val_tokens: 2000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.2e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 120000000
+  warmup_tokens: 3000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 6
+  log_every_updates: 10
+ckpt:
+  every_minutes: 15
+eval:
+  every_tokens: 15000000
+  gen_every_tokens: 15000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 10
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+    - "<|user|>How many of the numbers in [4, 9, 16, 23, 42] are even?<|end|><|assistant|>"
+    - "<|user|>What is the capital of France?<|end|><|assistant|>"
+  needle_lengths: [1024, 2048, 4096]
+  needle_depths: [0.0, 0.25, 0.5, 0.75, 1.0]
+  needle_n: 64
+  needle_batch_tokens: 8192
+  needle_source: fineweb-edu-b
+  quality_suite: true
+milestone_tokens: 15000000
+notes: "Gate for RL: judged overall >= 3.40 with no category more than ~0.3 below stage A except arithmetic
+  (targeted, up) -- this is the real gate; tool_misfire is diagnostic, not the objective (v1 0.500-0.429,
+  v3 0.286-0.214, stage A 0.000). Watch pattern and python: they held the whole of v3's gap. Also needle
+  min-depth at 4K (v1 and v3 both eroded 4096 -> 3072, so treat a third failure as a property of this
+  stage rather than a mixture bug), algebra accuracy (v3 halved it to 0.22) and the GSM8K tool-use rate."
