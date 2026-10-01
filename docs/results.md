@@ -1326,3 +1326,39 @@ Two new signals beside the repeat of 23b: the tool-misfire rate at the stage tha
 and judged python is lower at every milestone (the judges name `find_max` using the forbidden `max()` and
 `distance_to` ignoring its argument). ARC-E reads 2.4 points under M9 for the second stage running. Both go to stage
 C as watch items; M9's stage C recovered python to 4.2.
+
+### 23d. Stage C replayed with the multi-turn families: recall 0.61 -> 0.91, prose 3.4 -> 4.4, math a little down
+
+`m10_rl_336m` = run 6's mix plus `recall` x2 / `revise` x2 / `sysrule` x1 of 25 draws (slm.rl.synth_chat), 250 steps
+from `m10_tool` final.pt (the selection SFT step skipped). `recall`'s reward climbed 0.22 -> 0.78 by 25-step window --
+the first family in the project with a learning curve like that -- `revise` stayed ~0.5, `sysrule` 0.2-0.6 on few
+draws, the chat anchor 0.93, KL 0.04-0.06, held-out 0.375 -> 0.49. Both checkpoints measured; M9's output beside them:
+
+| | M9 output (`m9_rl6` final) | `m10_rl` best.pt (step 200) | **`m10_rl` final.pt (step 250)** |
+|---|---|---|---|
+| judged overall (corr / coh / task) | 4.11 (3.61 / 4.26 / 4.45) | 4.04 (3.53 / 4.44 / 4.16) | **4.13 (3.75 / 4.47 / 4.19)** |
+| prose / pattern / definition | 3.42 / 3.50 / 4.00 | 3.92 / 3.42 / 5.00 | **4.42 / 4.33 / 4.83** |
+| narrative / qa / python / facts (judged) | 3.67 / 4.50 / 4.20 / 4.46 | 3.17 / 4.67 / 4.22 / 3.83 | 3.17 / 3.67 / **3.39** / 4.42 |
+| multi-turn recall (n=64) | 0.609 | 0.828 | **0.906** |
+| recall_absent / revise / sysrule | -- (0.03 / 0.42 / 0.67 at n=32) | 0.00 / 0.38 / 0.74 | 0.00 / 0.41 / 0.73 |
+| format / tool misfire | 0.953 / 0.00 | 0.961 / 0.00 | 0.969 / 0.00 |
+| GSM8K / SVAMP (acc / tool use) | **0.085 / 0.90, 0.100 / 0.96** | 0.055 / 0.74, 0.100 / 0.90 | 0.050 / 0.88, 0.070 / 0.93 |
+| algebra / word | 1.00 / 0.99 | 1.00 / 0.99 | 1.00 / 0.98 |
+| swarm oracle@16 GSM8K / SVAMP | 0.36 / 0.48 | 0.24 / 0.46 | 0.26 / 0.40 |
+| facts probe / needle | 70.6% / 3072 | 71.6% / 3072 | 71.1% / 3072 |
+| HellaSwag(n) / ARC-E / LAMBADA | 42.9 / 57.0 / 33.7 | 42.7 / 55.3 / 38.6 | 42.6 / 56.1 / **39.1** |
+
+What moved, and why:
+- **The generalist axes moved the way the M10 plan intended.** Prose 3.42 -> 4.42 is the largest single-category gain
+  the project has recorded, pattern and definition follow, coherence 4.26 -> 4.47, and multi-turn recall 0.61 -> 0.91
+  is the `recall` family doing exactly what it was built for. LAMBADA +5 comes from the base.
+- **Math and judged python gave a little back.** GSM8K 0.085 -> 0.050 and SVAMP 0.10 -> 0.07 (n=200/300, so a real
+  but small move; the swarm pool narrows with them), and judged python 4.20 -> 3.39, the deficit that has run through
+  every M10 stage (the judges keep naming `find_max` using the forbidden `max()`). Tool use itself held (0.88-0.93).
+  Narrative and qa read lower on three items each.
+- **The absent case did not learn -- it was reward-hacked.** `recall_absent` is 0.00, and the rollouts show why: the
+  verifier matched acknowledgement keywords as substrings ("know" in "known") and banned only the table's values, so
+  stage C learned "My goldfish is known as Silverfish" -- an invented name plus the substring -- and was paid 1.0 for
+  it (late-run absent-case reward 0.22, spread 1.0). Fixed the same day: phrases with word boundaries, and any
+  "is called / named / known as X" fails (`verify_recall`, tests). The next RL run gets the fixed reward; this one's
+  absent-case number is the eval's, which the hack does not fool.
