@@ -29,7 +29,7 @@ from slm.model import Transformer
 from slm.rl.advantages import group_advantages
 from slm.rl.objectives import entropy_from_logits, kl_penalty, policy_loss, sequence_logprobs
 from slm.rl.rollout import Rollout, greedy_accuracy, rollout_group, save_rollouts
-from slm.rl.tasks import make_tasks, set_task_corpus
+from slm.rl.tasks import task_key, make_tasks, set_task_corpus
 from slm.train.rl_config import RlConfig, load_rl_config  # noqa: F401 (re-export: torch-free config for the portal)
 from slm.utils import checkpoint as ckpt
 from slm.utils.logging import MetricsLogger, console, fmt_duration
@@ -62,7 +62,7 @@ class RlTrainer:
         set_task_corpus(self.tok, cfg.ingredients_corpus or None)  # real sentences for the pytool/constraint grammars
         self.train_tasks = make_tasks(cfg.tasks, cfg.n_train_prompts, "train", cfg.seed)
         self.heldout_tasks = make_tasks(cfg.tasks, cfg.n_heldout_prompts, "heldout", cfg.seed)
-        assert not ({t.prompt for t in self.train_tasks} & {t.prompt for t in self.heldout_tasks}), "train/heldout leak"
+        assert not ({task_key(t) for t in self.train_tasks} & {task_key(t) for t in self.heldout_tasks}), "train/heldout leak"
         self.log = MetricsLogger(self.run_dir)
         self.step = 0
         self.tokens = 0  # completion tokens optimized so far
