@@ -28,6 +28,8 @@ copy_run m8_base_4k_336m final.pt     # the base
 copy_run m9_sft_336m     final.pt     # stage A, chat SFT
 copy_run m9_tool4_336m   final.pt     # stage B, tools SFT
 copy_run m9_rl6_336m     final.pt       # stage C, GRPO run 6 final -- the M9 output (2026-09-27, results.md 18)
+copy_run m10_rl_336m     final.pt       # M10 candidate (2026-10-01, results.md 23): prose 4.42, recall 0.91; shipping decision pending
+copy_run m10_base_prose_336m final.pt   # the prose-sprinkled base, a base for future replays
 copy_run m9_rl5_336m     step_00200.pt  # run 5 step 200, the previous M9 output (results.md 16e)
 copy_run m9_rl5_336m     best.pt      # run 5 best.pt (step 150), kept beside it
 copy_run m9_rl4_336m     best.pt      # stage C run 4: the best pure-chat judged checkpoint, kept for comparison
