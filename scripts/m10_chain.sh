@@ -21,10 +21,10 @@ R=runs/m10_base_prose_336m; CK=$R/checkpoints/final.pt
 [ -f "$R/needle_v2.json" ] || $P -u -m slm.eval.long_context --checkpoint "$CK" --lengths 1024 2048 3072 4096 --n 64 --batch-tokens 8192 --out "$R/needle_v2.json" > "$R/needle_v2.log" 2>&1
 echo "BASE_GATE_MEASURED $(date '+%H:%M')"
 train m10_sft_336m slm.train.pretrain
-bash scripts/measure_stage.sh m10_sft_336m
+[ -f runs/m10_sft_336m/reasoning_eval.json ] || bash scripts/measure_stage.sh m10_sft_336m
 train m10_tool_336m slm.train.pretrain
-bash scripts/measure_stage.sh m10_tool_336m
+[ -f runs/m10_tool_336m/reasoning_eval.json ] || bash scripts/measure_stage.sh m10_tool_336m
 train m10_rl_336m slm.train.rl
-bash scripts/measure_rl.sh m10_rl_336m final.pt final
-bash scripts/measure_rl.sh m10_rl_336m best.pt best
+[ -f runs/m10_rl_336m/reasoning_final.json ] || bash scripts/measure_rl.sh m10_rl_336m final.pt final
+[ -f runs/m10_rl_336m/reasoning_best.json ] || bash scripts/measure_rl.sh m10_rl_336m best.pt best
 echo "M10_CHAIN_DONE $(date '+%H:%M')"
