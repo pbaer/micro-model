@@ -1277,10 +1277,10 @@ PG-19 12%, the curated adult-canon supplement 3% (about one pass), long fineweb-
 | LAMBADA / OBQA(n) / SciQ | -- (M9 output: 33.7 / 31.6 / 82.7) | 36.5 / 33.0 / 82.5 |
 | facts probe | 69.1% | 68.6% |
 | needle (real haystack, min over depths >= 0.8) | 4096 | **4096** (4096: mean 0.97, min 0.875) |
-| judged, completion form, mean over milestones | 3.03 (prose 2.62, narrative 3.40) | **3.43 (prose 3.20, narrative 3.69)** |
+| judged, completion form, mean over milestones | 3.03 (prose 2.62, narrative 3.40) | **3.45 (prose 3.26, narrative 3.63)**; the 2B final: 3.62 (prose 3.67, narrative 3.17) |
 
 The gate: nothing on the old distribution moved outside noise -- the replayed loss is in fact 0.015 lower after the
 decay, benchmarks and facts are within a point -- and the needle holds 4096 at every milestone. What did move is the
-thing the run was for: judged prose +0.6 and narrative +0.3 in completion form, averaged over seven milestones (single
-milestones swing by up to 0.3; the 2B milestone is judged separately below). log Z went 12.96 -> 6.5 under z-loss
+thing the run was for: judged prose +0.6 and narrative +0.2 in completion form, averaged over eight milestones (single
+milestones swing by up to 0.3; the final checkpoint reads 3.62 overall, its prose 3.67 the highest of any base milestone). log Z went 12.96 -> 6.5 under z-loss
 with no cost. Stage A (`m10_sft_336m`, the m9_sft recipe) started at 06:45.
