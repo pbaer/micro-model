@@ -870,3 +870,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   form at 250M / 500M: overall 3.33 / 3.21 (M8 base 3.06 at its end, 2.75-3.46 across its milestones), prose
   2.58 / 2.67 vs 2.58, narrative 3.67 / 3.50 vs 4.00 -- no prose change visible, and at three items per category the
   suite cannot show one; the base gate stays the hard suite, prose is judged after SFT in chat form.
+- All seven m10 base milestones judged (completion form, blind). Mean over milestones: overall 3.43 vs the M8 4K
+  phase's 3.03, prose **3.20 vs 2.62**, narrative 3.69 vs 3.40; facts / definition / python inside noise. The
+  sprinkle moves prose at the base stage, before any SFT. Single milestones swing by up to 0.3 (1.25B reads 3.66,
+  1.5B 3.33), so the per-checkpoint numbers are a band. Rule: judge every milestone of a run whose purpose is a
+  judged category, and compare means over milestones, not endpoints.
