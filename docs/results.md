@@ -1305,3 +1305,24 @@ qa and the judged facts category (the coherence of factual answers; the facts *p
 same SFT data fits better (val 1.270 vs 1.317): a base that has read more kinds of English reads chat data better.
 Narrative is flat and noisy at three items. ARC-E 56.0 vs 58.4 is the one number outside the usual +-1 and is
 carried forward as a watch item, not a verdict (stage C of M9 read 57.0-57.6).
+
+### 23c. Stage B replayed: judged 3.92 against 3.44, misfire halved, judged python down
+
+`m10_tool_336m` is `m9_tool4_336m`'s config unchanged (the v4 mixture, 120M tokens) on `m10_sft`. Eight milestones each:
+
+| | `m9_tool4` (M9 stage B) | **`m10_tool`** |
+|---|---|---|
+| judged overall, mean over 8 milestones | 3.44 | **3.92** |
+| prose / narrative | 3.34 / 3.94 | **3.82** / 3.60 |
+| definition / facts (judged) / pattern | 4.29 / 2.74 / 2.02 | **4.73 / 4.05 / 3.03** |
+| python (judged) | 3.90 | **3.54** (3.17-4.11 vs 3.44-4.22) |
+| tool misfire at 120M | 0.25 | **0.11** |
+| algebra / word (accuracy / tool use) | 0.35 / 0.00, 0.89 / 0.54 | 0.43 / 0.00, 0.92 / 0.51 |
+| GSM8K / SVAMP (accuracy / tool use) | 0.045 / 0.30, -- | 0.045 / 0.28, 0.067 / 0.44 |
+| facts probe / needle | 72.7% / 3072 | 73.2% / 3072 |
+| HellaSwag(n) / ARC-E | 42.8 / 57.8 | 42.5 / 55.4 |
+
+Two new signals beside the repeat of 23b: the tool-misfire rate at the stage that produces it is less than half of M9's,
+and judged python is lower at every milestone (the judges name `find_max` using the forbidden `max()` and
+`distance_to` ignoring its argument). ARC-E reads 2.4 points under M9 for the second stage running. Both go to stage
+C as watch items; M9's stage C recovered python to 4.2.
