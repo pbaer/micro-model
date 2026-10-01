@@ -1284,3 +1284,24 @@ decay, benchmarks and facts are within a point -- and the needle holds 4096 at e
 thing the run was for: judged prose +0.6 and narrative +0.2 in completion form, averaged over eight milestones (single
 milestones swing by up to 0.3; the final checkpoint reads 3.62 overall, its prose 3.67 the highest of any base milestone). log Z went 12.96 -> 6.5 under z-loss
 with no cost. Stage A (`m10_sft_336m`, the m9_sft recipe) started at 06:45.
+
+### 23b. Stage A replayed: the same chat SFT on the new base judges 3.96 against 3.49
+
+`m10_sft_336m` is `m9_sft_336m`'s config unchanged (the SmolTalk `-4k-think` sets, 200M tokens) on the M10 base.
+Judged in chat form at all eight milestones, blind:
+
+| | `m9_sft` (M9 stage A) | **`m10_sft`** |
+|---|---|---|
+| judged overall, mean over 8 milestones (range) | 3.49 (3.43-3.60) | **3.96 (3.76-4.08)** |
+| prose / narrative | 3.08 / 3.10 | **3.72** / 3.02 |
+| facts / definition / qa (at 200M) | 3.08 / 4.17 / 3.50 | **4.62 / 4.67 / 4.00** |
+| python / arithmetic (at 200M) | 4.22 / 2.83 | 4.17 / 2.92 |
+| SFT val / old-distribution val | 1.317 / 2.478 | **1.270 / 2.460** |
+| HellaSwag(n) / ARC-E / LAMBADA | 42.7 / 58.4 / -- | 42.5 / 56.0 / 38.1 |
+| facts probe / needle | 70.1% / 4096 | 71.6% / 4096 |
+
+The distributions do not overlap: M10's worst milestone beats M9's best. The gain is wider than prose -- definition,
+qa and the judged facts category (the coherence of factual answers; the facts *probe* is flat) all move, and the
+same SFT data fits better (val 1.270 vs 1.317): a base that has read more kinds of English reads chat data better.
+Narrative is flat and noisy at three items. ARC-E 56.0 vs 58.4 is the one number outside the usual +-1 and is
+carried forward as a watch item, not a verdict (stage C of M9 read 57.0-57.6).
