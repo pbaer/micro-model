@@ -1257,3 +1257,30 @@ the history, 31 times out of 32. Nothing in its training ever showed a recall qu
 tell me" -- the same shape as the tool-misfire lesson (teach the negative case). Stage C of M10 adds the `recall`
 family with one absent case in four, plus `revise` and `sysrule`; these five numbers are its gate, alongside the
 judged suite and the hard suite.
+
+## 23. M10: the prose-sprinkled base and the M9 recipe replayed on it (2026-09-30 → )
+
+Plan (log, 2026-09-30): continue the M8 base with narrative prose rather than try to teach prose at SFT, then
+replay the M9 post-training recipe stage for stage and compare each stage to its M9 counterpart.
+
+### 23a. Phase 1: `m10_base_prose_336m` — the floor gate passes, prose moves at the base stage
+
+Continued from `m8_base_4k` latest.pt (weights, AdamW moments, data cursors), 2B tokens at 4K, LR re-warmed to 1.3e-4
+and decayed over the last 40%, z-loss 1e-4. Mixture: 75% replay of the phase-2 sources (fineweb-edu 45, cosmopedia 8,
+finemath 5, python-edu 5, synth-retrieval 2, multi-turn SmolTalk 8, tool chats 2), 25% new prose: filtered Gutenberg
+PG-19 12%, the curated adult-canon supplement 3% (about one pass), long fineweb-edu documents 10%. 21 h at 26.5k tok/s.
+
+| | M8 base (`m8_base_4k` final) | **M10 base (`m10_base_prose` final)** |
+|---|---|---|
+| val, old distribution (phase-1 mixture) | 2.467 | **2.452** |
+| HellaSwag(n) / ARC-E / PIQA | 41.7 / 57.5 / 66.4 | 41.8 / 57.1 / 66.6 |
+| LAMBADA / OBQA(n) / SciQ | -- (M9 output: 33.7 / 31.6 / 82.7) | 36.5 / 33.0 / 82.5 |
+| facts probe | 69.1% | 68.6% |
+| needle (real haystack, min over depths >= 0.8) | 4096 | **4096** (4096: mean 0.97, min 0.875) |
+| judged, completion form, mean over milestones | 3.03 (prose 2.62, narrative 3.40) | **3.43 (prose 3.20, narrative 3.69)** |
+
+The gate: nothing on the old distribution moved outside noise -- the replayed loss is in fact 0.015 lower after the
+decay, benchmarks and facts are within a point -- and the needle holds 4096 at every milestone. What did move is the
+thing the run was for: judged prose +0.6 and narrative +0.3 in completion form, averaged over seven milestones (single
+milestones swing by up to 0.3; the 2B milestone is judged separately below). log Z went 12.96 -> 6.5 under z-loss
+with no cost. Stage A (`m10_sft_336m`, the m9_sft recipe) started at 06:45.
