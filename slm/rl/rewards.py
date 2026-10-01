@@ -131,25 +131,41 @@ _TEMPLATE_RE = re.compile(
 # negative case, 2026-09-30) -- the bare openers only count with a short value after them.
 
 
+_ABSENT_ACK_RE = re.compile(
+    r"(?:\b(?:you|user)\b[^.?!\n]{0,40}\b(?:haven't|have not|never|didn't|did not|don't|do not)\s+(?:told|tell|mention(?:ed)?|said|say|shared?|given?)\b"
+    r"|\bnot\s+(?:something|anything)\s+(?:you|that)\b[^.?!\n]{0,30}\b(?:told|mentioned|said|shared)\b"
+    r"|\bI\s+(?:don't|do not)\s+(?:know|have)\b|\bI'm not sure\b|\bI am not sure\b|\bno information\b|\bwasn't mentioned\b|\bwas not mentioned\b"
+    r"|\bnever (?:came up|mentioned|told)\b|\bhasn't been mentioned\b|\bhas not been mentioned\b)", re.I)
+_NAMES_SOMETHING_RE = re.compile(r"\b(?:is|are|was|were|be)\s+(?:called|named|known as)\s+[A-Z0-9]", 0)
+
+
 def verify_recall(answer_text: str, gold: str) -> Verdict:
     """Multi-turn recall (slm.rl.synth_chat): gold is {"fact": x} -- the answer must contain x, as plain chat --
-    or {"absent": true, "not_these": [...]} -- nothing was stated, so the answer must name none of the table and
-    say so. Both forms reuse the plain-chat checks (present, no '####' line, not a verifier template)."""
+    or {"absent": true, "not_these": [...]} -- nothing was stated, so the answer must (a) say so, in one of the
+    phrasings people actually use, and (b) name nothing: none of the table, and no "is called/named/known as X"
+    for any X. Both forms reuse the plain-chat checks (present, no '####' line, not a verifier template).
+
+    The first version matched acknowledgement *keywords* as substrings ("know" matched "known") and only banned
+    the table's values; M10 stage C learned "My goldfish is known as Silverfish" -- a made-up name plus the
+    substring -- and was paid for it (2026-10-01). Phrases, word boundaries, and no asserted name."""
     import json
 
     base = verify_plain(answer_text)
     if not base.correct:
         return base
     g = json.loads(gold)
-    a = answer_text.lower()
+    a = answer_text
     if g.get("absent"):
-        named = [x for x in g.get("not_these", []) if x.lower() in a]
+        named = [x for x in g.get("not_these", []) if x.lower() in a.lower()]
         if named:
             return Verdict(False, named[0], "recall: named a value that was never stated")
-        says_so = any(k in a for k in ("mention", "told", "said", "know", "haven't", "have not", "didn't", "did not", "never", "not sure", "no information", "don't have"))
+        if _NAMES_SOMETHING_RE.search(a):
+            return Verdict(False, None, "recall: asserted a name for something never stated")
+        says_so = bool(_ABSENT_ACK_RE.search(a))
         return Verdict(says_so, None, "recall: said it was not stated" if says_so else "recall: absent fact, no acknowledgement")
     fact = str(g["fact"]).lower()
-    return Verdict(fact in a, fact if fact in a else None, "recall: fact present" if fact in a else "recall: fact missing")
+    hit = fact in a.lower()
+    return Verdict(hit, fact if hit else None, "recall: fact present" if hit else "recall: fact missing")
 
 
 def verify_plain(answer_text: str) -> Verdict:

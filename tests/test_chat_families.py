@@ -82,3 +82,16 @@ def test_format_chat_encodes_the_system_turn(tmp_path):
     enc = format_chat(tok, prompt_messages(t), add_generation_prompt=True, think_required=True)
     assert tok.special("<|system|>") in enc.ids and enc.ids[-1] == tok.special("<|think|>")
     assert enc.loss_mask[-1] == 0 and enc.loss_mask[0] == 0, "the generation prompt and the system turn are never targets"
+
+
+def test_recall_absent_is_not_fooled_by_a_made_up_name_or_a_keyword_inside_a_word():
+    gold = json.dumps({"absent": True, "not_these": ["Pistachio", "Waffles"]})
+    # what M10 stage C learned to say: a name that is not in the table, plus "known" (which contains "know")
+    assert not verify_answer("My goldfish is known as Silverfish. The name comes from the Latin.", gold, "recall").correct
+    assert not verify_answer("It is called Truffle, a polished yellow goldfish.", gold, "recall").correct
+    assert not verify_answer("Goldfish are often referred to as silverfish, as is well known.", gold, "recall").correct
+    # honest phrasings pass
+    for ok in ("You haven't told me your goldfish's name yet.", "I don't know -- you never mentioned a goldfish.",
+               "That's not something you have told me.", "You didn't say what your goldfish is called, so I can't tell you.",
+               "I'm not sure; it wasn't mentioned."):
+        assert verify_answer(ok, gold, "recall").correct, ok
