@@ -2,7 +2,7 @@ import { h } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtBytes, fmtNum } from "../components/util.js";
-import { TokenChips } from "../components/tokens.js";
+import { TokenChips, TextWithSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 
 const html = htm.bind(h);
@@ -97,7 +97,7 @@ function Inspector({ row, tag, seqLen }) {
   const [offset, setOffset] = useState(0);
   const [item, setItem] = useState(null);
   const [sub, setSub] = useState("prepared");
-  const [mode, setMode] = useState("tokens");
+  const [mode, setMode] = useState("text");  // text view by default; tokens / ids are toggles
   const [win, setWin] = useState(null);
   const [winStart, setWinStart] = useState(0);
   const [raw, setRaw] = useState(null);
@@ -113,6 +113,11 @@ function Inspector({ row, tag, seqLen }) {
     api(`/api/data/raw/${row.raw.source}/sample?n=1&seed=${Math.floor(Math.random() * 1e6)}`).then((s) => s.length && api(`/api/data/raw/${row.raw.source}/doc?file=${s[0].file}&rg=${s[0].rg}&row=${s[0].row}`).then(setRaw)).catch(() => {});
   }, [sub, row.raw, raw]);
   const open = (i) => api(`${base}/${isSft ? "example" : "doc"}?shard=${shard}&${isSft ? "ex" : "doc"}=${i}`).then((x) => { setItem(x); setSub("prepared"); });
+  useEffect(() => {  // show the first document / example of the shard right away instead of an empty panel
+    if (item || !list || sub !== "prepared") return;
+    const first = (isSft ? list.examples : list.docs)[0];
+    if (first) open(isSft ? first.ex : first.doc);
+  }, [list]);
   const doTrace = () => {
     if (!raw) return;
     setTrace("…");
@@ -144,7 +149,7 @@ function Inspector({ row, tag, seqLen }) {
       <div class="col">
         ${sub === "prepared" && (!item ? html`<div class="empty-note">pick ${isSft ? "an example" : "a document"} on the left (or "random")</div>` : html`<div class="grow">
           <div class="sub">${isSft ? `example ${item.ex}` : `doc ${item.doc}`} · starts at token ${fmtInt(item.start)} · ${fmtInt(item.length)} tokens${isSft ? ` · ${fmtInt(item.n_target)} loss targets (${(item.n_target / Math.max(1, item.length) * 100).toFixed(0)}%)` : " incl. bos/eos"}</div>
-          ${mode === "text" ? html`<pre class="grow">${item.text}</pre>` : html`<div class="grow"><${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${isSft} /></div>`}
+          ${mode === "text" ? html`<${TextWithSpecials} runs=${item.runs} text=${item.text} lossMask=${isSft} cls="grow" />` : html`<div class="grow"><${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${isSft} /></div>`}
           <div class="legend" style="margin-top:6px">${isSft
             ? html`The stored SFT example, exactly as the trainer reads it: <b style="color:#15803d">green</b> = loss target (assistant content and ${"<|end|>"}), grey = masked.`
             : "The stored pretraining document, bos/eos included."}</div></div>`)}
@@ -155,7 +160,7 @@ function Inspector({ row, tag, seqLen }) {
             <button onClick=${() => win && setWinStart(Math.floor(Math.random() * Math.max(1, win.shard_tokens - len)))}>random</button>
             ${win && html`<span class="muted">${(isSft ? win.example_starts : win.doc_starts).length} ${isSft ? "example" : "document"} boundaries (red)${isSft ? ` · ${fmtInt(win.n_target)} loss targets` : ""} · shard has ${fmtTok(win.shard_tokens)} tokens</span>`}</div>
           ${win ? (mode === "text"
-            ? html`<pre class="grow">${win.pieces.map((p) => (p.special ? html`<b class="boundary-mark">${p.piece}</b>` : p.piece))}</pre>`
+            ? html`<${TextWithSpecials} runs=${win.runs} boundaries=${isSft ? win.example_starts : win.doc_starts} lossMask=${isSft} cls="grow" />`
             : html`<${TokenChips} pieces=${win.pieces} boundaries=${isSft ? win.example_starts : win.doc_starts} showIds=${mode === "ids"} lossMask=${isSft} />`) : html`<div class="empty-note">…</div>`}
           <div class="legend" style="margin-top:6px">One training row of ${fmtInt(len)} + 1 tokens, exactly as the loader cuts it: a contiguous slice that may start mid-${isSft ? "example" : "document"}.
             ${isSft ? html` The loss denominator is the number of green positions.` : html` Every token is a target; this source contributes ${(row.weight * 100).toFixed(1)}% of rows.`}</div></div>`}
@@ -182,7 +187,7 @@ function RlPrompts({ id, thinkRequired }) {
   const [p, setP] = useState(null);
   const [offset, setOffset] = useState(0);
   const [sel, setSel] = useState(0);
-  const [mode, setMode] = useState("tokens");
+  const [mode, setMode] = useState("text");
   useEffect(() => { setP(null); setSel(0); api(`/api/data/rl/prompts?id=${encodeURIComponent(id)}&split=${split}&offset=${offset}&limit=20`).then(setP).catch(() => setP({ prompts: [], n: 0 })); }, [id, split, offset]);
   const cur = p && p.prompts[sel];
   return html`<div><h2>Prompt sample<${Info} k="rl_prompt_sample" /></h2>
@@ -198,7 +203,7 @@ function RlPrompts({ id, thinkRequired }) {
         ${p.prompts.map((x, i) => html`<tr class=${"click" + (i === sel ? " sel" : "")} onClick=${() => setSel(i)}><td>${x.task}</td><td class="l">${x.prompt.slice(0, 110)}</td><td>${x.gold}</td></tr>`)}</table></div>
       <div class="col">${cur && html`<div class="grow">
         <div class="sub">${cur.prompt_id} · ${cur.task} · ${fmtInt(cur.n_tokens)} tokens · gold <b>${cur.gold}</b></div>
-        ${mode === "text" ? html`<pre class="grow">${cur.prompt}</pre>` : html`<div class="grow"><${TokenChips} pieces=${cur.pieces} showIds=${mode === "ids"} /></div>`}
+        ${mode === "text" ? (cur.runs ? html`<${TextWithSpecials} runs=${cur.runs} cls="grow" />` : html`<pre class="grow">${cur.prompt}</pre>`) : html`<div class="grow"><${TokenChips} pieces=${cur.pieces} showIds=${mode === "ids"} /></div>`}
         <div class="legend" style="margin-top:6px">Exactly the generation prompt the rollouts start from: <code>${"<|bos|><|user|>"}</code>question + answer-format suffix<code>${"<|end|><|assistant|>"}</code>${thinkRequired ? html`<code>${"<|think|>"}</code>` : ""}. The list is deterministic (seeded <code>make_tasks</code>), so these are the trainer's own prompts; the held-out split is a hash partition of the prompt text.</div>
       </div>`}</div>
     </div>`}
@@ -229,7 +234,8 @@ function Rollouts({ run }) {
           <td>${fmtInt(r.n_tokens)}</td></tr>`)}</table></div>
       <div class="col">${cur && html`<div class="grow">
         <div class="sub">${cur.prompt_id} · ${cur.task} · gold <b>${cur.gold}</b> · parsed <b>${cur.parsed == null ? "-" : String(cur.parsed)}</b> · reward <b>${fmtNum(cur.reward, 3)}</b> · ${cur.verifier || "?"} · ${cur.termination}${cur.malformed ? " · malformed" : ""}</div>
-        ${mode === "text" || !cur.pieces
+        ${mode === "text" && cur.runs ? html`<${TextWithSpecials} runs=${cur.runs} lossMask=${true} cls="grow" />`
+          : mode === "text" || !cur.pieces
           ? html`<pre class="grow">${cur.prompt + "\n\n--- completion ---\n" + cur.text}</pre>`
           : html`<div class="grow"><${TokenChips} pieces=${cur.pieces.map((p, i) => ({ ...p, loss: i >= cur.prompt_len }))} boundaries=${[cur.prompt_len]} showIds=${mode === "ids"} lossMask=${true} /></div>`}
         <div class="legend" style="margin-top:6px">The prompt plus the model's own completion. Only completion tokens are policy targets; a tool result inside the think span is never one. The reward is what the verifier returned for this sample.</div>
@@ -549,11 +555,11 @@ function Documents({ initial = null }) {
   useEffect(() => { if (base && view === "window") api(`${base}/window?shard=${shard}&start=${winStart}&length=${winLen}`).then(setWin).catch(() => setWin(null)); }, [base, shard, winStart, winLen, view]);
   useEffect(() => { if (!isTok && source && files.length) api(`/api/data/raw/${source}/docs?file=${file}&rg=${rg}&limit=100`).then(setPage).catch(() => setPage(null)); }, [source, files, file, rg]);
   const [tokErr, setTokErr] = useState(null);
-  useEffect(() => {  // raw docs: tokenize on demand when the tokens view is chosen (chat rows go through the SFT chat formatter)
-    if (!doc || isTok || mode === "text" || !tag) { setRawTokens(null); setTokErr(null); return; }
+  useEffect(() => {  // raw docs: tokenize on demand for the tokens view, and always for chat rows (their text view is the SFT chat format)
+    if (!doc || isTok || (mode === "text" && !doc.messages) || !tag) { setRawTokens(null); setTokErr(null); return; }
     const body = doc.messages ? { mode: "chat", messages: doc.messages } : { mode: "document", text: doc.text };
     api(`/api/tokenizers/${tag}/encode`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => { setRawTokens(r); setTokErr(null); }).catch((e) => { setRawTokens(null); setTokErr(String(e)); });
-  }, [doc, mode, isTok, tag]);
+  }, [doc, mode === "text", isTok, tag]);
 
   const fillRef = useRef(null);
   useEffect(() => {  // size the list/preview pair to the space left below the toolbar, and keep it sized as the window changes
@@ -566,6 +572,9 @@ function Documents({ initial = null }) {
   });
   const openTok = (d) => api(`${base}/doc?shard=${shard}&doc=${d}`).then((x) => { setDoc(x); setView("doc"); });
   const openRaw = (f, r, row) => api(`/api/data/raw/${source}/doc?file=${f}&rg=${r}&row=${row}`).then((x) => { setDoc(x); setView("doc"); });
+  // a freshly selected source (shard, file, row group) shows its first document right away instead of an empty panel
+  useEffect(() => { if (!doc && view === "doc" && isTok && docs && docs.docs.length) openTok(docs.docs[0].doc); }, [docs]);
+  useEffect(() => { if (!doc && !isTok && page && page.docs.length) openRaw(file, rg, page.docs[0].row); }, [page]);
   const random = () => {
     if (isTok) { if (docs) openTok(Math.floor(Math.random() * docs.n_docs)); }
     else api(`/api/data/raw/${source}/sample?n=1&seed=${Math.floor(Math.random() * 1e6)}`).then((r) => r.length && openRaw(r[0].file, r[0].rg, r[0].row));
@@ -581,9 +590,9 @@ function Documents({ initial = null }) {
         <optgroup label="raw parquet only">${rawOnly.map((s) => html`<option value=${s}>${s}</option>`)}</optgroup>
       </select>
       ${isTok ? html`<select value=${split} onChange=${(e) => setSplit(e.target.value)}><option>train</option><option>val</option></select>
-        <select value=${shard} onChange=${(e) => { setShard(Number(e.target.value)); setOffset(0); }}>${shards.map((s) => html`<option value=${s.shard}>shard ${s.shard} · ${fmtTok(s.tokens)} tok · ${fmtInt(s.docs)} docs</option>`)}</select>`
-      : html`<select value=${file} onChange=${(e) => { setFile(Number(e.target.value)); setRg(0); }}>${files.map((x) => html`<option value=${x.index}>${x.name} · ${fmtInt(x.rows)} rows · ${x.row_groups} row groups</option>`)}</select>
-        ${f && html`<span class="muted">row group</span><input type="number" min="0" max=${f.row_groups - 1} value=${rg} onChange=${(e) => setRg(Math.max(0, Math.min(f.row_groups - 1, Number(e.target.value))))} style="width:80px" />`}`}
+        <select value=${shard} onChange=${(e) => { setShard(Number(e.target.value)); setOffset(0); setDoc(null); }}>${shards.map((s) => html`<option value=${s.shard}>shard ${s.shard} · ${fmtTok(s.tokens)} tok · ${fmtInt(s.docs)} docs</option>`)}</select>`
+      : html`<select value=${file} onChange=${(e) => { setFile(Number(e.target.value)); setRg(0); setDoc(null); }}>${files.map((x) => html`<option value=${x.index}>${x.name} · ${fmtInt(x.rows)} rows · ${x.row_groups} row groups</option>`)}</select>
+        ${f && html`<span class="muted">row group</span><input type="number" min="0" max=${f.row_groups - 1} value=${rg} onChange=${(e) => { setRg(Math.max(0, Math.min(f.row_groups - 1, Number(e.target.value)))); setDoc(null); }} style="width:80px" />`}`}
       <button onClick=${random}>random doc</button>
       ${isTok && ["doc", "window", "stats"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}${isTok && html`<${Info} k="browse_views" />`}
       <span class="muted" style="margin-left:10px">show as<${Info} k="show_as" /></span>
@@ -603,7 +612,12 @@ function Documents({ initial = null }) {
         ${view === "doc" && (!doc ? html`<div class="empty-note">pick a document (or "random doc")</div>` : html`<div class="grow">
           <div class="sub">${isTok ? `doc ${doc.doc} · starts at token ${fmtInt(doc.start)} · ${fmtInt(doc.length)} tokens incl. bos/eos · ${fmtInt(doc.text.length)} chars` : `file ${doc.file} · row group ${doc.rg} · row ${doc.row} · ${fmtInt(doc.text.length)} chars${rawTokens ? ` · ${fmtInt(rawTokens.n_tokens)} tokens` : ""}`}</div>
           ${!isTok && doc.meta && html`<table style="margin-bottom:8px">${Object.entries(doc.meta).map(([k, v]) => html`<tr><td>${k}</td><td class="l">${String(v).slice(0, 200)}</td></tr>`)}</table>`}
-          ${mode === "text" ? html`<pre class="grow">${doc.text}</pre>` : pieces ? html`<div class="grow">
+          ${mode === "text" ? (isTok ? html`<${TextWithSpecials} runs=${doc.runs} text=${doc.text} cls="grow" />`
+              : !doc.messages ? html`<pre class="grow">${doc.text}</pre>`
+              : rawTokens ? html`<div class="grow"><${TextWithSpecials} runs=${rawTokens.runs} lossMask=${true} cls="grow" />
+                  <div class="legend" style="margin-top:6px">the row as SFT reads it: chat format with reserved tokens; <b style="color:#15803d">green</b> = loss target (assistant turns + ${"<|end|>"}), grey = masked · ${rawTokens.n_tokens} tokens, ${rawTokens.n_target} targets</div></div>`
+              : tokErr ? html`<pre class="grow">${doc.text}</pre>` : html`<div class="empty-note">formatting…</div>`)
+            : pieces ? html`<div class="grow">
               <${TokenChips} pieces=${pieces} showIds=${mode === "ids"} lossMask=${!isTok && !!doc.messages} />
               ${!isTok && doc.messages && html`<div class="legend" style="margin-top:6px">exactly what SFT trains on: chat format with reserved tokens; <b style="color:#15803d">green</b> = loss target (assistant turns + ${"<|end|>"}), grey = masked · ${rawTokens.n_tokens} tokens, ${rawTokens.n_target} targets</div>`}
             </div>` : tokErr ? html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">tokenization failed: ${tokErr}</div>` : html`<div class="empty-note">tokenizing…</div>`}
@@ -614,7 +628,7 @@ function Documents({ initial = null }) {
             <button onClick=${() => setWinStart(Math.max(0, winStart - winLen))}>‹ prev</button><button onClick=${() => setWinStart(winStart + winLen)}>next ›</button>
             ${win && html`<span class="muted">${win.doc_starts.length} document boundaries (red) · shard has ${fmtTok(win.shard_tokens)} tokens</span>`}</div>
           ${win ? (mode === "text"
-              ? html`<pre class="grow">${win.pieces.map((p) => (p.special ? html`<b class="boundary-mark">${p.piece}</b>` : p.piece))}</pre>`
+              ? html`<${TextWithSpecials} runs=${win.runs} boundaries=${win.doc_starts} cls="grow" />`
               : html`<${TokenChips} pieces=${win.pieces} boundaries=${win.doc_starts} showIds=${mode === "ids"} />`) : html`<div class="empty-note">…</div>`}
           <div class="legend" style="margin-top:6px">This is exactly what one training row of this length looks like: a contiguous slice of the token stream, which may start mid-document; ${"<|bos|>"}/${"<|eos|>"} mark boundaries (red in both views).</div></div>`}
         ${view === "stats" && (stats ? html`<div>

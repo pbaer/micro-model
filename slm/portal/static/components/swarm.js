@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, readSSE } from "./util.js";
 import { Info } from "./info.js";
+import { TextWithSpecials } from "./tokens.js";
 
 const html = htm.bind(h);
 
@@ -191,9 +192,9 @@ function Candidate({ c }) {
       ${c.verified == null ? html`<span class="stage-badge external" title="external model: no sandbox, so no verification">verification n/a</span>` : c.verified ? html`<span class="stage-badge rl">verified</span>` : c.from_tool ? html`<span class="stage-badge reasoning" title="the answer came out of a call, but a call in this attempt errored">from tool, with errors</span>` : html`<span class="stage-badge">not computed</span>`}
       <span class="muted">${c.n_tokens} tokens · ${c.n_calls} call${c.n_calls === 1 ? "" : "s"}${c.n_errors ? ` (${c.n_errors} errored)` : ""}${c.terminated ? "" : " · did not close the turn"}</span>
     </div>
-    ${c.think != null && html`<pre class="think">${c.think}</pre>`}
+    ${c.think != null && html`<${TextWithSpecials} text=${c.think} cls="think" />`}
     ${c.calls.map(([code, result], i) => html`<div class="toolcall" key=${i}><pre class="code">${code}</pre><span class=${String(result).startsWith("error") ? "result err" : "result ok"}>${result}</span></div>`)}
-    <pre class="swarm-answer">${c.answer || "(empty answer)"}</pre>
+    <${TextWithSpecials} text=${c.answer || "(empty answer)"} cls="swarm-answer" />
   </div>`;
 }
 
@@ -395,11 +396,11 @@ export function SwarmPanel({ slots, onError, busy, setBusy }) {
     ${res && res.groups.length === 0 && html`<div class="panel warn" style="margin-top:8px">No sample produced a parsable final answer, so there was nothing to select. ${naRun ? "An external model has to end its reply with a '#### <answer>' line: keep the answer instruction on and leave max new tokens room to finish." : "Check that the slot holds a reasoning / RL checkpoint, that the answer instruction is on, and that max new tokens leaves room to finish."}</div>`}
 
     ${res && res.selector_messages.length > 0 && html`<h2>Selector pass<${Info} k="swarm_selector" /></h2>
-      <details><summary class="muted">selector prompt (${res.meta.prompt_tokens} tokens, ${res.meta.groups_in_prompt} of ${res.groups.length} answers, budget ${res.meta.budget_tokens})</summary><pre>${prompt}</pre></details>
+      <details><summary class="muted">selector prompt (${res.meta.prompt_tokens} tokens, ${res.meta.groups_in_prompt} of ${res.groups.length} answers, budget ${res.meta.budget_tokens})</summary><${TextWithSpecials} text=${prompt} /></details>
       ${res.meta.cancelled && res.selector_think == null && !res.selector_answer ? html`<div class="muted">cancelled: the selector did not run.</div>` : html`
         <div class="muted" style="margin:6px 0 2px">think${res.selector_calls ? ` · ${res.selector_calls} python call${res.selector_calls > 1 ? "s" : ""}` : ""}</div>
-        <pre class="think">${res.selector_think ?? "(no think span)"}</pre>
+        <${TextWithSpecials} text=${res.selector_think ?? "(no think span)"} cls="think" />
         <div class="muted" style="margin:6px 0 2px">answer</div>
-        <pre class="swarm-answer">${res.selector_answer || "(empty)"}</pre>`}`}
+        <${TextWithSpecials} text=${res.selector_answer || "(empty)"} cls="swarm-answer" />`}`}
   </div>`;
 }

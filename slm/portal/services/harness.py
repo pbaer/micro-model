@@ -281,7 +281,8 @@ class Harness:
         think_close = tok.special("<|/think|>")
         if tools:
             stop = stop | {t["call_close"]}
-        yield {"event": "prompt", "ids": ids, "pieces": [tok.token_str(i) for i in ids], "n": len(ids), "segments": segments}
+        yield {"event": "prompt", "ids": ids, "pieces": [tok.token_str(i) for i in ids], "special": [i >= tok.base_vocab for i in ids],
+               "n": len(ids), "segments": segments}
         gen = torch.Generator(device=device)
         gen.manual_seed(seed if seed is not None else int(time.time() * 1000) % 2**31)
         capacity = min(model.cfg.max_seq_len, len(ids) + max_new_tokens + (max_tool_calls * TOOL_RESULT_ROOM if tools else 0))
@@ -387,7 +388,8 @@ class Harness:
             raise RuntimeError(f"the prompt ({len(ids)} tokens) fills {m.name}'s context of {m.max_positions}")
         special = _special_ids(m)
         pp = _Pieces(m.tokenizer)
-        yield {"event": "prompt", "ids": ids, "pieces": [pp.push(i) for i in ids], "n": len(ids), "segments": [], "external": True}
+        yield {"event": "prompt", "ids": ids, "pieces": [pp.push(i) for i in ids], "special": [i in special for i in ids], "n": len(ids),
+               "segments": [], "external": True}
         dec = _Pieces(m.tokenizer)
         seed = seed if seed is not None else int(time.time() * 1000) % 2**31
         stream = m.stream_ids(ids, max_new_tokens, temperature, top_p, top_k, seed, stop_ids=m.eos_ids, logprobs_topk=logprobs_topk)
@@ -595,9 +597,10 @@ class Harness:
         tgt = x[0, 1:]
         lp = logp.gather(1, tgt[:, None]).squeeze(1)
         rank = (logp > lp[:, None]).sum(1)
-        out = [{"id": int(ids[0]), "piece": tok.token_str(ids[0]), "logprob": None, "rank": None, "target": False}]
+        out = [{"id": int(ids[0]), "piece": tok.token_str(ids[0]), "special": ids[0] >= tok.base_vocab, "logprob": None, "rank": None, "target": False}]
         for i in range(1, len(ids)):
-            out.append({"id": int(ids[i]), "piece": tok.token_str(ids[i]), "logprob": float(lp[i - 1]), "rank": int(rank[i - 1]), "target": bool(mask[i]) if i < len(mask) else True})
+            out.append({"id": int(ids[i]), "piece": tok.token_str(ids[i]), "special": ids[i] >= tok.base_vocab, "logprob": float(lp[i - 1]),
+                        "rank": int(rank[i - 1]), "target": bool(mask[i]) if i < len(mask) else True})
         valid = [t["logprob"] for t in out[1:] if t["target"]]
         mean = sum(valid) / len(valid) if valid else 0.0
         return {"tokens": out, "n": len(ids), "mean_logprob": mean, "ppl": float(torch.exp(torch.tensor(-mean))) if valid else None}

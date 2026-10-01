@@ -67,6 +67,14 @@ def test_worker_load_generate_score_cancel(tmp_path):
         assert sc["n"] == len(sc["tokens"]) and sc["tokens"][0]["logprob"] is None and sc["ppl"] > 0
         chat = c.post("/api/model/score", json={"slot": "A", "mode": "chat", "messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "hello"}]}).json()
         assert any(t["target"] for t in chat["tokens"]) and not chat["tokens"][1]["target"]
+        # the text view draws reserved tokens as chips from these flags, not from the piece's shape
+        assert [t["piece"] for t in chat["tokens"] if t["special"]][:2] == ["<|bos|>", "<|user|>"]
+        assert all(t["special"] == (t["piece"].startswith("<|") and t["piece"].endswith("|>")) for t in chat["tokens"])
+        evc = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "hi"}], "max_new_tokens": 2, "temperature": 0.0})
+        pr = evc[0]
+        assert pr["event"] == "prompt" and len(pr["special"]) == len(pr["pieces"]) == pr["n"]
+        assert [p for p, f in zip(pr["pieces"], pr["special"]) if f][:3] == ["<|bos|>", "<|user|>", "<|end|>"] and pr["pieces"][-1] in ("<|assistant|>", "<|think|>") and pr["special"][-1]
+        assert not any(f for p, f in zip(pr["pieces"], pr["special"]) if p == "hi")
 
         # two slots side by side: load B too, stream both
         c.post("/api/model/slots/B/load", json={"checkpoint": str(ck), "device": "cpu"})
@@ -133,6 +141,7 @@ def test_external_slot_list_load_generate_and_refusals(tmp_path, monkeypatch):
     # completion: prompt event, one token event per id with the stub's pieces and log-probs, then done
     evs = _sse_events(c, {"slots": ["A"], "mode": "completion", "text": "The capital of France is", "max_new_tokens": 32, "seed": 5})
     assert evs[0]["event"] == "prompt" and evs[0]["n"] == len("The capital of France is") and "".join(evs[0]["pieces"]) == "The capital of France is"
+    assert evs[0]["special"] == [False] * evs[0]["n"], "per-id special flags travel with an external prompt too"
     toks = [e for e in evs if e["event"] == "token"]
     assert "".join(t["piece"] for t in toks) == "Paris.<|im_end|>" and [t["special"] for t in toks] == [False] * 6 + [True]
     assert all(t["logprob"] == -0.25 and len(t["topk"]) == 2 and t["slot"] == "A" and not t["inserted"] for t in toks)
@@ -180,6 +189,7 @@ def test_external_slot_real_cpu_smoke(tmp_path):
         evs = _sse_events(c, {"slots": ["A"], "mode": "chat", "messages": [{"role": "user", "content": "What is the capital of France?"}],
                               "max_new_tokens": 16, "temperature": 0.0})
         assert evs[0]["event"] == "prompt" and "<|im_start|>" in "".join(evs[0]["pieces"])
+        assert len(evs[0]["special"]) == evs[0]["n"] and all(f for p, f in zip(evs[0]["pieces"], evs[0]["special"]) if p == "<|im_start|>")
         toks = [e for e in evs if e["event"] == "token"]
         done = evs[-1]
         assert 0 < len(toks) <= 16 and done["event"] == "done" and done["n"] == len(toks)

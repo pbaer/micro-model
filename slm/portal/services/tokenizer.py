@@ -5,7 +5,45 @@ import threading
 from pathlib import Path
 
 from slm.data.chat import format_chat
-from slm.data.tokenizer import SlmTokenizer
+from slm.data.tokenizer import SlmTokenizer, apply_named
+
+
+def text_runs(tok: SlmTokenizer, ids: list[int], mask: list | None = None) -> list[dict]:
+    """Decoded text split at the reserved tokens, for the pages' text view.
+
+    Returns `[{"text": str} | {"special": "<|bos|>", "i": token index}, ...]`; with a loss mask every run also
+    carries `"loss"`. Identity comes from the ids, never from the text: a literal "<|user|>" typed into a
+    document is ordinary BPE pieces and stays text. Consecutive ordinary ids with the same mask value are
+    decoded together, so a character split across byte-level ids comes out whole.
+    """
+    out: list[dict] = []
+    run: list[int] = []
+    run_m = None
+
+    def flush() -> None:
+        if run:
+            d = {"text": tok.decode(run)}
+            if mask is not None:
+                d["loss"] = bool(run_m)
+            out.append(d)
+            run.clear()
+
+    for k, i in enumerate(ids):
+        i = int(i)
+        m = None if mask is None else bool(mask[k]) if k < len(mask) else False
+        if i >= tok.base_vocab:
+            flush()
+            d = {"special": tok.id_to_special.get(i, f"<|unk_special_{i}|>"), "i": k}
+            if mask is not None:
+                d["loss"] = m
+            out.append(d)
+            continue
+        if run and m != run_m:
+            flush()
+        run_m = m
+        run.append(i)
+    flush()
+    return out
 
 
 class TokenizerRegistry:
@@ -21,7 +59,8 @@ class TokenizerRegistry:
         for d in sorted(self.root.iterdir()):
             if (d / "tokenizer.json").exists():
                 meta = json.loads((d / "meta.json").read_text(encoding="utf-8")) if (d / "meta.json").exists() else {}
-                out.append({"tag": d.name, "path": str(d), "vocab_size": meta.get("vocab_size"), "sha256": meta.get("sha256"), "n_special": len(meta.get("specials", []))})
+                out.append({"tag": d.name, "path": str(d), "vocab_size": meta.get("vocab_size"), "sha256": meta.get("sha256"), "n_special": len(meta.get("specials", [])),
+                            "specials": apply_named(meta.get("specials", []))})
         return out
 
     def get(self, tag: str) -> SlmTokenizer:
@@ -44,18 +83,23 @@ class TokenizerRegistry:
         if mode == "chat":
             enc = format_chat(tok, messages or [], add_generation_prompt=add_generation_prompt)
             pieces = [{"id": i, "piece": tok.token_str(i), "special": i >= tok.base_vocab, "loss": m} for i, m in zip(enc.ids, enc.loss_mask)]
-            return {"ids": enc.ids, "pieces": pieces, "segments": enc.segments, "n_tokens": len(enc.ids), "n_target": sum(enc.loss_mask)}
+            return {"ids": enc.ids, "pieces": pieces, "runs": text_runs(tok, enc.ids, enc.loss_mask), "segments": enc.segments,
+                    "n_tokens": len(enc.ids), "n_target": sum(enc.loss_mask)}
         e = tok.tok.encode(text, add_special_tokens=False)
         pieces = [{"id": i, "piece": tok.token_str(i), "special": False, "start": s, "end": t} for i, (s, t) in zip(e.ids, e.offsets)]
         ids = list(e.ids)
         if mode == "document":
             pieces = [{"id": tok.bos_id, "piece": "<|bos|>", "special": True}, *pieces, {"id": tok.eos_id, "piece": "<|eos|>", "special": True}]
             ids = [tok.bos_id, *ids, tok.eos_id]
-        return {"ids": ids, "pieces": pieces, "n_tokens": len(ids), "n_chars": len(text), "chars_per_token": len(text) / max(1, len(e.ids))}
+        return {"ids": ids, "pieces": pieces, "runs": text_runs(tok, ids), "n_tokens": len(ids), "n_chars": len(text),
+                "chars_per_token": len(text) / max(1, len(e.ids))}
 
     def pieces(self, tag: str, ids: list[int]) -> list[dict]:
         tok = self.get(tag)
         return [{"id": int(i), "piece": tok.token_str(int(i)), "special": int(i) >= tok.base_vocab} for i in ids]
+
+    def runs(self, tag: str, ids: list[int], mask: list | None = None) -> list[dict]:
+        return text_runs(self.get(tag), ids, mask)
 
     def vocab_search(self, tag: str, q: str, limit: int = 100) -> list[dict]:
         tok = self.get(tag)

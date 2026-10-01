@@ -2,7 +2,7 @@ import { h } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api } from "../components/util.js";
-import { TokenChips } from "../components/tokens.js";
+import { TokenChips, TextWithSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 
 const html = htm.bind(h);
@@ -19,6 +19,7 @@ export function TokenizerPage() {
   const [text, setText] = useState(SAMPLE);
   const [mode, setMode] = useState("raw");
   const [enc, setEnc] = useState(null);
+  const [view, setView] = useState("text");  // text view by default (reserved tokens as chips); tokens is a toggle
   const [showIds, setShowIds] = useState(false);
   const [hover, setHover] = useState(null);
   const [q, setQ] = useState("");
@@ -42,7 +43,9 @@ export function TokenizerPage() {
     <div class="row" style="margin-bottom:8px">
       <select value=${tag} onChange=${(e) => setTag(e.target.value)}>${tags.map((x) => html`<option value=${x.tag}>${x.tag}</option>`)}</select>
       ${["raw", "document", "chat"].map((m) => html`<button class=${mode === m ? "active" : ""} onClick=${() => setMode(m)}>${m}</button>`)}<${Info} k="tok_modes" />
-      <button class=${showIds ? "active" : ""} onClick=${() => setShowIds(!showIds)}>ids</button>
+      <span class="muted" style="margin-left:8px">view</span>
+      ${["text", "tokens"].map((v) => html`<button class=${view === v ? "active" : ""} onClick=${() => setView(v)}>${v}</button>`)}
+      <button class=${showIds ? "active" : ""} onClick=${() => { setShowIds(!showIds); setView("tokens"); }}>ids</button><${Info} k="show_as" />
       ${enc && html`<span class="muted">${enc.n_tokens} tokens${enc.n_chars != null ? html` · ${enc.n_chars} chars · ${enc.chars_per_token.toFixed(2)} chars/token<${Info} k="chars_per_token" />` : ""}${enc.n_target != null ? ` · ${enc.n_target} loss targets` : ""}</span>`}
       ${hover && html`<span class="muted" style="font-family:var(--mono)">hover: id ${hover.id} ${JSON.stringify(hover.piece)}</span>`}
     </div>
@@ -55,7 +58,9 @@ export function TokenizerPage() {
       <button onClick=${() => setMessages([...messages, { role: "user", content: "" }])}>+ message</button>
       <div class="legend" style="margin-top:6px"><span><b style="color:#15803d">green</b> = loss target (assistant content + ${"<|end|>"})</span><span><b>grey</b> = masked (prompt tokens, ${"<|eos|>"})</span></div>
     </div>`}
-    <div style="margin-top:10px">${enc ? html`<${TokenChips} pieces=${enc.pieces} showIds=${showIds} lossMask=${mode === "chat"} onHover=${setHover} />` : html`<div class="empty-note">…</div>`}</div>
+    <div style="margin-top:10px">${!enc ? html`<div class="empty-note">…</div>`
+      : view === "text" && enc.runs ? html`<${TextWithSpecials} runs=${enc.runs} lossMask=${mode === "chat"} />`
+      : html`<${TokenChips} pieces=${enc.pieces} showIds=${showIds} lossMask=${mode === "chat"} onHover=${setHover} />`}</div>
     <h2>Vocabulary<${Info} k="vocab" /></h2>
     <div class="row"><input type="text" placeholder="search pieces" value=${q} onInput=${(e) => setQ(e.target.value)} /><span class="muted">${vocab.length} shown</span></div>
     <div class="chips" style="margin-top:8px;max-height:200px">${vocab.map((v) => html`<span class="chip" title=${"id " + v.id}>${v.piece.replace(/ /g, "·")}<sub>${v.id}</sub></span>`)}</div>

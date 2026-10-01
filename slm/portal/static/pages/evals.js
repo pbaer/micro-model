@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtTime, fmtBytes } from "../components/util.js";
 import { Info } from "../components/info.js";
+import { TextWithSpecials } from "../components/tokens.js";
 
 const html = htm.bind(h);
 
@@ -199,8 +200,9 @@ function Block({ b }) {
   let body;
   if (b.kind === "kv") body = html`<div class="evd-kv">${Object.entries(b.value).filter(([, v]) => v != null && v !== "").map(([k, v]) => html`<span><i>${k}</i> ${typeof v === "object" ? JSON.stringify(v) : html`<${Val} v=${v} type="kv" />`}</span>`)}</div>`;
   else if (b.kind === "tools") body = html`<div>${b.value.map((t) => html`<div class="toolcall"><pre class="code">${Array.isArray(t) ? t[0] : JSON.stringify(t)}</pre><span class="result">${Array.isArray(t) ? String(t[1]) : ""}</span></div>`)}</div>`;
-  else if (b.kind === "think") body = html`<pre class="think">${b.value}</pre>`;
-  else body = html`<pre class="evd-text">${typeof b.value === "string" ? b.value : JSON.stringify(b.value, null, 1)}</pre>`;
+  else if (b.kind === "think") body = html`<${TextWithSpecials} text=${b.value} cls="think" />`;
+  else if (typeof b.value === "string") body = html`<${TextWithSpecials} text=${b.value} cls="evd-text" />`;  // reserved tokens as chips
+  else body = html`<pre class="evd-text">${JSON.stringify(b.value, null, 1)}</pre>`;
   return html`<div class="evd-blk"><div class="evd-lab">${b.label}</div>${body}</div>`;
 }
 

@@ -2,7 +2,7 @@ import { h } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtNum, readSSE } from "../components/util.js";
-import { segmentLabels } from "../components/tokens.js";
+import { segmentLabels, SpecialChip, TextWithSpecials, useSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 import { SwarmPanel } from "../components/swarm.js";
 
@@ -55,24 +55,28 @@ function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
 }
 
 const showPiece = (p) => p.replace(/ /g, "·").replace(/\n/g, "↵\n");
-const isSpecial = (p) => p.startsWith("<|") && p.endsWith("|>");
 
 /** Generated output. mode "tokens": one chip per token colored by its probability; mode "text": the
  *  raw decoded text, with reserved tokens (<|bos|>, <|end|>, ...) still shown as highlighted markers. */
 const tip = (t) => (t.inserted ? "inserted by the Python tool (no log-prob)" : `logprob ${t.logprob.toFixed(3)} · p=${Math.exp(t.logprob).toFixed(3)} · rank ${t.rank}`);
 
-function Stream({ tokens, prompt, segments, mode, setHover }) {
+function Stream({ tokens, prompt, promptSpecial, segments, mode, setHover }) {
   const isDef = segmentLabels(segments, prompt ? prompt.length : 0).map((l) => l === "python_def");  // declared-function blocks in the prompt
+  // which prompt pieces are reserved tokens: the worker's per-id flags (exact, also for an external model's own specials);
+  // without them, only the registered special strings of our tokenizer count, never a generic "<|...|>" match
+  const specials = useSpecials();
+  const isSp = (p, i) => (promptSpecial ? !!promptSpecial[i] : specials.includes(p));
   if (mode === "text") {
-    return html`<div class="rawout">
-      ${prompt && prompt.map((p, i) => isDef[i] ? html`<span class="chip def" title="declared function (masked)" key=${"p" + i}>${p}</span>`
-        : isSpecial(p) ? html`<span class="chip special" key=${"p" + i}>${p}</span>` : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
-      ${tokens.map((t, i) => t.special ? html`<span class=${"chip special" + (t.inserted ? " inserted" : "")} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`
+    return html`<div class="rawout spx">
+      ${prompt && prompt.map((p, i) => isSp(p, i) ? html`<${SpecialChip} key=${"p" + i} name=${p} cls=${isDef[i] ? "def" : ""} title=${isDef[i] ? "declared function (masked)" : "reserved token (prompt)"} />`
+        : isDef[i] ? html`<span class="chip def" title="declared function (masked)" key=${"p" + i}>${p}</span>`
+        : html`<span class="prompt-text" key=${"p" + i}>${p}</span>`)}
+      ${tokens.map((t, i) => t.special ? html`<${SpecialChip} key=${i} name=${t.piece} cls=${t.inserted ? "inserted" : ""} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} />`
         : html`<span class=${t.inserted ? "inserted-text" : ""} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${t.piece}</span>`)}
     </div>`;
   }
   return html`<div class="chips" style="min-height:60px">
-    ${prompt && prompt.map((p, i) => html`<span class=${"chip" + (isDef[i] ? " def" : "")} style=${isDef[i] ? "" : "background:#e5e7eb;color:#374151"} title=${isDef[i] ? "declared function (masked)" : ""} key=${"p" + i}>${showPiece(p)}</span>`)}
+    ${prompt && prompt.map((p, i) => html`<span class=${"chip" + (isSp(p, i) ? " special" : "") + (isDef[i] ? " def" : "")} style=${isDef[i] || isSp(p, i) ? "" : "background:#e5e7eb;color:#374151"} title=${isDef[i] ? "declared function (masked)" : ""} key=${"p" + i}>${isSp(p, i) ? p : showPiece(p)}</span>`)}
     ${tokens.map((t, i) => html`<span class=${"chip" + (t.special ? " special" : "") + (t.inserted ? " inserted" : "")} style=${t.special || t.inserted ? "" : `background:${lpColor(t.logprob)}`} title=${tip(t)} onMouseEnter=${() => !t.inserted && setHover(t)} key=${i}>${showPiece(t.piece)}</span>`)}
   </div>`;
 }
@@ -141,7 +145,7 @@ export function ModelPage() {
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       await readSSE(r, (ev, data) => {
         if (ev === "start") setStreamId(data.stream_id);
-        else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, segments: data.segments } }));
+        else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, promptSpecial: data.special, segments: data.segments } }));
         else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
         else if (ev === "tool") setCalls((c) => [...c, data]);
         else if (ev === "done") {
@@ -209,7 +213,7 @@ export function ModelPage() {
       ${messages.map((m, i) => html`<div class="row" style="margin-bottom:6px;align-items:flex-start">
         <select value=${m.role} onChange=${(e) => editMessage(i, { role: e.target.value })}><option>system</option><option>user</option><option>assistant</option></select>
         <div style="flex:1;min-width:0">
-          ${m.role === "assistant" && m.think != null && html`<pre class="think" title="think span (tool calls shown as <<code=result>> markup)">${m.think}</pre>`}
+          ${m.role === "assistant" && m.think != null && html`<${TextWithSpecials} text=${m.think} cls="think" title="think span (tool calls shown as <<code=result>> markup)" />`}
           <textarea style="min-height:40px;width:100%" placeholder=${m.role === "user" ? "type the next user message and press generate" : ""} value=${m.content} onInput=${(e) => editMessage(i, { content: e.target.value })}></textarea>
           ${m.ids && html`<div class="legend">generated turn: ${m.ids.length} tokens kept verbatim${m.n_calls ? ` · ${m.n_calls} python call${m.n_calls > 1 ? "s" : ""}` : ""} (editing re-encodes it)</div>`}
         </div>
@@ -233,16 +237,16 @@ export function ModelPage() {
     <div class=${useBoth ? "two" : ""}>
       ${(useBoth ? ["A", "B"] : ["A"]).map((s) => html`<div key=${s}>
         <div class="muted" style="margin-bottom:4px"><b>${s}</b> ${stat(s)}${useBoth && divergence >= 0 && s === "A" ? ` · diverges at token ${divergence + 1}` : ""}</div>
-        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} segments=${out[s].segments} mode=${view} setHover=${setHover} />
+        <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} promptSpecial=${out[s].promptSpecial} segments=${out[s].segments} mode=${view} setHover=${setHover} />
       </div>`)}
     </div>
     ${calls.length > 0 && html`<div class="panel" style="margin-top:6px"><b>python calls</b>
       ${calls.map((c, i) => html`<div class="toolcall" key=${i}><pre class="code">${c.code}</pre><span class=${c.ok ? "result ok" : "result err"}>${c.result}</span></div>`)}</div>`}
     ${out.A.done && out.A.done.assistant && html`<div class="legend" style="margin-top:4px">assistant turn: ${out.A.done.assistant.well_formed ? "well-formed, added to the conversation" : `not well-formed (${out.A.done.reason}${out.A.done.assistant.malformed ? ", malformed" : ""}) — not added`}</div>`}
-    <div class="legend" style="margin-top:6px">${view === "tokens" ? "chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step." : "raw decoded text; reserved tokens are shown as markers. Hover any word for its log-prob and the top-k alternatives."}</div>
+    <div class="legend" style="margin-top:6px">${view === "tokens" ? "chip color = probability the model assigned to the token it emitted (red = surprised, green = confident); hover a chip for the top-k alternatives at that step." : "decoded text (the default view); reserved tokens (<|user|>, <|think|>, <|python_call|>, ...) stay visible as the same chips the tokens view uses. Hover any word for its log-prob and the top-k alternatives."}</div>
     ${score && html`<h2>Teacher-forced scoring (slot A)<${Info} k="score" /></h2>
       <div class="muted">${score.n} tokens · mean logprob ${score.mean_logprob.toFixed(3)} · perplexity ${score.ppl ? score.ppl.toFixed(2) : "-"} (over loss-target tokens)</div>
       ${view === "tokens" ? html`<div class="chips">${score.tokens.map((t, i) => html`<span class=${"chip" + (t.target ? "" : " masked")} style=${t.target ? `background:${lpColor(t.logprob)}` : ""} title=${t.logprob == null ? "first token" : `logprob ${t.logprob.toFixed(3)} · rank ${t.rank}`} key=${i}>${showPiece(t.piece)}</span>`)}</div>`
-        : html`<div class="rawout">${score.tokens.map((t, i) => isSpecial(t.piece) ? html`<span class="chip special" key=${i}>${t.piece}</span>` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}`}
+        : html`<div class="rawout spx">${score.tokens.map((t, i) => t.special ? html`<${SpecialChip} key=${i} name=${t.piece} />` : html`<span class=${t.target ? "" : "prompt-text"} title=${t.logprob == null ? "" : `logprob ${t.logprob.toFixed(3)}`} key=${i}>${t.piece}</span>`)}</div>`}`}`}
   </div>`;
 }

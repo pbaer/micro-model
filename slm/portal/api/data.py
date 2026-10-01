@@ -7,6 +7,7 @@ import anyio
 from fastapi import APIRouter, HTTPException, Request
 
 from slm.config import to_dict
+from slm.portal.services.tokenizer import text_runs
 from slm.train.config import load_train_config
 from slm.train.rl_config import load_rl_config  # torch-free copy of RlConfig, so RL yaml never 500s
 
@@ -156,7 +157,8 @@ async def rl_prompts(request: Request, id: str, split: str = "train", offset: in
         for t in tasks[offset : offset + min(limit, 100)]:
             enc = format_chat(tok, prompt_messages(t), add_generation_prompt=True, think_required=bool(cfg.get("think_required")))
             out.append({"prompt_id": t.id, "task": t.task, "prompt": t.prompt, "gold": t.answer,
-                        "ids": enc.ids, "n_tokens": len(enc.ids), "pieces": request.app.state.tokenizers.pieces(tag, enc.ids)})
+                        "ids": enc.ids, "n_tokens": len(enc.ids), "pieces": request.app.state.tokenizers.pieces(tag, enc.ids),
+                        "runs": request.app.state.tokenizers.runs(tag, enc.ids)})
         return {"split": split, "n": len(tasks), "offset": offset, "tag": tag, "prompts": out}
 
     try:
@@ -325,6 +327,7 @@ async def doc(request: Request, tag: str, source: str, split: str, shard: int, d
     reg = request.app.state.tokenizers
     d["pieces"] = reg.pieces(tag, d["ids"])
     d["text"] = reg.get(tag).decode(d["ids"], skip_special=True)
+    d["runs"] = reg.runs(tag, d["ids"])  # the text view: decoded text with the reserved tokens kept as their own runs
     return d
 
 
@@ -333,6 +336,7 @@ async def window(request: Request, tag: str, source: str, split: str, shard: int
     s = _split(request, tag, source, split)
     d = await anyio.to_thread.run_sync(lambda: s.window(shard, start, min(length, 16384)))
     d["pieces"] = request.app.state.tokenizers.pieces(tag, d["ids"])
+    d["runs"] = request.app.state.tokenizers.runs(tag, d["ids"])
     return d
 
 
@@ -362,6 +366,7 @@ async def sft_example(request: Request, tag: str, name: str, split: str, shard: 
     reg = request.app.state.tokenizers
     d["pieces"] = [{**p, "loss": m} for p, m in zip(reg.pieces(tag, d["ids"]), d["mask"])]
     d["text"] = reg.get(tag).decode(d["ids"], skip_special=True)
+    d["runs"] = reg.runs(tag, d["ids"], d["mask"])
     return d
 
 
@@ -371,6 +376,7 @@ async def sft_window(request: Request, tag: str, name: str, split: str, shard: i
     s = _sft(request, tag, name, split)
     d = await anyio.to_thread.run_sync(lambda: s.window(shard, start, min(length, 16384)))
     d["pieces"] = [{**p, "loss": m} for p, m in zip(request.app.state.tokenizers.pieces(tag, d["ids"]), d["mask"])]
+    d["runs"] = request.app.state.tokenizers.runs(tag, d["ids"], d["mask"])
     return d
 
 
@@ -403,7 +409,7 @@ def _trace_book(books_jsonl: Path, r: dict, tok, reg, tag: str, head_tokens: int
     ids = [tok.bos_id, *tok.encode(normalize(strip_boilerplate(r.get("text") or ""))[: head_tokens * 8])][:head_tokens]
     return {"kept": True, "pipeline": "pretrain", "split": rec["split"], "n_tokens": rec["tokens"], "ids": ids,
             "reason": f"kept -> {rec['split']}: {rec['tokens']:,} tokens in {rec['segments']} documents ({sig}); showing the first {len(ids)} tokens",
-            "pieces": reg.pieces(tag, ids)}
+            "pieces": reg.pieces(tag, ids), "runs": text_runs(tok, ids)}
 
 
 @router.post("/raw/{source}/trace")
@@ -444,7 +450,8 @@ async def raw_trace(request: Request, source: str, body: dict) -> dict:
             return {"kept": not too_long, "pipeline": "sft", "split": None,
                     "reason": f"longer than max_len {m.get('max_len')} ({len(enc.ids)} tokens): dropped, never truncated" if too_long else f"kept: {len(enc.ids)} tokens, {sum(enc.loss_mask)} loss targets",
                     "ids": enc.ids, "n_tokens": len(enc.ids), "n_target": sum(enc.loss_mask),
-                    "pieces": [{"id": i, "piece": tok.token_str(i), "special": i >= tok.base_vocab, "loss": lm} for i, lm in zip(enc.ids, enc.loss_mask)]}
+                    "pieces": [{"id": i, "piece": tok.token_str(i), "special": i >= tok.base_vocab, "loss": lm} for i, lm in zip(enc.ids, enc.loss_mask)],
+                    "runs": text_runs(tok, enc.ids, enc.loss_mask)}
         text = r.get(src.text_col) or ""
         if src.custom_prepare == "slm.data.gutenberg":  # selection is corpus-level: read the verdict prepare recorded
             return _trace_book(cat.tokenized_root / tag / source / "books.jsonl", r, tok, reg, tag)
@@ -459,7 +466,7 @@ async def raw_trace(request: Request, source: str, body: dict) -> dict:
         split = "val" if is_val(text, int(body.get("val_permille") or 5)) else "train"
         return {"kept": True, "pipeline": "pretrain", "split": split, "n_tokens": len(ids), "ids": ids,
                 "reason": f"kept -> {split} ({len(ids)} tokens incl. bos/eos; the split is a hash of the first 2048 characters)",
-                "pieces": reg.pieces(tag, ids)}
+                "pieces": reg.pieces(tag, ids), "runs": text_runs(tok, ids)}
 
     try:
         return await anyio.to_thread.run_sync(work)

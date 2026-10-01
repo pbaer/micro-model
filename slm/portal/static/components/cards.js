@@ -331,9 +331,13 @@ export const CARDS = {
       <li><b>row</b>: exactly what the model trains on: <code>seq_len</code> + 1 consecutive tokens (inputs, and targets
         shifted by one). A row usually starts mid-document; red marks document boundaries.</li></ul>` },
   show_as: { t: "text / tokens / ids", b: html`
-    <p><b>text</b>: decoded. <b>tokens</b>: one chip per BPE token (· is a space, ↵ a newline), which shows how the text is
-      split. <b>ids</b>: the integers the embedding layer actually receives. Where there is a loss mask, green tokens are
-      trained on and grey ones are only read.</p>` },
+    <p><b>text</b> (the default): decoded, with every reserved token (<code>&lt;|bos|&gt;</code>, <code>&lt;|user|&gt;</code>,
+      <code>&lt;|think|&gt;</code>, <code>&lt;|python_call|&gt;</code>, …) drawn inline as the same dark chip the tokens view uses, so
+      the structure stays visible. <b>tokens</b>: one chip per BPE token (· is a space, ↵ a newline), which shows how the
+      text is split. <b>ids</b>: the integers the embedding layer actually receives. Where there is a loss mask, green
+      tokens (green-backed text in the text view) are trained on and grey ones are only read.</p>
+    <p class="see">The text view is built from the token ids, not by searching the text, so a literal "&lt;|user|&gt;" typed into
+      a document stays plain text: raw text can never produce a reserved token.</p>` },
   extra_val: { t: "extra_val_mixture (drift set)", b: html`
     <p>A second validation set, taken from the <i>pretraining</i> sources' validation splits and evaluated next to the
       stage's own validation loss. Nothing is trained on it. It is the "pretrain val" line on the run page: if it rises,
@@ -467,7 +471,8 @@ export const CARDS = {
     <p>Byte-level BPE trained on a sample of the pretraining mix: 32,704 learned pieces plus 64 reserved special tokens.
       Pre-tokenization follows GPT-4's pattern, except that every digit is its own token (easier arithmetic for a small model).</p>
     <p>Special tokens (<code>&lt;|user|&gt;</code>, <code>&lt;|think|&gt;</code>, …) can never come from raw text; only the
-      chat formatter inserts them, which is why the sample's literal "&lt;|user|&gt;" splits into ordinary pieces. The
+      chat formatter inserts them, which is why the sample's literal "&lt;|user|&gt;" splits into ordinary pieces (and stays
+      plain text in the text view, where real reserved tokens are chips). The
       tokenizer is frozen, and its sha256 is recorded with every checkpoint.</p>` },
   tok_modes: { t: "raw / document / chat", b: html`
     <p><b>raw</b>: the text as-is. <b>document</b>: wrapped in <code>&lt;|bos|&gt;</code> … <code>&lt;|eos|&gt;</code>, as in
@@ -532,7 +537,9 @@ export const CARDS = {
     <p>Use it to compare checkpoints on a text you care about: lower perplexity means the text is less surprising to the model.</p>` },
   token_view: { t: "Reading the output", b: html`
     <p>Each generated token carries its <b>log-prob</b> (ln of the probability the model gave it), its <b>rank</b> among all
-      tokens, and the top-k alternatives (hover). In the tokens view colour runs from red (surprised) to green (confident).</p>
+      tokens, and the top-k alternatives (hover). The <b>text</b> view (the default) shows the decoded output with the
+      reserved tokens (<code>&lt;|assistant|&gt;</code>, <code>&lt;|think|&gt;</code>, <code>&lt;|end|&gt;</code>, …) as chips; in the
+      <b>tokens</b> view colour runs from red (surprised) to green (confident).</p>
     <p><b>mean entropy</b> (nats) is the model's average uncertainty over the next token: high means many plausible
       continuations. A run of red tokens is usually where sampling took the model somewhere it did not expect.</p>` },
   swarm: { t: "Swarm inference", b: html`

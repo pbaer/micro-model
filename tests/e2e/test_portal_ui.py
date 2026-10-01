@@ -217,10 +217,15 @@ def test_data_page(server, browser):
     assert "available (train)" in body and "alpha" in body and "beta" in body, body[:300]
     # the inspector: a mixture row opens raw / prepared / training-row sub-tabs for that source
     p.page.locator("tr.click", has_text="alpha").first.click()
-    p.settle(700)
+    p.settle(900)
+    # the first document opens right away, in the text view, with its reserved tokens as chips
+    assert "pick a document" not in p.page.inner_text("main")
+    assert p.page.locator("pre.spx .chip.special", has_text="<|bos|>").count() >= 1
     p.page.get_by_role("button", name="random", exact=True).click()
     p.settle(700)
-    assert p.page.locator(".chip").count() > 3, "prepared document must render as token chips"
+    p.page.get_by_role("button", name="tokens", exact=True).click()
+    p.settle(500)
+    assert p.page.locator(".chips .chip").count() > 3, "prepared document must render as token chips in the tokens view"
     p.page.get_by_role("button", name="row", exact=True).click()
     p.settle(800)
     assert p.page.locator(".chip.boundary").count() >= 1, "the training row must mark document boundaries"
@@ -269,6 +274,10 @@ def test_data_catalog_and_source_page(server, browser):
     # "browse" keeps the document browser reachable now that the documents tab is gone
     p.page.get_by_role("button", name="browse", exact=True).click()
     p.settle(900)
+    # the source's first document is shown immediately, as text with the reserved tokens as chips
+    assert "pick a document" not in p.page.inner_text("main")
+    assert "doc 0 ·" in p.page.inner_text("main")
+    assert p.page.locator("pre.spx .chip.special", has_text="<|bos|>").count() >= 1
     p.page.get_by_role("button", name="random doc", exact=True).click()
     p.settle(800)
     p.page.get_by_role("button", name="window", exact=True).click()
@@ -291,9 +300,13 @@ def test_tokenizer_page(server, browser):
     p.goto("/tokenizer")
     p.page.locator("textarea").first.fill("hello <|user|> world 123")
     p.settle(600)
+    # text view by default: raw text never produces a reserved token, so the literal stays text, no chip
+    assert "hello <|user|> world 123" in p.page.inner_text("pre.spx") and p.page.locator("pre.spx .chip").count() == 0
+    p.page.get_by_role("button", name="tokens", exact=True).click()
+    p.settle(400)
     assert p.page.locator(".chip").count() > 3
     clicked = p.click_all_buttons()
-    assert {"raw", "document", "chat", "ids"} <= clicked
+    assert {"raw", "document", "chat", "ids", "text", "tokens"} <= clicked
     assert "assistant content + <|end|>" in p.page.inner_text("main")
     assert not p.errors, p.errors
 
@@ -324,7 +337,8 @@ def test_model_page_load_and_generate(server, browser):
     p.page.get_by_role("button", name="generate").click()
     p.page.wait_for_function("document.querySelectorAll('.rawout span').length > 3", timeout=60000)
     p.settle()
-    assert "<|bos|>" in p.page.inner_text(".rawout")  # reserved tokens stay visible in the raw view
+    assert "<|bos|>" in p.page.inner_text(".rawout")  # reserved tokens stay visible in the text view (the default)...
+    assert p.page.locator(".rawout .chip.special", has_text="<|bos|>").count() >= 1  # ...as the tokens view's chip
     p.page.get_by_role("button", name="tokens", exact=True).click()
     p.settle()
     assert p.page.locator(".chips .chip").count() > 3

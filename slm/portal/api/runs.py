@@ -53,7 +53,8 @@ async def get_rollouts(request: Request, run: str, step: int | None = None, offs
     """RL rollouts of one step: prompt, completion, reward, parsed answer, malformed flag.
 
     `pieces` is prompt + completion in one strip with `prompt_len` marking where the model's own
-    tokens (the only policy targets) begin; the per-token logprob arrays are dropped by the reader.
+    tokens (the only policy targets) begin, `runs` the same strip as decoded text with the reserved tokens
+    kept; the per-token logprob arrays are dropped by the reader.
     """
     from pathlib import Path
 
@@ -63,11 +64,13 @@ async def get_rollouts(request: Request, run: str, step: int | None = None, offs
     reg = request.app.state.tokenizers
     for x in d["rollouts"]:
         ids = list(x.get("prompt_ids") or []) + list(x.get("completion_ids") or [])
+        n_prompt = len(x.get("prompt_ids") or [])
         try:
             x["pieces"] = reg.pieces(tag, ids)
+            x["runs"] = reg.runs(tag, ids, [k >= n_prompt for k in range(len(ids))])  # text view; loss = policy target
         except (KeyError, FileNotFoundError):
-            x["pieces"] = None
-        x["prompt_len"] = len(x.get("prompt_ids") or [])
+            x["pieces"] = x["runs"] = None
+        x["prompt_len"] = n_prompt
     return d
 
 

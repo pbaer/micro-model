@@ -4,6 +4,7 @@ import htm from "htm";
 import { api, fmtTok, fmtDur, fmtNum, fmtInt, fmtSci, fmtBytes, fmtTime } from "../components/util.js";
 import { Chart } from "../components/chart.js";
 import { Info } from "../components/info.js";
+import { TextWithSpecials } from "../components/tokens.js";
 import { dataHref } from "./data.js";
 
 const html = htm.bind(h);
@@ -175,8 +176,8 @@ export function RunDetail({ run }) {
       </div>
       ${!sample ? html`<div class="empty-note">no samples yet</div>` : html`<div class="muted" style="font-size:12px;margin-bottom:6px">${sample.header}</div>
         <div class="samples">${sample.items.map((it) => html`<div class="sample"><div class="p">${it.prompt}</div>
-          ${it.greedy != null && html`<div class="muted">greedy</div><pre>${it.greedy}</pre>`}
-          <div class="muted">sampled</div><pre>${it.sampled}</pre></div>`)}</div>`}
+          ${it.greedy != null && html`<div class="muted">greedy</div><${TextWithSpecials} text=${it.greedy} />`}
+          <div class="muted">sampled</div><${TextWithSpecials} text=${it.sampled} /></div>`)}</div>`}
     </div>`}
     ${tab === "quality" && html`<div>
       ${!(quality && quality.checkpoints && quality.checkpoints.length) ? html`<div class="empty-note">no judged-quality outputs for this run yet (python -m slm.eval.quality generate --run ${run}; see docs/quality_eval.md)</div>` : html`
@@ -191,7 +192,7 @@ export function RunDetail({ run }) {
         ${!qualityDetail ? html`<div class="empty-note">…</div>` : qualityDetail.error ? html`<div class="empty-note">could not load this checkpoint's outputs: ${qualityDetail.error}</div>` : html`<div class="muted" style="font-size:12px;margin-bottom:6px">${qualityDetail.header.checkpoint} · ${qualityDetail.header.stage} · generated ${qualityDetail.header.generated_at} on ${qualityDetail.header.device} in ${qualityDetail.header.seconds}s</div>
           <table><tr><th>prompt</th><th>category</th><th class="l">output (greedy)</th><th>correct<${Info} k="correctness" /></th><th>coherent<${Info} k="coherence" /></th><th>task<${Info} k="task" /></th><th class="l">judge note</th></tr>
           ${qualityDetail.items.map((it) => html`<tr><td class="l" title=${it.prompt}><b>${it.id}</b><div class="muted" style="white-space:pre-wrap;max-width:260px">${it.prompt}</div></td><td>${it.category}</td>
-            <td class="l"><pre style="margin:0;max-height:160px;max-width:520px;overflow:auto;white-space:pre-wrap">${it.think ? "[think] " + it.think + "\n" : ""}${it.output}</pre></td>
+            <td class="l"><${TextWithSpecials} text=${(it.think ? "[think] " + it.think + "\n" : "") + it.output} style="margin:0;max-height:160px;max-width:520px;overflow:auto;white-space:pre-wrap" /></td>
             ${it.scores ? html`<td class=${scoreCls(it.scores.correctness)}>${it.scores.correctness}</td><td class=${scoreCls(it.scores.coherence)}>${it.scores.coherence}</td><td class=${scoreCls(it.scores.task)}>${it.scores.task}</td><td class="l">${it.note || ""}</td>` : html`<td colspan="4" class="l muted">not judged</td>`}</tr>`)}</table>`}`}
     </div>`}
     ${tab === "checkpoints" && html`<table><tr><th>file</th><th>kind</th><th>tokens</th><th>val loss</th><th>size</th><th>modified</th></tr>

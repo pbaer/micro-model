@@ -348,3 +348,129 @@ def test_rl_prompts_endpoint_renders_the_generation_prompt(tmp_path):
     held = {x["prompt_id"] for x in c.get("/api/data/rl/prompts", params={"id": rid, "split": "heldout", "limit": 4}).json()["prompts"]}
     assert not held & {x["prompt_id"] for x in d["prompts"]}
     assert c.get("/api/data/rl/prompts", params={"id": "config:%s" % (cfgs / "nope.yaml")}).status_code == 404
+
+
+# ------------------------------------------------------------------- text view: reserved tokens as chips
+def test_text_runs_keep_specials_from_the_ids(tmp_path):
+    """The text view's runs come from the ids: real specials split, a literal "<|user|>" stays text, the mask rides along."""
+    from slm.data.chat import format_chat
+    from slm.data.tokenizer import SlmTokenizer
+    from slm.portal.services.tokenizer import text_runs
+
+    tok = SlmTokenizer.load(_tokenizer(tmp_path))
+    ids = tok.encode_document("the cat <|user|> sat café")
+    runs = text_runs(tok, ids)
+    assert runs == [{"special": "<|bos|>", "i": 0}, {"text": "the cat <|user|> sat café"}, {"special": "<|eos|>", "i": len(ids) - 1}]
+    enc = format_chat(tok, [{"role": "user", "content": "1 + 2"}, {"role": "assistant", "think": "3", "content": "#### 3"}], think_required=True)
+    runs = text_runs(tok, enc.ids, enc.loss_mask)
+    assert "".join(r.get("special") or r["text"] for r in runs) == tok.decode(enc.ids)  # nothing dropped, nothing added
+    specials = [(r["special"], r["loss"]) for r in runs if "special" in r]
+    assert specials[:4] == [("<|bos|>", False), ("<|user|>", False), ("<|end|>", False), ("<|assistant|>", False)]
+    assert ("<|think|>", True) in specials and ("<|/think|>", True) in specials and specials[-1] == ("<|eos|>", False)
+    assert [r for r in runs if r.get("text") == "#### 3"][0]["loss"] is True and [r for r in runs if r.get("text") == "1 + 2"][0]["loss"] is False
+    assert all(r["i"] < len(enc.ids) and enc.ids[r["i"]] == tok.special(r["special"]) for r in runs if "special" in r)
+
+
+def test_data_endpoints_return_runs_and_the_first_document(tmp_path):
+    """doc / window / tokenizer encode carry `runs`; /api/tokenizers lists the registered specials; doc 0 is servable."""
+    import numpy as np
+
+    from slm.data.tokenizer import SPECIAL_TOKENS, SlmTokenizer, apply_named
+
+    root = _world(tmp_path / "data")
+    tok = SlmTokenizer.load(_tokenizer(root))
+    docs = [tok.encode_document("the cat sat on the mat"), tok.encode_document("1 + 2 = 3")]
+    d = root / "tokenized" / "v1" / "prose" / "train"
+    np.array(docs[0] + docs[1], dtype=np.uint16).tofile(d / "shard_00000.bin")
+    np.save(d / "shard_00000.idx.npy", np.array([0, len(docs[0])], dtype=np.int64))
+    app = create_app(PortalSettings(runs_root=tmp_path / "runs", data_root=root, configs_root=tmp_path / "configs", cache_dir=tmp_path / "cache", open_browser=False))
+    c = TestClient(app)
+    tags = c.get("/api/tokenizers").json()
+    assert tags[0]["specials"] == apply_named(SPECIAL_TOKENS) and "<|python_call|>" in tags[0]["specials"]
+    base = "/api/data/tokenized/v1/prose/train"
+    lst = c.get(f"{base}/docs", params={"shard": 0}).json()
+    first = lst["docs"][0]["doc"]  # what the browser opens when the source is selected
+    doc = c.get(f"{base}/doc", params={"shard": 0, "doc": first}).json()
+    assert doc["runs"] == [{"special": "<|bos|>", "i": 0}, {"text": "the cat sat on the mat"}, {"special": "<|eos|>", "i": len(docs[0]) - 1}]
+    assert doc["text"] == "the cat sat on the mat"  # the plain decode (specials skipped) is unchanged
+    win = c.get(f"{base}/window", params={"shard": 0, "start": 0, "length": 64}).json()
+    assert [r["special"] for r in win["runs"] if "special" in r] == ["<|bos|>", "<|eos|>", "<|bos|>", "<|eos|>"]
+    assert {r["i"] for r in win["runs"] if r.get("special") == "<|bos|>"} == set(win["doc_starts"])  # boundary outline lines up
+    raw = c.post("/api/tokenizers/v1/encode", json={"mode": "raw", "text": "a <|user|> b"}).json()
+    assert raw["runs"] == [{"text": "a <|user|> b"}], "raw text never produces a reserved token"
+    chat = c.post("/api/tokenizers/v1/encode", json={"mode": "chat", "messages": [{"role": "user", "content": "hi"}, {"role": "assistant", "content": "yo"}]}).json()
+    assert [r["special"] for r in chat["runs"] if "special" in r][:2] == ["<|bos|>", "<|user|>"] and all("loss" in r for r in chat["runs"])
+
+
+def test_split_specials_matches_the_registered_list_only(tmp_path):
+    """components/specials.js splits plain text on the tokenizer's actual special strings and nothing else."""
+    import shutil
+    import subprocess
+
+    import pytest
+
+    from slm.data.chat import format_chat
+    from slm.data.tokenizer import SPECIAL_TOKENS, SlmTokenizer, apply_named
+    from slm.portal.services.tokenizer import text_runs
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    specials = apply_named(SPECIAL_TOKENS)
+    tok = SlmTokenizer.load(_tokenizer(tmp_path))
+    enc = format_chat(tok, [{"role": "user", "content": "2 + 3"}, {"role": "assistant", "think": "5", "content": "#### 5"}], think_required=True)
+    cases = {
+        "chat": "<|bos|><|user|>hi<|end|><|assistant|><|think|>x<|python_call|>print(1)<|/python_call|><|python_result|>1<|/python_result|><|/think|>#### 1<|end|><|eos|>",
+        "lookalikes": "a <|notatoken|> b <| user |> c <|USER|> d <|user| e |user|> f <|",
+        "reserved": "<|reserved_1|><|reserved_10|><|reserved_47|>",
+        "mixed": "x<|eos|><|eos|>y",
+        "empty": "",
+        "formatted": tok.decode(enc.ids),
+    }
+    mod = Path("slm/portal/static/components/specials.js").resolve().as_uri()
+    script = tmp_path / "split.mjs"
+    script.write_text(
+        f'import {{ splitSpecials, joinRuns }} from "{mod}";\n'
+        f"const specials = {json.dumps(specials)};\nconst cases = {json.dumps(cases)};\nconst out = {{}};\n"
+        "for (const [k, v] of Object.entries(cases)) { const r = splitSpecials(v, specials); out[k] = { runs: r, back: joinRuns(r) === v }; }\n"
+        'out.nolist = splitSpecials("<|bos|>a", []);\n'
+        "console.log(JSON.stringify(out));\n", encoding="utf-8")
+    r = subprocess.run([node, str(script)], capture_output=True, text=True, encoding="utf-8")
+    assert r.returncode == 0, r.stderr[:600]
+    out = json.loads(r.stdout)
+    assert all(v["back"] for k, v in out.items() if k != "nolist"), "splitting must be lossless"
+
+    def sp(k):
+        return [x["special"] for x in out[k]["runs"] if "special" in x]
+
+    assert sp("chat") == ["<|bos|>", "<|user|>", "<|end|>", "<|assistant|>", "<|think|>", "<|python_call|>", "<|/python_call|>",
+                          "<|python_result|>", "<|/python_result|>", "<|/think|>", "<|end|>", "<|eos|>"]
+    assert out["lookalikes"]["runs"] == [{"text": cases["lookalikes"]}], "unregistered <|...|> shapes stay text"
+    assert sp("reserved") == ["<|reserved_1|>", "<|reserved_10|>", "<|reserved_47|>"] and all(s in specials for s in sp("reserved"))
+    assert out["mixed"]["runs"] == [{"text": "x"}, {"special": "<|eos|>"}, {"special": "<|eos|>"}, {"text": "y"}]
+    assert out["empty"]["runs"] == [] and out["nolist"] == [{"text": "<|bos|>a"}]
+    # on formatted chat text the client split agrees with the server's id-based runs
+    assert out["formatted"]["runs"] == [{k: v for k, v in x.items() if k in ("text", "special")} for x in text_runs(tok, enc.ids)]
+
+
+def test_text_view_is_the_default_everywhere():
+    """Every text / tokens toggle in the portal starts on text, and both data browsers open the first document."""
+    import re
+
+    static = Path("slm/portal/static")
+    found = {}
+    for f in list((static / "pages").glob("*.js")) + list((static / "components").glob("*.js")):
+        for m in re.finditer(r"const \[(mode|view), set\w+\] = useState\(\"(\w+)\"\)", f.read_text(encoding="utf-8")):
+            found.setdefault(f.name, []).append((m.group(1), m.group(2)))
+    flat = [(f, k, v) for f, xs in found.items() for k, v in xs]
+    assert not [x for x in flat if x[2] in ("tokens", "ids")], flat
+    assert [v for k, v in found["data.js"] if k == "mode"] == ["text"] * 4  # inspector, RL prompts, rollouts, source browser
+    assert ("view", "text") in found["tokenizer.js"] and ("view", "text") in found["model.js"]
+    data = (static / "pages" / "data.js").read_text(encoding="utf-8")
+    assert "openTok(docs.docs[0].doc)" in data and "openRaw(file, rg, page.docs[0].row)" in data
+    assert "const first = (isSft ? list.examples : list.docs)[0];" in data
+    # the text views go through the shared component, never a hand-rolled special marker
+    assert "boundary-mark" not in data and "isSpecial" not in (static / "pages" / "model.js").read_text(encoding="utf-8")
+    for name in ("data.js", "model.js", "tokenizer.js", "evals.js", "runs.js"):
+        assert "TextWithSpecials" in (static / "pages" / name).read_text(encoding="utf-8"), name
+    assert "TextWithSpecials" in (static / "components" / "swarm.js").read_text(encoding="utf-8")
