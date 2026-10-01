@@ -1362,3 +1362,27 @@ What moved, and why:
   it (late-run absent-case reward 0.22, spread 1.0). Fixed the same day: phrases with word boundaries, and any
   "is called / named / known as X" fails (`verify_recall`, tests). The next RL run gets the fixed reward; this one's
   absent-case number is the eval's, which the hack does not fool.
+
+The chat diagnostics against the local comparison models (n=64 per kind, same conversations, their own templates):
+
+| model | recall | recall_absent | revise (all) | sysrule (all) | format |
+|---|---|---|---|---|---|
+| **M10 `m10_rl` final** | **0.906** | 0.000 | **0.406** (0.16) | 0.727 (0.67) | 0.969 |
+| M9 output (`m9_rl6` final) | 0.609 | 0.016 | 0.404 (0.20) | 0.688 (0.61) | 0.977 |
+| SmolLM2-360M-Instruct | 0.734 | 0.125 | 0.219 (0.05) | **0.789** (0.73) | 0.980 |
+| Qwen2.5-0.5B-Instruct | 0.750 | **0.375** | 0.307 (0.12) | 0.594 (0.52) | 0.840 |
+| SmolLM2-135M-Instruct | 0.516 | 0.109 | 0.185 (0.06) | 0.547 (0.45) | 0.723 |
+
+On recall and revision the M10 model now leads every model in the set, including the 0.5B one; on standing rules it
+sits between the two; on the absent case every model is poor and ours is last -- the one behaviour this run was meant
+to add and the reward let it fake.
+
+**Where this leaves the decision.** Against the M9 output, M10 final.pt wins on everything the M10 plan targeted --
+judged prose +1.0, coherence +0.2, pattern +0.8, multi-turn recall +0.30, LAMBADA +5, misfire and format held -- and
+loses a little on math (GSM8K -0.035, SVAMP -0.03, the swarm pool narrower) and judged python (-0.8). The judge
+overall is a tie (4.13 vs 4.11). The standing rule ("beats M9 on the hard suite *and* the judge") does not decide
+this one: the hard suite is split along exactly the axis the near-term goal (log, 2026-09-30) chose to favour.
+Peter's call; both checkpoints are backed up. The recipe findings stand either way: (1) continued pretraining with a
+prose sprinkle is the right tool for prose and it carries through SFT and RL; (2) a verifiable multi-turn family
+teaches recall in one RL run; (3) a negative-case reward must be written so that it cannot be satisfied by a shape
+-- the next run gets the fixed `verify_recall`, and the absent case is the first thing to re-measure.

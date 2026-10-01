@@ -28,7 +28,7 @@ M8 (the 336M base) and M9 (its post-training chain) are complete. The current mo
 2026-09-27; `results.md` §18). Numbers in `results.md`
 §10-14, narrative in `log.md`.
 
-Known state (M9 output = `runs/m9_rl6_336m/checkpoints/final.pt`, 2026-09-27): judged quality **4.11** (facts and task project bests), tool misfire 0.00, HellaSwag 42.9 (norm), ARC-Easy 57.0, facts probe 70.6%, multi-turn recall **0.609** / misfire 0, effective context **3072**, reasoning mean 0.769 with **100% tool use** on algebra/arith/word, SVAMP 0.10 (0.96 tool use), GSM8K **0.085** greedy (0.90 tool use), pass@16 0.36 / 0.48 (GSM8K / SVAMP) with majority vote and the single-prompt selector both near greedy -- selection is the swarm's open problem (§18-19). MMLU at chance and not tracked.
+Known state (2026-10-01): shipped model is still `runs/m9_rl6_336m/checkpoints/final.pt` (judged 4.11, GSM8K 0.085, multi-turn recall 0.61); the M10 candidate `runs/m10_rl_336m/checkpoints/final.pt` (results.md §23) judges 4.13 with prose 4.42 (+1.0), multi-turn recall 0.91 (+0.30, ahead of every local comparison model), LAMBADA 39.1 (+5), misfire 0, needle 3072 -- and GSM8K 0.05 (-0.035), SVAMP 0.07, judged python 3.4 (-0.8). **Peter's call which ships.** recall_absent is 0.00 for both (the reward was gamed; fixed for the next run).
 
 ## After the base (in order)
 

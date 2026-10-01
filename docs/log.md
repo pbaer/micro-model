@@ -875,3 +875,20 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   sprinkle moves prose at the base stage, before any SFT. Single milestones swing by up to 0.3 (1.25B reads 3.66,
   1.5B 3.33), so the per-checkpoint numbers are a band. Rule: judge every milestone of a run whose purpose is a
   judged category, and compare means over milestones, not endpoints.
+
+## 2026-10-01 — M10 measured end to end; the decision is Peter's
+
+- Stage A/B/C replayed on the prose-sprinkled base (§23b-d): judged 3.96 vs 3.49 (A), 3.92 vs 3.44 (B), 4.13 vs 4.11
+  (C, a tie), with prose up at every stage and +1.0 at the end; multi-turn recall 0.61 -> 0.91 from the `recall`
+  family (reward 0.22 -> 0.78 over the run, the project's first clean RL learning curve on a chat behaviour);
+  LAMBADA +5 from the base. Costs: GSM8K 0.085 -> 0.05, SVAMP 0.10 -> 0.07, judged python 4.2 -> 3.4 (the
+  find_max/max() complaint runs through every M10 stage), ARC-E about -1 to -2 at every stage.
+- The absent recall case was reward-hacked: substring keyword matching ("know" in "known") plus a ban on only the
+  table's values let "My goldfish is known as Silverfish" earn 1.0. Verifier rewritten (honest phrases with word
+  boundaries, no asserted name), tests added; eval numbers were never fooled (0.00 for every one of our models; Qwen
+  0.375 is the best in the set). Lesson filed with the selection one: a reward for *not doing something* has to be
+  written against every shape that merely looks like not doing it.
+- Chain hiccups: the RL trainer's leak check keyed on final-question text (fixed: whole conversation), the chain
+  re-measured finished stages after a relaunch (fixed: guarded), a watcher died on a stale traceback. Test-order flake:
+  four family-split tests fail only when `test_rl_trainer` runs first (pass alone) -- open.
+- Everything is in the Evals tab; M10 final.pt backed up beside the M9 output. Shipping decision pending Peter.
