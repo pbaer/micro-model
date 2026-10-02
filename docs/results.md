@@ -1386,3 +1386,43 @@ Peter's call; both checkpoints are backed up. The recipe findings stand either w
 prose sprinkle is the right tool for prose and it carries through SFT and RL; (2) a verifiable multi-turn family
 teaches recall in one RL run; (3) a negative-case reward must be written so that it cannot be satisfied by a shape
 -- the next run gets the fixed `verify_recall`, and the absent case is the first thing to re-measure.
+
+## 24. Inference throughput of the M10 checkpoint on the RTX 4080 SUPER (2026-10-02)
+
+`scripts/bench_inference.py` on `m10_rl_336m` final.pt (336M, bf16, the model's own KV-cache `generate` path, decode
+SDPA backends, greedy, no stop token): real-text prompts of 32 / 256 / 1024 tokens, decoded to the full 4096-token
+window, batches of 1 / 16 / 32 / 64 rows, each configuration a warm-up then 10 timed runs (CUDA events around the
+prefill forward and around the decode loop). Input tokens/s = prompt tokens / prefill time; output tokens/s =
+generated tokens / decode time; mean ± stdev over the 10 runs.
+
+| prompt | batch | input tok/s | output tok/s (per row) | peak alloc / reserved | s per run |
+|---|---|---|---|---|---|
+| 32 | 1 | 2,310 ± 53 | 75 ± 2 (75.1) | 0.82 / 0.91 GiB | 54 |
+| 32 | 16 | 41,510 ± 9,252 | 1,169 ± 19 (73.1) | 3.65 / 3.73 | 56 |
+| 32 | 32 | 80,015 ± 441 | 2,287 ± 20 (71.5) | 6.67 / 6.73 | 57 |
+| 32 | 64 | 93,257 ± 2,208 | 3,666 ± 14 (57.3) | 12.70 / 12.73 | 71 |
+| 256 | 1 | 18,808 ± 1,848 | 76 ± 2 (75.5) | 0.83 / 0.92 | 51 |
+| 256 | 16 | 93,330 ± 25 | 1,172 ± 30 (73.2) | 3.76 / 3.82 | 53 |
+| 256 | 32 | 89,325 ± 569 | 2,282 ± 20 (71.3) | 6.88 / 7.02 | 54 |
+| 256 | 64 | 77,522 ± 849 | 3,596 ± 20 (56.2) | 13.13 / 13.54 | 69 |
+| 1024 | 1 | 72,132 ± 684 | 76 ± 2 (75.6) | 0.85 / 0.91 | 41 |
+| 1024 | 16 | 75,429 ± 189 | 1,158 ± 25 (72.4) | 4.13 / 4.54 | 43 |
+| 1024 | 32 | 73,379 ± 130 | 2,213 ± 31 (69.1) | 7.63 / 8.35 | 45 |
+| 1024 | 64 | **7,542 ± 12** | 3,389 ± 9 (53.0) | 14.63 / **16.10** | 67 |
+
+What the numbers say:
+- **Decode is overhead-bound, not compute-bound.** One stream gives 75 tok/s -- 13.3 ms per step for a model whose
+  step compute is ~1 ms -- and that cost is almost entirely per-step launch overhead of the eager KV-cache loop
+  (24 layers x a dozen kernels, plus the sampling). So batching is nearly free: 16 rows cost the same per step
+  (73/row), 32 rows 71/row, and 64 rows still 53-57/row, i.e. **49x the single-stream throughput at 64x the batch**.
+  The swarm's k=16 is the cheap regime; k=64 is fine up to 256-token prompts.
+- **The VRAM cliff is where the batch ceiling is.** 64 rows at 4K context is a 12.9 GB bf16 KV cache; with 1024-token
+  prompts the reservation reached 16.1 GiB and the run spilled into host memory (prefill 73k -> 7.5k tok/s, a 10x
+  collapse; decode only -7%, since decode is overhead-bound anyway). 64 x 256 at 13.5 GiB reserved is the edge.
+- **Prefill runs at 75-93k tok/s** whenever the batch is >= 16 or the prompt >= 1024 tokens; the small-batch, short-
+  prompt cases (2.3k, 19k tok/s) are a single forward's launch cost, not the GPU.
+- The reserved numbers mean the portal's inference worker should cap the swarm at 32 rows for 4K prompts and 64 for
+  short ones, and that a 4K generation at k=64 must never share the GPU with a training run.
+- Two levers, both known: CUDA graphs / `torch.compile` on the decode step (the 13 ms is launch overhead; a compiled
+  step would likely give 3-5x single-stream, and the same gain at every batch), and an int8 KV cache (the quantization
+  sub-project) to lift the 64-row cliff. Neither changes the model.
