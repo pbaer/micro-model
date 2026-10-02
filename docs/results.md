@@ -1483,3 +1483,13 @@ the line prefill keeps collapsing with every added row (69k -> 11k -> 7k -> 4k t
 erodes at 2K (68 -> 44, attention over a long context is no longer free). **The safe batch is prompt-length
 dependent**: with 1 GiB of headroom, ~69 rows at 256-token prompts, 58 at 1K, 48 at 2K, 43 at 3K, 38 at a full 4K
 prompt. The swarm harness should clamp by that formula rather than by a constant (not done; proposed).
+
+**3,072-token prompts (1,024 new tokens per row):** 32 rows 67,316 input tok/s (2,104/row), 2,108 output tok/s
+(65.9/row), 11.79 GiB reserved; 36: 13.17 GiB; **40: 64,945 (1,624/row), 2,357 (58.9/row), 14.55 GiB -- the last
+full-speed point**; **44: 13,620 (310/row), 15.94 GiB -- spilled**; 48: 7,706 (161/row), 17.3 GiB; 64: 3,554 (56/row),
+2,654 (41.5/row), 22.9 GiB, 55 s of prefill per batch. Decode per row also erodes with a 3K context (66 -> 41).
+
+With four prompt lengths the memory model is usable: **reserved ~ 0.7 + B x (0.19 + 0.052 x L/1024) GiB** (per-row
+slope 0.20 / 0.24 / 0.29 / 0.35 GiB at 256 / 1K / 2K / 3K, residuals < 0.4 GiB). Solved for 14 GiB, the safe batch is
+**65 rows at 256-token prompts, 55 at 1K, 45 at 2K, 38 at 3K, 34 at a full 4K prompt**; the measured last-good points
+(64 / 56 / 48 / 40) sit just above it. The 48-row cap suggested earlier holds only for prompts up to ~1.5K.
