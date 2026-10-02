@@ -1,0 +1,21 @@
+D:\dev\micro-model\slm\config.py:125: FutureWarning: In the future `np.str` will be defined as the corresponding NumPy scalar.
+  obj = getattr(mod, name, None)
+B= 32 L=  256 new= 3840: input     90032 tok/s (+-91)  output    2267 tok/s (+-25, 70.9/row)  peak 6.88 GiB reserved 7.02 GiB  54.3 s/run
+B= 36 L=  256 new= 3840: input     87036 tok/s (+-82)  output    2471 tok/s (+-33, 68.6/row)  peak 7.67 GiB reserved 7.85 GiB  56.1 s/run
+B= 40 L=  256 new= 3840: input     86522 tok/s (+-561)  output    2706 tok/s (+-37, 67.7/row)  peak 8.45 GiB reserved 8.70 GiB  56.9 s/run
+B= 44 L=  256 new= 3840: input     83620 tok/s (+-35)  output    2879 tok/s (+-23, 65.4/row)  peak 9.23 GiB reserved 9.54 GiB  58.8 s/run
+B= 48 L=  256 new= 3840: input     81932 tok/s (+-37)  output    3053 tok/s (+-14, 63.6/row)  peak 10.01 GiB reserved 10.34 GiB  60.5 s/run
+B= 52 L=  256 new= 3840: input     78798 tok/s (+-444)  output    3178 tok/s (+-14, 61.1/row)  peak 10.79 GiB reserved 11.14 GiB  63.0 s/run
+B= 56 L=  256 new= 3840: input     78963 tok/s (+-16)  output    3261 tok/s (+-39, 58.2/row)  peak 11.57 GiB reserved 11.94 GiB  66.2 s/run
+B= 60 L=  256 new= 3840: input     79390 tok/s (+-137)  output    3490 tok/s (+-24, 58.2/row)  peak 12.35 GiB reserved 12.74 GiB  66.2 s/run
+B= 64 L=  256 new= 3840: input     77953 tok/s (+-285)  output    3588 tok/s (+-25, 56.1/row)  peak 13.13 GiB reserved 13.54 GiB  68.7 s/run
+B= 32 L= 1024 new= 3072: input     73321 tok/s (+-174)  output    2246 tok/s (+-23, 70.2/row)  peak 7.63 GiB reserved 8.35 GiB  44.2 s/run
+B= 36 L= 1024 new= 3072: input     73178 tok/s (+-121)  output    2415 tok/s (+-10, 67.1/row)  peak 8.51 GiB reserved 9.38 GiB  46.3 s/run
+B= 40 L= 1024 new= 3072: input     73496 tok/s (+-25)  output    2669 tok/s (+-27, 66.7/row)  peak 9.38 GiB reserved 10.34 GiB  46.6 s/run
+B= 44 L= 1024 new= 3072: input     73140 tok/s (+-117)  output    2798 tok/s (+-10, 63.6/row)  peak 10.26 GiB reserved 11.30 GiB  48.9 s/run
+B= 48 L= 1024 new= 3072: input     73024 tok/s (+-73)  output    2947 tok/s (+-5, 61.4/row)  peak 11.13 GiB reserved 12.26 GiB  50.7 s/run
+B= 52 L= 1024 new= 3072: input     73245 tok/s (+-79)  output    3069 tok/s (+-5, 59.0/row)  peak 12.01 GiB reserved 13.22 GiB  52.8 s/run
+B= 56 L= 1024 new= 3072: input     72738 tok/s (+-256)  output    3138 tok/s (+-10, 56.0/row)  peak 12.88 GiB reserved 14.18 GiB  55.6 s/run
+B= 60 L= 1024 new= 3072: input      7763 tok/s (+-16)  output    3316 tok/s (+-50, 55.3/row)  peak 13.76 GiB reserved 15.14 GiB  63.5 s/run
+B= 64 L= 1024 new= 3072: input      7800 tok/s (+-15)  output    3333 tok/s (+-13, 52.1/row)  peak 14.63 GiB reserved 16.10 GiB  67.4 s/run
+wrote artifacts/bench/infer_m10_rl_cliff.json

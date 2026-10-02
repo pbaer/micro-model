@@ -1426,3 +1426,24 @@ What the numbers say:
 - Two levers, both known: CUDA graphs / `torch.compile` on the decode step (the 13 ms is launch overhead; a compiled
   step would likely give 3-5x single-stream, and the same gain at every batch), and an int8 KV cache (the quantization
   sub-project) to lift the 64-row cliff. Neither changes the model.
+
+### 24a. Between 32 and 64: a slope, then a cliff (batch sweep in steps of 4, 5 runs each)
+
+| batch | out tok/s per row, L=256 | out tok/s per row, L=1024 | total out tok/s (L=256) | reserved GiB, L=256 / L=1024 | prefill tok/s, L=1024 |
+|---|---|---|---|---|---|
+| 32 | 70.9 | 70.2 | 2,267 | 7.0 / 8.4 | 73,321 |
+| 36 | 68.6 | 67.1 | 2,471 | 7.9 / 9.4 | 73,178 |
+| 40 | 67.7 | 66.7 | 2,706 | 8.7 / 10.3 | 73,496 |
+| 44 | 65.4 | 63.6 | 2,879 | 9.5 / 11.3 | 73,140 |
+| 48 | 63.6 | 61.4 | 3,053 | 10.3 / 12.3 | 73,024 |
+| 52 | 61.1 | 59.0 | 3,178 | 11.1 / 13.2 | 73,245 |
+| 56 | 58.2 | 56.0 | 3,261 | 11.9 / 14.2 | 72,738 |
+| 60 | 58.2 | 55.3 | 3,490 | 12.7 / **15.1** | **7,763** (spilled) |
+| 64 | 56.1 | 52.1 | 3,588 | 13.5 / **16.1** | **7,800** (spilled) |
+
+Two separate effects. Per-row decode falls smoothly, about 0.5 tok/s per added row with no knee: 40 rows cost 4.5%
+per row against 32, 48 cost 10%, 56 cost 18%, 64 cost 21%, while total throughput keeps rising. The cliff is memory:
+reservation grows ~0.22 GiB per row (the 4K KV cache) plus the prefill's activations, and at 1,024-token prompts it
+crosses the WDDM limit between 56 (14.2 GiB, fine) and 60 (15.1 GiB, prefill collapses 10x). At 256-token prompts 64
+rows (13.5 GiB) still fit. **Cap: 48 rows** -- 1.35x the throughput of 32 for a 10% per-row cost and ~2 GiB of
+headroom for prompts longer than the 1K swept here; 56 is the no-headroom ceiling for prompts <= 1K.
