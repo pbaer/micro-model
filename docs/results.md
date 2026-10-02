@@ -1463,3 +1463,23 @@ Prefill is compute-bound: per-row input throughput falls as 1/B while the total 
 shares a fixed-rate GPU. Decode is launch-bound: a step costs 14 ms at 32 rows and 18 ms at 64, so the rows ride
 along nearly free. The spill shows only in prefill (10x, to ~125 tok/s per row and 8 s for a batch of 1K prompts),
 the phase that is bandwidth- and activation-heavy; decode steps barely notice it.
+
+**2,048-token prompts (2,048 new tokens per row), same sweep:**
+
+| B | input tok/s (per row) | prefill ms | output tok/s (per row) | ms/step | peak / reserved GiB |
+|---|---|---|---|---|---|
+| 32 | 70,221 (2,194) | 933 | 2,182 (68.2) | 14.7 | 8.63 / 10.10 |
+| 40 | 70,272 (1,757) | 1,166 | 2,595 (64.9) | 15.4 | 10.63 / 12.45 |
+| 44 | 70,031 (1,592) | 1,287 | 2,651 (60.3) | 16.6 | 11.63 / 13.62 |
+| 48 | 69,440 (1,447) | 1,416 | 2,723 (56.7) | 17.6 | 12.63 / **14.79** |
+| 52 | **11,322 (218)** | 9,406 | 2,798 (53.8) | 18.6 | 13.63 / **15.96** |
+| 56 | 7,331 (131) | 15,644 | 2,829 (50.5) | 19.8 | 14.63 / 17.13 |
+| 64 | 4,219 (66) | 31,068 | 2,848 (44.5) | 22.5 | 16.64 / 19.48 |
+
+The cliff is a memory line, not a batch number: ~15 GiB reserved in every sweep (60 rows at 1K prompts, 52 at 2K; 48 at
+2K is the last full-speed point at 14.8 GiB, already past the ~14.5 rule of thumb). Reservation fits
+`B x (0.19 + 0.05 x L/1024) GiB` across the three sweeps (0.20 / 0.24 / 0.29 GiB per row at 256 / 1K / 2K), and past
+the line prefill keeps collapsing with every added row (69k -> 11k -> 7k -> 4k tok/s) while decode per row also
+erodes at 2K (68 -> 44, attention over a long context is no longer free). **The safe batch is prompt-length
+dependent**: with 1 GiB of headroom, ~69 rows at 256-token prompts, 58 at 1K, 48 at 2K, 43 at 3K, 38 at a full 4K
+prompt. The swarm harness should clamp by that formula rather than by a constant (not done; proposed).
