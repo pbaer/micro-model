@@ -1447,3 +1447,19 @@ reservation grows ~0.22 GiB per row (the 4K KV cache) plus the prefill's activat
 crosses the WDDM limit between 56 (14.2 GiB, fine) and 60 (15.1 GiB, prefill collapses 10x). At 256-token prompts 64
 rows (13.5 GiB) still fit. **Cap: 48 rows** -- 1.35x the throughput of 32 for a 10% per-row cost and ~2 GiB of
 headroom for prompts longer than the 1K swept here; 56 is the no-headroom ceiling for prompts <= 1K.
+
+Per-row prefill, from the same runs (prefill = one batched forward; decode = one step for the whole batch):
+
+| B | input tok/s per row, L=256 / L=1024 | prefill ms, L=256 / L=1024 | decode ms per step, L=256 / L=1024 |
+|---|---|---|---|
+| 32 | 2,813 / 2,291 | 91 / 447 | 14.1 / 14.3 |
+| 40 | 2,163 / 1,837 | 118 / 557 | 14.8 / 15.0 |
+| 48 | 1,707 / 1,521 | 150 / 673 | 15.7 / 16.3 |
+| 56 | 1,410 / 1,299 | 182 / 788 | 17.2 / 17.8 |
+| 60 | 1,323 / **129** | 194 / **7,914** | 17.2 / 18.1 |
+| 64 | 1,218 / **122** | 210 / **8,402** | 17.8 / 19.2 |
+
+Prefill is compute-bound: per-row input throughput falls as 1/B while the total holds at 73-90k tok/s, so a batch
+shares a fixed-rate GPU. Decode is launch-bound: a step costs 14 ms at 32 rows and 18 ms at 64, so the rows ride
+along nearly free. The spill shows only in prefill (10x, to ~125 tok/s per row and 8 s for a batch of 1K prompts),
+the phase that is bandwidth- and activation-heavy; decode steps barely notice it.
