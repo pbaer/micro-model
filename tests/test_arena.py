@@ -30,7 +30,7 @@ def test_move_say_look_and_range_delivery():
     w.deliver()
     assert b.inbox == ["R1 said: 'the code is 1234'"], "delivered at the next observation, with the speaker's name"
     assert "R2 at (3, 0)" in ea["look"]()
-    assert "You heard: R1 said" in w.observation(b)
+    assert "R1 said" in w.status(b)
 
 
 def test_key_door_reads_tells_and_opens():
@@ -78,10 +78,9 @@ def test_messages_carry_system_prompt_declarations_and_truncated_history():
         a.history += [{"role": "user", "content": f"obs {i}"}, {"role": "assistant", "content": f"act {i}"}]
     msgs = w.messages(a)
     assert [m["content"] for m in msgs[:-1]] == ["obs 3", "act 3", "obs 4", "act 4"], "only the last two exchanges are kept"
-    assert msgs[-1]["role"] == "user" and "Turn 1." in msgs[-1]["content"] and msgs[-1]["content"].endswith("'#### <answer>'.")
-    fresh = World("key_door", n=8, n_agents=4, seed=5)
-    first = fresh.messages(fresh.agents[1])
-    assert len(first) == 1 and first[0]["content"].startswith("You are robot") and "Door 1" in first[0]["content"], "the briefing opens turn 1"
+    assert msgs[-1]["role"] == "user" and msgs[-1]["content"].endswith("'#### <answer>'.")
+    assert "Turn 1." not in msgs[-1]["content"] and "You are robot" not in msgs[-1]["content"], "the user turn is the question alone"
+    assert "Turn 1." in w.status(a) and "You are robot" in w.system_prompt(a), "briefing and status exist for the transcript and the portal"
     names = [d.name for d in w.decls[a.id]]
     assert names == ["move", "say", "look", "open_door"]
     assert [d.name for d in w.turn_tools(a)] == ["move"], "turn 1 for a door opener away from the door declares move only"

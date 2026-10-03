@@ -401,11 +401,17 @@ class World:
     SUFFIX = "\nThink step by step, then give the final answer on its own line as '#### <answer>'."
 
     def observation(self, agent: Agent) -> str:
+        """The user turn IS the question. Measured (2026-10-02): the same question with a "Turn 1. You are at ...
+        In sight ... You heard ..." preamble, or the briefing in front of it, turns the model from calling the tool
+        into describing it; the facts a turn needs are inside the question already. The briefing and the full
+        observation are kept for the transcript and the portal (`status(agent)`), not shown to the model."""
+        q, _ = self.task.question(self, agent)
+        return f"{q}{self.SUFFIX}"
+
+    def status(self, agent: Agent) -> str:
         heard = "; ".join(agent.inbox) if agent.inbox else "nothing"
         vis = self._visible(agent) or "nothing"
-        extra = self.task.extra_observation(self, agent)
-        q, _ = self.task.question(self, agent)
-        return f"Turn {self.turn + 1}. You are at {agent.pos}. In sight: {vis}. You heard: {heard}.{(' ' + extra) if extra else ''} {q}{self.SUFFIX}"
+        return f"Turn {self.turn + 1}. {agent.name} at {agent.pos}. In sight: {vis}. Heard: {heard}."
 
     def turn_tools(self, agent: Agent) -> list:
         """The declared tools for this turn: only what the question needs (one, usually)."""
@@ -414,10 +420,7 @@ class World:
 
     def messages(self, agent: Agent) -> list[dict]:
         history = agent.history[-2 * self.max_history:]
-        obs = self.observation(agent)
-        if not history:
-            obs = self.system_prompt(agent) + "\n\n" + obs  # the briefing opens the conversation (no system role: the model saw few)
-        return history + [{"role": "user", "content": obs}]
+        return history + [{"role": "user", "content": self.observation(agent)}]
 
     # --- one turn
     def deliver(self) -> None:
@@ -479,8 +482,8 @@ class Runner:
             a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if hasattr(tc, "ids") else None}]
             if a.history[-1]["ids"] is None:
                 a.history[-1].pop("ids")
-            rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "think": think, "calls": calls, "answer": answer, "n_calls": len(calls),
-                   "tools": [d.name for d in w.turn_tools(a)]}
+            rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "status": w.status(a), "think": think, "calls": calls, "answer": answer,
+                   "n_calls": len(calls), "tools": [d.name for d in w.turn_tools(a)]}
             w.task.after_turn(w, a, rec)
             a.log.append(rec); records.append(rec)
         w.turn += 1
