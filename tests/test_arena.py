@@ -77,9 +77,11 @@ def test_messages_carry_system_prompt_declarations_and_truncated_history():
     for i in range(5):
         a.history += [{"role": "user", "content": f"obs {i}"}, {"role": "assistant", "content": f"act {i}"}]
     msgs = w.messages(a)
-    assert msgs[0]["role"] == "system" and "Door 1" in msgs[0]["content"] and "open_door" not in msgs[0]["content"].split("Task:")[0]
-    assert [m["content"] for m in msgs[1:-1]] == ["obs 3", "act 3", "obs 4", "act 4"], "only the last two exchanges are kept"
-    assert msgs[-1]["content"].startswith("Turn 1.")
+    assert [m["content"] for m in msgs[:-1]] == ["obs 3", "act 3", "obs 4", "act 4"], "only the last two exchanges are kept"
+    assert msgs[-1]["role"] == "user" and "Turn 1." in msgs[-1]["content"] and msgs[-1]["content"].endswith("'#### <answer>'.")
+    fresh = World("key_door", n=8, n_agents=4, seed=5)
+    first = fresh.messages(fresh.agents[1])
+    assert len(first) == 1 and first[0]["content"].startswith("You are robot") and "Door 1" in first[0]["content"], "the briefing opens turn 1"
     names = [d.name for d in w.decls[a.id]]
     assert names == ["move", "say", "look", "open_door"]
 
@@ -122,6 +124,14 @@ def test_runner_with_a_scripted_model_solves_key_door():
     assert res["turns"] <= 10 and len(res["transcript"]) == 2 * res["turns"]
     assert any("opened door 1" in e for e in res["events"])
     json.dumps(res)  # serialisable for the portal and the eval
+
+
+@pytest.mark.parametrize("task", sorted(TASKS))
+def test_every_task_asks_a_tool_question_each_turn(task):
+    w = World(task, n=8, n_agents=4, seed=3)
+    for a in w.agents:
+        q = w.task.question(w, a)
+        assert "?" in q and any(t in q for t in a.tools), (task, a.name, q)
 
 
 @pytest.mark.parametrize("task", sorted(TASKS))

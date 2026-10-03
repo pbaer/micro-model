@@ -49,6 +49,13 @@ def dist(a: tuple[int, int], b: tuple[int, int]) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
+def _direction(frm: tuple[int, int], to: tuple[int, int]) -> str:
+    dx, dy = to[0] - frm[0], to[1] - frm[1]
+    if abs(dx) >= abs(dy) and dx != 0:
+        return "east" if dx > 0 else "west"
+    return "south" if dy > 0 else "north"
+
+
 # ------------------------------------------------------------------------------------------------ tasks
 class Task:
     """A task defines the world's objects, which robot gets which unique tool, the goal text, and the checker."""
@@ -78,6 +85,13 @@ class Task:
 
     def extra_observation(self, world: "World", agent: Agent) -> str:
         return ""
+
+    def question(self, world: "World", agent: Agent) -> str:
+        """The sub-goal for this robot this turn, as a question it answers by calling a tool. The 336M model acts
+        only on a question in the shape it was trained on (a declared function plus 'Think step by step ...'), and
+        it has no planner of its own, so the task scripts the plan and the model does the execution and carries
+        the information (the code it heard) into the right call. The scaffold is the honest first rung."""
+        return "What do you do? Call a tool."
 
 
 class KeyDoor(Task):
@@ -142,6 +156,30 @@ class KeyDoor(Task):
     def score(self, world):
         return {"opened": len(self.opened), "of": self.pairs, "success": len(self.opened) == self.pairs, "done_turn": self.done_at}
 
+    def question(self, world, agent):
+        i = agent.id // 2
+        partner = self._partner(agent)
+        if agent.id % 2 == 0:
+            if not agent.memory.get("read"):
+                agent.memory["read"] = True
+                return f"What is the key code for door {i + 1}? Use read_key() to find out."
+            near = dist(agent.pos, partner.pos) <= self.comm_range
+            if near:
+                return f"Tell {partner.name} the key code: call say(\"the code is ...\") with the code from read_key(). What did you say?"
+            d = _direction(agent.pos, partner.pos)
+            return f"{partner.name} is too far to hear you. Move one step {d} with move(\"{d}\") towards it. Where are you now?"
+        door = self._door_cell(i)
+        heard = [m for m in agent.inbox if "code" in m.lower()]
+        if heard:
+            agent.memory["code_msg"] = heard[-1]
+        if agent.pos != door:
+            d = _direction(agent.pos, door)
+            return f"Door {i + 1} is at {door} and you are at {agent.pos}. Move one step {d} with move(\"{d}\"). Where are you now?"
+        msg = agent.memory.get("code_msg")
+        if msg:
+            return f"You are on door {i + 1}'s cell. Earlier {msg}. Open the door with open_door(code) using that 4-digit code. What did the door say?"
+        return f"You are on door {i + 1}'s cell but you have not heard the code yet. Wait here: call look(). Who is near?"
+
 
 class Relay(Task):
     """One robot (the source) knows a code; the robot with `submit(code)` (the sink) starts out of comm range,
@@ -190,6 +228,25 @@ class Relay(Task):
         return {"submitted": self.submitted, "code": self.code, "success": self.submitted == self.code, "done_turn": self.done_at,
                 "hops": len(world.agents) - 1}
 
+    def question(self, world, agent):
+        last = len(world.agents) - 1
+        heard = [m for m in agent.inbox if any(ch.isdigit() for ch in m)]
+        if heard:
+            agent.memory["code_msg"] = heard[-1]
+        msg = agent.memory.get("code_msg")
+        if agent.id == 0:
+            if not agent.memory.get("read"):
+                agent.memory["read"] = True
+                return "What is the secret code? Use read_code() to find out."
+            return "Tell the next robot the code: call say(\"the code is ...\") with the code from read_code(). What did you say?"
+        if agent.id == last:
+            if msg:
+                return f"Earlier {msg}. Submit that 4-digit code with submit(code). What was the reply?"
+            return "You have not heard the code yet. Call look(). Who is near?"
+        if msg:
+            return f"Earlier {msg}. Pass it on: call say(\"the code is ...\") with that 4-digit code so the next robot hears it. What did you say?"
+        return "You have not heard the code yet. Call look(). Who is near?"
+
 
 class Triangulate(Task):
     """A buried target: every robot's `sense()` returns its own distance to it; one robot has `dig()`, which works
@@ -230,6 +287,21 @@ class Triangulate(Task):
     def score(self, world):
         return {"target": self.target, "dug_at": self.dug_at, "success": self.dug_at == self.target, "done_turn": self.done_at,
                 "digger_distance": dist(world.agents[0].pos, self.target)}
+
+    def question(self, world, agent):
+        if agent.id != 0:
+            return (f"How far is the buried target from you? Use sense() and then tell robot {world.agents[0].name} with "
+                    f"say(\"I am at {agent.pos} and the target is ... steps away\"). What did you say?")
+        last = agent.memory.get("last_sense")
+        cur = dist(agent.pos, self.target)
+        agent.memory["last_sense"] = cur
+        if cur == 0:
+            return "sense() says 0: you are on the target. Dig it up with dig(). What did it say?"
+        if last is None:
+            return "How far is the buried target? Use sense(), then move one step with move(...) in any direction. Where are you now?"
+        better = "closer" if cur < last else "no closer"
+        return (f"sense() was {last} before your last move and is {cur} now ({better}). Move one step with move(...) -- keep the "
+                f"direction if closer, else try another. Where are you now?")
 
 
 TASKS = {"key_door": KeyDoor, "relay": Relay, "triangulate": Triangulate}
@@ -288,14 +360,21 @@ class World:
                 f"act by calling your tools (move, say, look, and your special tool) and finish with one short line of status. "
                 f"You can only hear robots within {self.task.comm_range} cells. Task: {self.task.goal(agent)}")
 
+    SUFFIX = "\nThink step by step, then give the final answer on its own line as '#### <answer>'."
+
     def observation(self, agent: Agent) -> str:
         heard = "; ".join(agent.inbox) if agent.inbox else "nothing"
         vis = self._visible(agent) or "nothing"
         extra = self.task.extra_observation(self, agent)
-        return f"Turn {self.turn + 1}. You are at {agent.pos}. In sight: {vis}. You heard: {heard}.{(' ' + extra) if extra else ''} What do you do?"
+        q = self.task.question(self, agent)
+        return f"Turn {self.turn + 1}. You are at {agent.pos}. In sight: {vis}. You heard: {heard}.{(' ' + extra) if extra else ''} {q}{self.SUFFIX}"
 
     def messages(self, agent: Agent) -> list[dict]:
-        return [{"role": "system", "content": self.system_prompt(agent)}] + agent.history[-2 * self.max_history:] + [{"role": "user", "content": self.observation(agent)}]
+        history = agent.history[-2 * self.max_history:]
+        obs = self.observation(agent)
+        if not history:
+            obs = self.system_prompt(agent) + "\n\n" + obs  # the briefing opens the conversation (no system role: the model saw few)
+        return history + [{"role": "user", "content": obs}]
 
     # --- one turn
     def deliver(self) -> None:
