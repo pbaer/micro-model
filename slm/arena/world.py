@@ -21,10 +21,18 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import time
 from dataclasses import dataclass, field
 
 DIRS = {"north": (0, -1), "south": (0, 1), "east": (1, 0), "west": (-1, 0)}
+
+
+def _code_in(x) -> str:
+    """The 4-digit code inside whatever the model passed ("7311", "the code is 7311", 7311). The model copies the
+    sentence it was given more often than it extracts the number; the tool accepts both (a scaffold, logged as one)."""
+    m = re.search(r"\d{4}", str(x))
+    return m.group(0) if m else str(x).strip()
 
 
 @dataclass
@@ -86,12 +94,17 @@ class Task:
     def extra_observation(self, world: "World", agent: Agent) -> str:
         return ""
 
-    def question(self, world: "World", agent: Agent) -> str:
-        """The sub-goal for this robot this turn, as a question it answers by calling a tool. The 336M model acts
-        only on a question in the shape it was trained on (a declared function plus 'Think step by step ...'), and
-        it has no planner of its own, so the task scripts the plan and the model does the execution and carries
-        the information (the code it heard) into the right call. The scaffold is the honest first rung."""
-        return "What do you do? Call a tool."
+    def after_turn(self, world: "World", agent: Agent, record: dict) -> None:
+        return None
+
+    def question(self, world: "World", agent: Agent) -> tuple[str, list[str]]:
+        """The sub-goal for this robot this turn, as a question it answers by calling ONE tool, and which tool to
+        declare for it. Measured (2026-10-02): the 336M model calls a declared function correctly when exactly one is
+        declared and the question names it ("use read_key() to find out"); with four declared it writes unrelated
+        code, and it cannot carry its own previous result across turns, so the question re-states the fact it must
+        use (what it heard, what its last call returned). Planning is the task's; execution and copying the right
+        value into the right call are the model's. The scaffold is the honest first rung."""
+        return "What do you do? Call a tool.", [d.name for d in world.decls[agent.id]]
 
 
 class KeyDoor(Task):
@@ -146,7 +159,7 @@ class KeyDoor(Task):
         def open_door(code: str, _i=i, _a=agent):
             if _a.pos != self._door_cell(_i):
                 return f"You are at {_a.pos}; door {_i + 1} is at {self._door_cell(_i)}. Move there first."
-            if str(code).strip() == self.codes[_i]:
+            if _code_in(code) == self.codes[_i]:
                 if _i not in self.opened:
                     self.opened.add(_i); self.events.append(f"turn {world.turn}: {_a.name} opened door {_i + 1}")
                 return f"Door {_i + 1} is open. Task complete."
@@ -159,26 +172,31 @@ class KeyDoor(Task):
     def question(self, world, agent):
         i = agent.id // 2
         partner = self._partner(agent)
-        if agent.id % 2 == 0:
-            if not agent.memory.get("read"):
-                agent.memory["read"] = True
-                return f"What is the key code for door {i + 1}? Use read_key() to find out."
-            near = dist(agent.pos, partner.pos) <= self.comm_range
-            if near:
-                return f"Tell {partner.name} the key code: call say(\"the code is ...\") with the code from read_key(). What did you say?"
-            d = _direction(agent.pos, partner.pos)
-            return f"{partner.name} is too far to hear you. Move one step {d} with move(\"{d}\") towards it. Where are you now?"
-        door = self._door_cell(i)
-        heard = [m for m in agent.inbox if "code" in m.lower()]
+        heard = [m for m in agent.inbox if re.search(r"\d{4}", m)]
         if heard:
             agent.memory["code_msg"] = heard[-1]
+        if agent.id % 2 == 0:
+            if not agent.memory.get("code"):
+                return f"What is the key code for door {i + 1}? Use read_key() to find out.", ["read_key"]
+            code = agent.memory["code"]
+            if dist(agent.pos, partner.pos) <= self.comm_range:
+                return f"The key code is {code}. Tell robot {partner.name}: call say(\"the code is {code}\"). What does say() return?", ["say"]
+            d = _direction(agent.pos, partner.pos)
+            return f"Robot {partner.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
+        door = self._door_cell(i)
         if agent.pos != door:
             d = _direction(agent.pos, door)
-            return f"Door {i + 1} is at {door} and you are at {agent.pos}. Move one step {d} with move(\"{d}\"). Where are you now?"
+            return f"Door {i + 1} is at {door} and you are at {agent.pos}. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         msg = agent.memory.get("code_msg")
         if msg:
-            return f"You are on door {i + 1}'s cell. Earlier {msg}. Open the door with open_door(code) using that 4-digit code. What did the door say?"
-        return f"You are on door {i + 1}'s cell but you have not heard the code yet. Wait here: call look(). Who is near?"
+            return f"You are on door {i + 1}'s cell. Earlier {msg}. Use open_door() with that code to open the door. What does open_door() return?", ["open_door"]
+        return f"You are on door {i + 1}'s cell but have not heard the code yet. Use look() to see who is near. What does look() return?", ["look"]
+
+    def after_turn(self, world, agent, record):
+        """Remember what this robot's own calls returned (the model cannot carry it over by itself)."""
+        for code_txt, result in record.get("calls", []):
+            if "read_key" in code_txt and re.search(r"\d{4}", str(result)):
+                agent.memory["code"] = re.search(r"\d{4}", str(result)).group(0)
 
 
 class Relay(Task):
@@ -217,7 +235,7 @@ class Relay(Task):
             return [FunctionDecl("read_code", "def read_code() -> str", "Returns the secret code. Only you can read it.", lambda: f"The secret code is {self.code}.")]
         if agent.id == len(world.agents) - 1:
             def submit(code: str, _a=agent):
-                self.submitted = str(code).strip()
+                self.submitted = _code_in(code)
                 if self.submitted == self.code and self.done_at is None:
                     self.done_at = world.turn; self.events.append(f"turn {world.turn}: {_a.name} submitted the right code")
                 return "Correct! Task complete." if self.submitted == self.code else f"{code!r} is not the code. Keep listening."
@@ -230,22 +248,26 @@ class Relay(Task):
 
     def question(self, world, agent):
         last = len(world.agents) - 1
-        heard = [m for m in agent.inbox if any(ch.isdigit() for ch in m)]
+        heard = [m for m in agent.inbox if re.search(r"\d{4}", m)]
         if heard:
             agent.memory["code_msg"] = heard[-1]
         msg = agent.memory.get("code_msg")
         if agent.id == 0:
-            if not agent.memory.get("read"):
-                agent.memory["read"] = True
-                return "What is the secret code? Use read_code() to find out."
-            return "Tell the next robot the code: call say(\"the code is ...\") with the code from read_code(). What did you say?"
-        if agent.id == last:
-            if msg:
-                return f"Earlier {msg}. Submit that 4-digit code with submit(code). What was the reply?"
-            return "You have not heard the code yet. Call look(). Who is near?"
+            if not agent.memory.get("code"):
+                return "What is the secret code? Use read_code() to find out.", ["read_code"]
+            code = agent.memory["code"]
+            return f"The secret code is {code}. Tell the next robot: call say(\"the code is {code}\"). What does say() return?", ["say"]
         if msg:
-            return f"Earlier {msg}. Pass it on: call say(\"the code is ...\") with that 4-digit code so the next robot hears it. What did you say?"
-        return "You have not heard the code yet. Call look(). Who is near?"
+            code = re.search(r"\d{4}", msg).group(0)
+            if agent.id == last:
+                return f"Earlier {msg}. Use submit() with that code. What does submit() return?", ["submit"]
+            return f"Earlier {msg}. Pass it on: call say(\"the code is {code}\"). What does say() return?", ["say"]
+        return "You have not heard the code yet. Use look() to see who is near. What does look() return?", ["look"]
+
+    def after_turn(self, world, agent, record):
+        for code_txt, result in record.get("calls", []):
+            if "read_code" in code_txt and re.search(r"\d{4}", str(result)):
+                agent.memory["code"] = re.search(r"\d{4}", str(result)).group(0)
 
 
 class Triangulate(Task):
@@ -289,19 +311,35 @@ class Triangulate(Task):
                 "digger_distance": dist(world.agents[0].pos, self.target)}
 
     def question(self, world, agent):
+        digger = world.agents[0]
         if agent.id != 0:
-            return (f"How far is the buried target from you? Use sense() and then tell robot {world.agents[0].name} with "
-                    f"say(\"I am at {agent.pos} and the target is ... steps away\"). What did you say?")
-        last = agent.memory.get("last_sense")
+            dsn = dist(agent.pos, self.target)
+            if not agent.memory.get("sensed"):
+                return "How far is the buried target from you? Use sense() to find out.", ["sense"]
+            if dist(agent.pos, digger.pos) <= self.comm_range:
+                return (f"Your sense() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
+                        f"What does say() return?"), ["say"]
+            d = _direction(agent.pos, digger.pos)
+            return f"Robot {digger.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         cur = dist(agent.pos, self.target)
-        agent.memory["last_sense"] = cur
         if cur == 0:
-            return "sense() says 0: you are on the target. Dig it up with dig(). What did it say?"
-        if last is None:
-            return "How far is the buried target? Use sense(), then move one step with move(...) in any direction. Where are you now?"
-        better = "closer" if cur < last else "no closer"
-        return (f"sense() was {last} before your last move and is {cur} now ({better}). Move one step with move(...) -- keep the "
-                f"direction if closer, else try another. Where are you now?")
+            return "Your sense() says 0: the target is right here. Use dig() to dig it up. What does dig() return?", ["dig"]
+        reports = [m for m in agent.inbox if "distance" in m]
+        if reports:
+            agent.memory.setdefault("reports", []).extend(reports)
+        last = agent.memory.get("last_sense")
+        agent.memory["last_sense"] = cur
+        if last is None or cur < last:
+            d = agent.memory.get("dir") or self.rng.choice(list(DIRS))
+        else:
+            d = self.rng.choice([x for x in DIRS if x != agent.memory.get("dir")])
+        agent.memory["dir"] = d
+        return f"Your sense() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
+
+    def after_turn(self, world, agent, record):
+        for code_txt, result in record.get("calls", []):
+            if "sense" in code_txt:
+                agent.memory["sensed"] = True
 
 
 TASKS = {"key_door": KeyDoor, "relay": Relay, "triangulate": Triangulate}
@@ -309,7 +347,7 @@ TASKS = {"key_door": KeyDoor, "relay": Relay, "triangulate": Triangulate}
 
 # ------------------------------------------------------------------------------------------------ the world
 class World:
-    def __init__(self, task: str, n: int = 8, n_agents: int = 4, seed: int = 0, max_history: int = 3) -> None:
+    def __init__(self, task: str, n: int = 8, n_agents: int = 4, seed: int = 0, max_history: int = 1) -> None:
         self.rng = random.Random(seed)
         self.n, self.seed, self.max_history = n, seed, max_history
         self.agents = [Agent(i, f"R{i + 1}", 0, 0, []) for i in range(n_agents)]
@@ -366,8 +404,13 @@ class World:
         heard = "; ".join(agent.inbox) if agent.inbox else "nothing"
         vis = self._visible(agent) or "nothing"
         extra = self.task.extra_observation(self, agent)
-        q = self.task.question(self, agent)
+        q, _ = self.task.question(self, agent)
         return f"Turn {self.turn + 1}. You are at {agent.pos}. In sight: {vis}. You heard: {heard}.{(' ' + extra) if extra else ''} {q}{self.SUFFIX}"
+
+    def turn_tools(self, agent: Agent) -> list:
+        """The declared tools for this turn: only what the question needs (one, usually)."""
+        _, names = self.task.question(self, agent)
+        return [d for d in self.decls[agent.id] if d.name in names]
 
     def messages(self, agent: Agent) -> list[dict]:
         history = agent.history[-2 * self.max_history:]
@@ -424,7 +467,7 @@ class Runner:
         for a in w.agents:
             msgs = w.messages(a)
             self.sessions[a.id].register(functions_env(w.decls[a.id]))
-            prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=w.decls[a.id]).ids if self.tok else msgs)
+            prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=w.turn_tools(a)).ids if self.tok else msgs)
             sessions.append(self.sessions[a.id]); obs.append(msgs[-1]["content"])
         t0 = time.time()
         tcs = self.generate(prompts, sessions)
@@ -436,7 +479,9 @@ class Runner:
             a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if hasattr(tc, "ids") else None}]
             if a.history[-1]["ids"] is None:
                 a.history[-1].pop("ids")
-            rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "think": think, "calls": calls, "answer": answer, "n_calls": len(calls)}
+            rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "think": think, "calls": calls, "answer": answer, "n_calls": len(calls),
+                   "tools": [d.name for d in w.turn_tools(a)]}
+            w.task.after_turn(w, a, rec)
             a.log.append(rec); records.append(rec)
         w.turn += 1
         return {"turn": w.turn, "seconds": round(time.time() - t0, 2), "records": records, "state": w.state()}

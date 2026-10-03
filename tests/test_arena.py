@@ -44,7 +44,7 @@ def test_key_door_reads_tells_and_opens():
     assert "Move there first" in ed["open_door"](code)
     d.x, d.y = door
     assert "Wrong code" in ed["open_door"]("0000")
-    assert "Task complete" in ed["open_door"](code)
+    assert "Task complete" in ed["open_door"](f"the code is {code}"), "a code inside a sentence counts (the model copies sentences)"
     assert w.task.score(w)["success"] and w.task.score(w)["opened"] == 1
 
 
@@ -84,6 +84,7 @@ def test_messages_carry_system_prompt_declarations_and_truncated_history():
     assert len(first) == 1 and first[0]["content"].startswith("You are robot") and "Door 1" in first[0]["content"], "the briefing opens turn 1"
     names = [d.name for d in w.decls[a.id]]
     assert names == ["move", "say", "look", "open_door"]
+    assert [d.name for d in w.turn_tools(a)] == ["move"], "turn 1 for a door opener away from the door declares move only"
 
 
 def test_runner_with_a_scripted_model_solves_key_door():
@@ -106,8 +107,10 @@ def test_runner_with_a_scripted_model_solves_key_door():
                 if "code" in m:
                     heard[a.id] = m.split()[-1].strip("'\".")
             if a is k:
-                res = env["read_key"](); code = res.split()[-1].rstrip(".")
-                out.append({"calls": [["read_key()", res], ["say('the code is %s')" % code, env["say"](f"the code is {code}")]], "answer": "Told my partner the code.", "think": ""})
+                if not a.memory.get("code"):
+                    res = env["read_key"](); out.append({"calls": [["read_key()", res]], "answer": "#### " + res.split()[-1].rstrip("."), "think": ""})
+                else:
+                    code = a.memory["code"]; out.append({"calls": [["say('the code is %s')" % code, env["say"](f"the code is {code}")]], "answer": "Told my partner the code.", "think": ""})
             else:
                 code = heard.get(a.id)
                 if a.pos != door:
@@ -130,8 +133,9 @@ def test_runner_with_a_scripted_model_solves_key_door():
 def test_every_task_asks_a_tool_question_each_turn(task):
     w = World(task, n=8, n_agents=4, seed=3)
     for a in w.agents:
-        q = w.task.question(w, a)
-        assert "?" in q and any(t in q for t in a.tools), (task, a.name, q)
+        q, tools = w.task.question(w, a)
+        assert "?" in q and tools and all(t in a.tools for t in tools) and any(t in q for t in tools), (task, a.name, q, tools)
+        assert len(w.turn_tools(a)) == len(tools), "only the tools the question needs are declared this turn"
 
 
 @pytest.mark.parametrize("task", sorted(TASKS))
