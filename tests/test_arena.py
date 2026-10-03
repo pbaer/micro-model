@@ -64,11 +64,11 @@ def test_relay_chain_and_submit():
 def test_triangulate_sense_and_dig():
     w = World("triangulate", n=6, n_agents=3, seed=2)
     digger = w.agents[0]
-    assert "dig" in digger.tools and "dig" not in w.agents[1].tools and all("sense" in a.tools for a in w.agents)
+    assert "dig" in digger.tools and "dig" not in w.agents[1].tools and all("distance_to_target" in a.tools for a in w.agents)
     e = _env(w, digger)
-    assert e["sense"]() == dist(digger.pos, w.task.target)
+    assert e["distance_to_target"]() == dist(digger.pos, w.task.target)
     digger.x, digger.y = w.task.target
-    assert e["sense"]() == 0 and "found it" in e["dig"]() and w.task.score(w)["success"]
+    assert e["distance_to_target"]() == 0 and "found it" in e["dig"]() and w.task.score(w)["success"]
 
 
 def test_messages_carry_system_prompt_declarations_and_truncated_history():

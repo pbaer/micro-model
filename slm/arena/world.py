@@ -272,7 +272,7 @@ class Relay(Task):
 
 
 class Triangulate(Task):
-    """A buried target: every robot's `sense()` returns its own distance to it; one robot has `dig()`, which works
+    """A buried target: every robot's `distance_to_target()` returns its own distance to it; one robot has `dig()`, which works
     only on the target cell. Robots must share distances so the digger can work out where to go. Hard."""
 
     name = "triangulate"
@@ -286,16 +286,16 @@ class Triangulate(Task):
 
     def goal(self, agent):
         if agent.id == 0:
-            return ("Something is buried at a secret cell. Every robot's sense() gives its own distance to it. Ask the others for their "
+            return ("Something is buried at a secret cell. Every robot's distance_to_target() gives its own distance to it. Ask the others for their "
                     "distances with say(...), work out the cell, move there and call dig() on it. Only you can dig.")
-        return ("Something is buried at a secret cell. sense() gives your distance to it (north/south/east/west steps). Tell robot "
+        return ("Something is buried at a secret cell. distance_to_target() gives your distance to it (north/south/east/west steps). Tell robot "
                 f"{self.world.agents[0].name} your position and distance with say(...) so it can find the cell.")
 
     def tools(self, world, agent):
         from slm.tools.functions import FunctionDecl
 
         self.world = world
-        out = [FunctionDecl("sense", "def sense() -> int", "Returns your distance in steps to the buried target. Only sense() knows it.", lambda _a=agent: dist(_a.pos, self.target))]
+        out = [FunctionDecl("distance_to_target", "def distance_to_target() -> int", "Returns your distance in steps to the buried target.", lambda _a=agent: dist(_a.pos, self.target))]
         if agent.id == 0:
             def dig(_a=agent):
                 self.dug_at = _a.pos
@@ -316,15 +316,15 @@ class Triangulate(Task):
         if agent.id != 0:
             dsn = dist(agent.pos, self.target)
             if not agent.memory.get("sensed"):
-                return "How far away is the buried target? Use sense() to find out.", ["sense"]
+                return "How far away is the buried target? Use distance_to_target() to find out.", ["distance_to_target"]
             if dist(agent.pos, digger.pos) <= self.comm_range:
-                return (f"sense() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
+                return (f"distance_to_target() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
                         f"What does say() return?"), ["say"]
             d = _direction(agent.pos, digger.pos)
             return f"Robot {digger.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         cur = dist(agent.pos, self.target)
         if cur == 0:
-            return "sense() says 0: the target is right here. Call dig() to dig it up. What does dig() return?", ["dig"]
+            return "distance_to_target() says 0: the target is right here. Call dig() to dig it up. What does dig() return?", ["dig"]
         reports = [m for m in agent.inbox if "distance" in m]
         if reports:
             agent.memory.setdefault("reports", []).extend(reports)
@@ -335,11 +335,11 @@ class Triangulate(Task):
         else:
             d = self.rng.choice([x for x in DIRS if x != agent.memory.get("dir")])
         agent.memory["dir"] = d
-        return f"sense() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
+        return f"distance_to_target() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
 
     def after_turn(self, world, agent, record):
         for code_txt, result in record.get("calls", []):
-            if "sense" in code_txt:
+            if "distance_to_target" in code_txt:
                 agent.memory["sensed"] = True
 
 
