@@ -56,22 +56,28 @@ def _key_door_script(tok, seen: dict):
         door = next(iter(w.task.doors))
         out = []
         for a, s in zip(w.agents, sessions):
-            env = s.functions
+            env = s.functions  # the session holds only this turn's tool (one tool per turn, enforced at execution)
             if a.id == 0:
-                res = env["read_key"]()
-                code = res.split()[-1].rstrip(".")
-                said = env["say"](f"the code is {code}")
-                out.append(_tc(tok, "read it", "Told R2.", [("read_key()", res), (f"say('the code is {code}')", said)]))
+                if "read_key" in env:
+                    res = env["read_key"](); seen["key"] = res.split()[-1].rstrip(".")
+                    out.append(_tc(tok, "read it", "#### " + seen["key"], [("read_key()", res)]))
+                elif "say" in env:
+                    said = env["say"](f"the code is {seen['key']}")
+                    out.append(_tc(tok, "say it", "Told R2.", [(f"say('the code is {seen['key']}')", said)]))
+                else:
+                    name = next(iter(env)); out.append(_tc(tok, name, "ok", [(f"{name}('east')" if name == "move" else f"{name}()", env[name]("east") if name == "move" else env[name]())]))
                 continue
             heard = [m for m in a.inbox if "code is" in m]
             if heard:
                 seen["code"] = heard[-1].split()[-1].strip("'\".")
-            if a.pos != door:
+            if "move" in env:
                 dx, dy = door[0] - a.x, door[1] - a.y
                 d = "east" if dx > 0 else "west" if dx < 0 else "south" if dy > 0 else "north"
                 out.append(_tc(tok, "walk", "Moving.", [(f"move({d!r})", env["move"](d))]))
-            else:
+            elif "open_door" in env:
                 out.append(_tc(tok, "open", "Opening.", [(f"open_door({seen.get('code')!r})", env["open_door"](seen.get("code")))]))
+            else:
+                name = next(iter(env)); out.append(_tc(tok, name, "ok", [(f"{name}()", env[name]())]))
         return out
 
     return generate
@@ -113,18 +119,21 @@ def test_harness_arena_turn_events_messages_and_stop_at_done(harness, monkeypatc
             assert "status" not in r or r["status"].startswith(f"Turn {t['turn']}."), "the world's view of the robot (not shown to it)"
             assert r["raw"].startswith("<|think|>") and "<|/think|>" in r["raw"] and r["raw"].endswith("<|end|>")
             assert r["think"] is not None and r["answer"]
-    m = turns[0]["messages"]
+    assert turns[0]["messages"] == [], "turn 1: the key holder reads the key (one tool per turn); nobody speaks yet"
+    m = turns[1]["messages"]
     code = seen["code"]
-    r1_pos = [turns[0]["state"]["agents"][0]["x"], turns[0]["state"]["agents"][0]["y"]]
+    r1_pos = [turns[1]["state"]["agents"][0]["x"], turns[1]["state"]["agents"][0]["y"]]
     assert m == [{"speaker": "R1", "speaker_id": 0, "pos": r1_pos, "text": f"the code is {code}", "heard_by": ["R2"], "heard_by_ids": [1]}]
-    assert "Heard by: R2" in turns[0]["records"][0]["calls"][1][1]
-    assert "R1 said: 'the code is" in turns[1]["records"][1].get("status", turns[1]["records"][1]["observation"]), "delivered at the next turn"
-    assert all(len(t["messages"]) == 1 for t in turns), "R1 speaks every turn, R2 never"
+    assert "Heard by: R2" in turns[1]["records"][0]["calls"][0][1]
+    assert "R1 said: 'the code is" in turns[2]["records"][1].get("status", turns[2]["records"][1]["observation"]), "delivered at the next turn"
+    assert all(all(x["speaker"] == "R1" for x in t["messages"]) for t in turns), "only the key holder ever speaks"
+    assert sum(len(t["messages"]) for t in turns) >= 1
 
     res = evs[-1]["result"]
     assert res["score"]["success"] and res["turns"] == len(turns) < 20, "stop_when_done ends the episode at success"
     assert any("opened door 1" in e for e in res["events"]) and res["cancelled"] is False
-    assert len(res["transcript"]) == 2 * res["turns"] and len(res["messages"]) == res["turns"]
+    assert len(res["transcript"]) == 2 * res["turns"] and len(res["messages"]) == res["turns"], "one message list per turn"
+    assert sum(len(m) for m in res["messages"]) >= 1 and res["messages"][0] == []
     assert res["meta"]["task"] == "key_door" and res["meta"]["n_agents"] == 2 and res["meta"]["turns"] == 20
     json.dumps(evs)  # crosses the worker pipe and the SSE stream
 

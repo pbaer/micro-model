@@ -106,18 +106,22 @@ def test_runner_with_a_scripted_model_solves_key_door():
                 if "code" in m:
                     heard[a.id] = m.split()[-1].strip("'\".")
             if a is k:
-                if not a.memory.get("code"):
+                if "read_key" in env:
                     res = env["read_key"](); out.append({"calls": [["read_key()", res]], "answer": "#### " + res.split()[-1].rstrip("."), "think": ""})
-                else:
+                elif "say" in env:
                     code = a.memory["code"]; out.append({"calls": [["say('the code is %s')" % code, env["say"](f"the code is {code}")]], "answer": "Told my partner the code.", "think": ""})
+                else:
+                    name = next(iter(env)); out.append({"calls": [[f"{name}('east')" if name == "move" else f"{name}()", env[name]("east") if name == "move" else env[name]()]], "answer": "ok", "think": ""})
             else:
                 code = heard.get(a.id)
-                if a.pos != door:
+                if "move" in env:
                     dx, dy = door[0] - a.x, door[1] - a.y
                     direction = "east" if dx > 0 else "west" if dx < 0 else "south" if dy > 0 else "north"
                     out.append({"calls": [["move(%r)" % direction, env["move"](direction)]], "answer": "Moving to the door.", "think": ""})
-                else:
+                elif "open_door" in env:
                     out.append({"calls": [["open_door(%r)" % code, env["open_door"](code)]], "answer": "Opening.", "think": ""})
+                else:
+                    name = next(iter(env)); out.append({"calls": [[f"{name}()", env[name]()]], "answer": "ok", "think": ""})
         return out
 
     r = Runner(w, model=None, tok=None, generate=scripted)
