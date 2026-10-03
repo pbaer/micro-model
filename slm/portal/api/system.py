@@ -22,7 +22,8 @@ def meta(request: Request) -> dict:
         "python": sys.version.split()[0], "gpu_policy": s.gpu_policy,
         "pages": [
             {"id": "home", "label": "Overview"}, {"id": "evals", "label": "Evals"}, {"id": "data", "label": "Data"},
-            {"id": "tokenizer", "label": "Tokenizer"}, {"id": "inference", "label": "Inference"}, {"id": "arch", "label": "Architecture"},
+            {"id": "tokenizer", "label": "Tokenizer"}, {"id": "inference", "label": "Inference"}, {"id": "arena", "label": "Arena"},
+            {"id": "arch", "label": "Architecture"},
         ],
         "stages": [{"name": "pretrain", "label": "Pretraining"}],
     }

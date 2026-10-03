@@ -5,7 +5,10 @@ A slot can also hold an external comparison model (`external:<name>`, slm.eval.e
 own tokenizer and chat template. It streams completions (any model) and chat replies (chat models only: a base model
 is never given a template), and runs swarm sampling with majority, selector and tournament through its own template.
 Our protocol (the Python tool, declared functions, the forced think span) is refused for it, there is no sandbox
-verification (n/a, not approximated), and teacher-forced scoring and diagnostics are n/a."""
+verification (n/a, not approximated), and teacher-forced scoring and diagnostics are n/a.
+
+`arena` runs slm.arena.world on one of our checkpoints: a grid of robots, one batched generation per turn, streamed
+turn by turn (external slots are refused: no tool protocol)."""
 
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ from slm.data.chat import format_chat, parse_assistant
 from slm.data.tokenizer import SlmTokenizer
 from slm.eval.sampling import sample_next
 from slm.model import KVCache, Transformer
+from slm.tools.functions import parse_defs
 from slm.tools.protocol import run_tool, tool_ids
 from slm.tools.pysandbox import PySession
 
@@ -123,6 +127,67 @@ def _external_compare(ext, text: str, pairs: list, enc, pair_budget_tokens: int,
     msgs = [S.pair_messages(text, a, b, enc, pair_budget_tokens) for a, b in pairs]
     gens = ext.batch_generate_chat(msgs, max_new_tokens, temperature=0.0, batch_size=max(1, len(msgs)))
     return [S.parse_pick(g.text) for g in gens]
+
+# ------------------------------------------------------------------------------------------------ arena
+ARENA_LIMITS = {"n": (4, 16), "n_agents": (1, 32), "turns": (1, 50), "max_new_tokens": (16, 1024), "max_calls": (0, 16), "max_history": (0, 10)}
+
+
+def arena_check(task: str, n: int, n_agents: int, turns: int, max_new_tokens: int, max_calls: int, max_history: int) -> None:
+    """The arena's argument rules (the API validates the same ones): ranges, and the robot counts a task can be built
+    for -- key_door pairs a key holder with a door opener (an odd robot out has no door: its system prompt cannot be
+    written), and a relay needs a source and a sink."""
+    from slm.arena.world import TASKS
+
+    if task not in TASKS:
+        raise RuntimeError(f"unknown arena task {task!r}; known: {', '.join(sorted(TASKS))}")
+    for k, v in (("n", n), ("n_agents", n_agents), ("turns", turns), ("max_new_tokens", max_new_tokens), ("max_calls", max_calls),
+                 ("max_history", max_history)):
+        lo, hi = ARENA_LIMITS[k]
+        if not lo <= int(v) <= hi:
+            raise RuntimeError(f"arena {k}={v}: expected {lo}-{hi}")
+    if task == "key_door" and n_agents % 2:
+        raise RuntimeError(f"key_door needs an even number of robots (pairs of key holder and door opener), got {n_agents}")
+    if task == "relay" and n_agents < 2:
+        raise RuntimeError("relay needs at least 2 robots (a source and a sink)")
+
+
+def arena_generate(runner, prompts: list[list[int]], sessions: list) -> list:
+    """`Runner._generate` on the model's own device: the library's version builds its generator on cuda, which a CPU
+    slot cannot use. Same sampler (`sample_with_tools`, temperature 1, top-p 1), same per-turn seed
+    (world.seed * 1000 + turn), same decode SDPA context. Looked up on this module at call time (tests script it)."""
+    from slm.tools.loop import sample_with_tools
+    from slm.utils.sdpa import sdpa_context
+
+    device = next(runner.model.parameters()).device
+    gen = torch.Generator(device=device)
+    gen.manual_seed(runner.world.seed * 1000 + runner.world.turn)
+    with torch.no_grad(), sdpa_context("decode"):
+        return sample_with_tools(runner.model, runner.tok, prompts, runner.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=runner.max_calls,
+                                 sessions=sessions)
+
+
+def arena_messages(world) -> list[dict]:
+    """What was said this turn, from `world.pending` before the next `deliver()`: speaker, text, and the robots that
+    will hear it -- computed exactly as `deliver` will (Manhattan distance from the speaker's position now, within the
+    task's comm range). A robot that spoke and then moved is heard from where it ended the turn, so `heard_by` can
+    differ from the "Heard by" line its `say` call returned."""
+    from slm.arena.world import dist
+
+    out = []
+    for speaker, text in world.pending:
+        near = [b for b in world.agents if b is not speaker and dist(speaker.pos, b.pos) <= world.task.comm_range]
+        out.append({"speaker": speaker.name, "speaker_id": speaker.id, "pos": list(speaker.pos), "text": text,
+                    "heard_by": [b.name for b in near], "heard_by_ids": [b.id for b in near]})
+    return out
+
+
+def _turn_text(tok, ids) -> str | None:
+    """A robot's generated turn as text with the reserved tokens kept (the portal renders them as chips). The prompt
+    ended with <|think|> (think_required), so it is put back in front."""
+    if not ids or tok is None:
+        return None
+    think_open = tok.special("<|think|>")
+    return tok.decode(([think_open] if ids[0] != think_open else []) + list(ids))
 
 
 class Harness:
@@ -575,6 +640,73 @@ class Harness:
             entrants = winners + byes
         meta["tournament_complete"] = True
         return entrants[0], rounds
+
+    @torch.no_grad()
+    def arena(self, slot: str, task: str = "key_door", n: int = 8, n_agents: int = 4, seed: int = 0, turns: int = 12, max_new_tokens: int = 128,
+              max_calls: int = 4, max_history: int = 1, stop_when_done: bool = True, should_stop=None):
+        """The arena (slm.arena.world) on one slot: an n x n grid of `n_agents` robots, each a conversation with the
+        model, one batched generation per turn (`Runner.step`). Yields {'event': 'start'} with the initial state, the
+        task's comm range and sight, and every robot's system prompt and declared tools; one {'event': 'turn'} per turn
+        with the Runner's record of every robot (plus `raw`, the generated turn with its reserved tokens), the state
+        after the turn, `messages` (what was said this turn and who hears it, see `arena_messages`) and per record
+        `declared` (the tools that robot's prompt declared this turn, parsed from the prompt); then
+        {'event': 'done', 'result'} with the score, events, turns, seconds, `cancelled` and the full transcript.
+
+        A cancel is honoured between turns (a turn is one batch). External slots are refused: the robots act through
+        declared functions and <|python_call|> spans inside the think span, our tool protocol, which an external model
+        does not have. The turns are generated by `arena_generate` (the library's sampler and seeding on the slot's
+        device), not `Runner._generate`, which assumes cuda."""
+        from slm.arena import world as A
+
+        s = self.slots[slot]
+        s.require()
+        if s.ext is not None:
+            raise RuntimeError(f"the arena is n/a for an external slot (slot {slot} holds {s.ext.name}): robots act by calling declared "
+                               "functions with <|python_call|> inside the think span, our tool protocol, which an external model does not have. "
+                               "Load one of our tool-trained checkpoints (an RL or reasoning model).")
+        arena_check(task, n, n_agents, turns, max_new_tokens, max_calls, max_history)
+        world = A.World(task, int(n), int(n_agents), int(seed), int(max_history))
+        runner = A.Runner(world, s.model, s.tok, int(max_new_tokens), int(max_calls))
+        declared: list[list[str]] = []
+
+        def generate(prompts, sessions):
+            # the tools each robot's prompt actually declared this turn, read back from its <|python_def|> blocks: the
+            # Runner's record re-derives them after the turn's actions ran, when the sub-goal may already have moved on
+            declared[:] = [[d.name for d in parse_defs(s.tok, p)] for p in prompts]
+            return arena_generate(runner, prompts, sessions)  # module lookup at call time (tests script it)
+
+        runner.generate = generate
+        stop = should_stop or (lambda: False)
+        meta = {"slot": slot, "checkpoint": s.info.get("name"), "run": s.info.get("run"), "device": s.info.get("device"), "task": task, "n": int(n),
+                "n_agents": int(n_agents), "seed": int(seed), "turns": int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
+                "max_history": int(max_history), "stop_when_done": bool(stop_when_done), "comm_range": world.task.comm_range, "sight": world.task.sight}
+        robots = [{"id": a.id, "name": a.name, "system_prompt": world.system_prompt(a),
+                   "tools": [{"name": d.name, "signature": d.signature, "comment": d.comment} for d in world.decls[a.id]]} for a in world.agents]
+        yield {"event": "start", "state": world.state(), "robots": robots, "meta": meta}
+        t0, cancelled, all_messages = time.time(), False, []
+        try:
+            for _ in range(int(turns)):
+                if stop():
+                    cancelled = True
+                    break
+                out = runner.step()
+                for a, rec in zip(world.agents, out["records"]):
+                    ids = a.history[-1].get("ids") if a.history else None
+                    rec["raw"] = _turn_text(s.tok, ids)
+                    rec["agent_id"] = a.id
+                    rec["declared"] = declared[a.id] if a.id < len(declared) else None
+                msgs = arena_messages(world)
+                all_messages.append(msgs)
+                yield {"event": "turn", "turn": out["turn"], "seconds": out["seconds"], "records": out["records"], "state": out["state"], "messages": msgs}
+                if stop_when_done and world.task.score(world).get("success"):
+                    break
+            result = {"task": task, "n": world.n, "agents": len(world.agents), "seed": world.seed, "turns": world.turn, "score": world.task.score(world),
+                      "events": list(world.task.events), "seconds": round(time.time() - t0, 1), "cancelled": cancelled, "meta": meta,
+                      "messages": all_messages, "transcript": [r for a in world.agents for r in a.log]}
+            yield {"event": "done", "result": result}
+        finally:
+            if s.info.get("device") == "cuda":
+                torch.cuda.empty_cache()  # the per-turn KV caches leave reserved segments behind (CLAUDE.md)
 
     @torch.no_grad()
     def score(self, slot: str, mode: str = "completion", text: str = "", messages: list[dict] | None = None) -> dict:

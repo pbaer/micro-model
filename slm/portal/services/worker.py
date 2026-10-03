@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-STREAM_METHODS = {"generate", "swarm"}
+STREAM_METHODS = {"generate", "swarm", "arena"}
 
 
 def worker_main(conn, tokenizer_root: str) -> None:  # pragma: no cover - runs in the child

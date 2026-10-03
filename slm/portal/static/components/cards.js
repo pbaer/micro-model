@@ -934,4 +934,76 @@ export const CARDS = {
     <p>The share of problems where a correct answer is among the k samples (pass@k at the swarm's k). No selection
       method can exceed it, so it is the ceiling for the other swarm columns. The verified oracle and "in prompt"
       ceilings are in the hover.</p>` },
+  // ------------------------------------------------------------------ arena (#/arena)
+  arena: { t: "The arena", b: html`
+    <p>An N×N grid of robots, each one a separate conversation with the same model. Every turn each robot is asked its
+      current sub-goal and acts by calling a declared tool inside the think span: <code>move("north")</code>,
+      <code>say("the code is 4719")</code>, <code>look()</code>, or the one tool only it has. Messages travel only within a <b>comm range</b>, and the tools are <b>asymmetric</b> (one robot can read the key,
+      another can open the door), so the only way to finish a task is to talk.</p>
+    <p>Why it exists: the swarm's thesis (roadmap goal 5) is parallel inference as a <i>system</i>, not one answer picked
+      from many. Here the system is a world with partial observability. Nothing is trained for it: the arena measures what
+      the model already does with a protocol it has only seen in pieces (declared functions, multi-turn sessions, chat).
+      The tasks are verifiable, so an episode has a score and a sweep over seeds is an eval.</p>
+    <p class="see">Code: <code>slm/arena/world.py</code> (<code>python -m slm.arena</code>); the portal streams
+      <code>Harness.arena</code> through <code>POST /api/model/arena</code>.</p>` },
+  arena_key_door: { t: "Task: key and door", b: html`
+    <p>Robots work in pairs. The key holder (R1, R3, …) reads a secret 4-digit code with <code>read_key()</code>; its partner
+      (R2, R4, …) has <code>open_door(code)</code>, which works only while it stands on the pair's door cell. The key holder must
+      say the code while the partner is within comm range; the partner must walk to the door and open it with the code it heard.
+      Pairs start within one cell of each other, so turn 1 can already talk. One door per pair; success = every door open.</p>
+    <p>What to watch: does the code in the <code>say</code> call match what <code>read_key()</code> returned, and does the
+      opener copy the heard code into <code>open_door</code>? The arcs on the grid show who heard whom.</p>` },
+  arena_relay: { t: "Task: relay", b: html`
+    <p>The robots stand in a line two cells apart. R1 knows a code (<code>read_code()</code>), the last robot must
+      <code>submit(code)</code> it, and each robot hears only its neighbours, so the code must hop robot to robot, one
+      <code>say</code> per hop. A pure communication task: nobody needs to move.</p>
+    <p>The minimum is one turn per hop plus the submit. Read it as a chain: the first turn where a robot repeats a
+      <i>different</i> number than it heard is where the message was corrupted.</p>` },
+  arena_triangulate: { t: "Task: triangulate", b: html`
+    <p>Something is buried at a secret cell. Every robot's <code>sense()</code> returns its own Manhattan distance to it;
+      only R1 has <code>dig()</code>, which works only on the target cell. The others report position and distance to R1,
+      and R1 must find the cell, walk there and dig. The target is hidden on the grid until it is dug up (the checkbox under
+      the grid shows it for analysis; the robots never see it).</p>
+    <p>The hardest of the three: it needs arithmetic over several messages, which a small model rarely does. A failed dig
+      leaves a grey × where it happened.</p>` },
+  arena_range: { t: "Comm range and sight", b: html`
+    <p><b>Comm range</b>: a message said this turn is delivered, at the start of the next observation, to every robot within
+      that many cells (Manhattan distance: steps north/south/east/west) of where the speaker ended the turn. <b>Sight</b>:
+      what <code>look()</code> and the observation report, robots and objects within that distance. Both are fixed per task
+      (key and door 3 / 2, relay 2 / 2, triangulate 4 / 1).</p>
+    <p>On the grid, hover or select a robot: the pale cells are its comm range, the darker ones its sight. Everyone outside
+      the pale area will not hear what it says.</p>` },
+  arena_cost: { t: "Cost: one batch per turn", b: html`
+    <p>A turn is <b>one batched generation</b> over all robots (<code>sample_with_tools</code> with one prompt and one Python
+      session per robot), so the robots act simultaneously and 32 robots cost far less than 32 separate generations. On the
+      GPU, decode is launch-bound: up to ~32 rows a step costs about the same as one row, so per-row speed barely drops; memory
+      grows with rows × (prompt + max new tokens), which is what limits the batch.</p>
+    <p>On CPU there is no such free ride: keep it to a few robots and short turns.</p>
+    <p class="see">docs/results.md §24 has the measured batch throughput and the memory model of the M10 checkpoint.</p>` },
+  arena_scaffold: { t: "One tool per turn (the scaffold)", b: html`
+    <p>Each turn the task asks the robot its current sub-goal as a question ("What is the key code? Use read_key() to find
+      out.") and declares only the tool that question needs, as a masked <code>&lt;|python_def|&gt;</code> block at the top
+      of the prompt. Measured on the 336M model: it calls a declared function correctly when exactly one is declared and the
+      question names it, and writes unrelated code with four declared. It also cannot carry its own previous result across
+      turns, so the question restates what the robot heard or its last call returned.</p>
+    <p>So the plan is the task's; executing it, and copying the right value into the right call, is the model's. The robot
+      panel lists all of a robot's tools; the table's "declared this turn" column shows which one the prompt carried.</p>` },
+  arena_turn: { t: "Reading a robot's turn", b: html`
+    <p>A turn is one user message and one assistant reply. The <b>user turn</b> is shown exactly as the model saw it: the
+      turn's question (which restates any fact the robot must use) and the answer instruction. The <b>situation</b> line
+      (turn, position, what is in sight, what was heard) and the <b>briefing</b> are the world's own record for the
+      transcript; the model is not shown them, because a preamble measurably turns it from calling the tool into describing
+      it. The <b>generated turn</b> starts inside the think span (<code>&lt;|think|&gt;</code> was part of the
+      prompt): a tool call is a <code>&lt;|python_call|&gt;</code> span, the sandbox's answer a <code>&lt;|python_result|&gt;</code>
+      span inserted by the environment (never sampled), then <code>&lt;|/think|&gt;</code> and the <b>status line</b>, the
+      visible answer, closed by <code>&lt;|end|&gt;</code>.</p>
+    <p>An action takes effect when its call runs. A turn with no call does nothing; a call outside the think span is
+      malformed. <b>history</b> is how many earlier exchanges each robot keeps in its conversation; older ones are dropped.</p>` },
+  arena_grid: { t: "Reading the grid", b: html`
+    <p>Robots are circles coloured by role (their unique tool); robots on one cell share it. Doors are amber squares (green
+      with ✓ once opened). Each turn, robots glide from where they were (a dotted trail) to where they ended, then the
+      messages said that turn draw as arcs from the speaker to every robot that hears it; a dashed ring is a message nobody
+      was in range to hear. Arcs touching the selected robot are bright, the rest pale.</p>
+    <p>The scrubber steps through the episode (0 = the start); play replays it. While a run streams, the view follows the
+      newest turn unless you step back.</p>` },
 };

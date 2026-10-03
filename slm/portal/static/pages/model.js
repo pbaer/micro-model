@@ -20,7 +20,7 @@ const ctxLabel = (n) => (n == null ? "?" : n >= 1024 ? `${Math.round(n / 1024)}K
 /** One line for an external comparison model (a slot's info or a /checkpoints entry). */
 const extLine = (m) => `${m.hf_id} · ${fmtParams(m.params)} params · ${m.license} · ${m.is_chat ? "chat" : "base"} · context ${ctxLabel(m.context)}`;
 
-function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
+export function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
   const [sel, setSel] = useState("");
   const [dev, setDev] = useState("auto");
   const [force, setForce] = useState(false);

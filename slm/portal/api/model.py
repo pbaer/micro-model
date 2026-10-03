@@ -11,7 +11,7 @@ from typing import Literal
 import anyio
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from slm.utils.stage import run_stage  # noqa: F401 (re-exported; the portal and the quality eval share it)
 from slm.portal.api.system import gpu_info
@@ -62,6 +62,56 @@ class SwarmRequest(BaseModel):
     mode: Literal["select", "tournament", "both"] = "both"  # selector prompt, pairwise bracket, or both (final follows the bracket)
     pair_budget_tokens: int = Field(1200, ge=200, le=8192)  # pairwise prompt budget (tournament)
     max_entrants: int = Field(16, ge=2, le=64)  # the bracket takes the first max_entrants groups (evidence order)
+
+
+class ArenaRequest(BaseModel):
+    """The arena (slm.arena.world): an n x n grid of robots, each a conversation with the model, one batched generation
+    per turn. The ranges are the harness's (`ARENA_LIMITS`); key_door pairs robots, a relay needs a source and a sink."""
+    slot: Literal["A", "B"] = "A"
+    task: Literal["key_door", "relay", "triangulate"] = "key_door"
+    n: int = Field(8, ge=4, le=16)  # grid side
+    n_agents: int = Field(4, ge=1, le=32)
+    seed: int = Field(0, ge=0, le=2**31 - 1)
+    turns: int = Field(12, ge=1, le=50)
+    max_new_tokens: int = Field(128, ge=16, le=1024)  # per robot per turn
+    max_calls: int = Field(4, ge=0, le=16)  # tool calls per robot per turn
+    max_history: int = Field(1, ge=0, le=10)  # prior (observation, action) exchanges kept in each robot's conversation (World default)
+    stop_when_done: bool = True
+
+    @model_validator(mode="after")
+    def _robots_fit_task(self):
+        if self.task == "key_door" and self.n_agents % 2:
+            raise ValueError("key_door needs an even number of robots (pairs of key holder and door opener)")
+        if self.task == "relay" and self.n_agents < 2:
+            raise ValueError("relay needs at least 2 robots (a source and a sink)")
+        return self
+
+
+# what each arena task asks of the robots, written from the task docstrings in slm/arena/world.py
+ARENA_TASKS = {
+    "key_door": {
+        "title": "Key and door",
+        "description": "Robots work in pairs. The key holder (R1, R3, ...) can read a secret 4-digit code with read_key(); its partner "
+                       "(R2, R4, ...) has open_door(code), which works only while standing on the pair's door cell. The key holder must "
+                       "tell the code with say(...) while the partner is within comm range, and the partner must walk to the door and "
+                       "open it. Each pair starts within one cell of each other, so turn 1 can already talk; with more robots there "
+                       "is one door per pair. Success: every door open.",
+        "roles": "even ids: read_key(); odd ids: open_door(code)", "min_agents": 2, "even_agents": True, "movement": True},
+    "relay": {
+        "title": "Relay",
+        "description": "The robots stand in a line two cells apart and cannot usefully move. The first robot knows a code (read_code()), "
+                       "the last one must submit(code) it, and each robot hears only its neighbours, so the code has to hop robot to "
+                       "robot: a pure communication task, a chain of say(...) calls. Success: the last robot submits the right code; "
+                       "the minimum is one turn per hop.",
+        "roles": "R1: read_code(); last robot: submit(code); the rest only relay", "min_agents": 2, "even_agents": False, "movement": False},
+    "triangulate": {
+        "title": "Triangulate",
+        "description": "Something is buried at a secret cell. Every robot's sense() returns its own Manhattan distance to it; only R1 has "
+                       "dig(), which works only on the target cell. The others must report their position and distance to R1 with "
+                       "say(...), and R1 must work out the cell from the distances, walk there and dig. The target is hidden on the grid "
+                       "until it is dug up. Hard: it needs arithmetic over several messages.",
+        "roles": "everyone: sense(); R1: dig()", "min_agents": 1, "even_agents": False, "movement": True},
+}
 
 
 class ScoreRequest(BaseModel):
@@ -238,6 +288,31 @@ async def swarm(request: Request, body: SwarmRequest):
 
     def produce(q: queue.Queue, cancel: threading.Event) -> None:
         for ev in w.stream("swarm", cancel_flag=cancel, **body.model_dump()):
+            ev["slot"] = body.slot
+            q.put(ev)
+            if ev["event"] == "error":
+                break
+
+    return _sse(request, produce)
+
+
+@router.get("/arena/tasks")
+def arena_tasks() -> list[dict]:
+    """The arena's tasks: key, title, a one-paragraph description, roles, comm range and sight (from the task classes)."""
+    from slm.arena.world import TASKS  # torch-free at import
+
+    return [{"key": k, **ARENA_TASKS[k], "comm_range": TASKS[k].comm_range, "sight": TASKS[k].sight} for k in sorted(TASKS) if k in ARENA_TASKS]
+
+
+@router.post("/arena")
+async def arena(request: Request, body: ArenaRequest):
+    """The arena on one slot (slm.arena.world via Harness.arena), as SSE: `start` (once with the stream id, then once
+    with the initial state, the robots' system prompts and tools), one `turn` per turn (records, state, messages),
+    `done` with the result and transcript. Cancel (POST /streams/{id}/cancel) takes effect between turns."""
+    w = request.app.state.worker
+
+    def produce(q: queue.Queue, cancel: threading.Event) -> None:
+        for ev in w.stream("arena", cancel_flag=cancel, **body.model_dump()):
             ev["slot"] = body.slot
             q.put(ev)
             if ev["event"] == "error":

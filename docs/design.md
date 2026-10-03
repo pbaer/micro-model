@@ -420,6 +420,14 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   "external models" group after ours. The portal's Inference tab loads them into a slot (`external:<name>`) next to
   our checkpoints; `HfChatModel.stream_ids` is its token-streaming path (same sampler, seeding and stop rule as
   `generate_ids`), see `docs/command_center.md`.
+- `slm/arena/` (not an eval module, but measured like one): **the arena**, an N×N grid of robots, each one a
+  conversation with the model, cooperating through range-limited messages (`say`, heard within the task's comm range at
+  the next turn) and asymmetric declared tools (one robot reads a key, another opens the door). `World` holds the grid,
+  the task (`key_door`, `relay`, `triangulate`: verifiable, so an episode has a score) and per-robot `FunctionDecl`s whose
+  impls act on the world; each turn the task asks every robot its current sub-goal as a question and declares only the
+  tool it needs (the scaffold the 336M model can climb). `Runner.step` is one batched `sample_with_tools` over all robots
+  with one `PySession` each, so a turn is simultaneous. `python -m slm.arena` runs an episode, `scripts/arena_eval.py`
+  sweeps seeds, and the portal's Arena tab streams it with a live grid (`docs/command_center.md`).
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
 

@@ -39,6 +39,7 @@ portal never launches training.
 | Data (`#/data`) | **Recipes** (default): one row per training config and per run, by stage, with a marker where the yaml no longer matches what the run started with. A recipe (`#/data/recipes/<id>`, id = `run:<name>` or `config:<path>`) is the mixture table with weight, planned and available tokens, epochs (red above 1.5), the loader's own per-source consumption when the checkpoint records carry it, the `extra_val_mixture` drift set, and for RL a prompt/reward panel with the deterministic prompt list (rendered as the exact generation prompt) and, for a run, a rollouts viewer (step selector, prompt + completion chips, reward, parsed answer, malformed flag). Clicking a mixture row opens the inspector (on the shard's first document or example, in the text view): **raw** (a parquet row of the source it was prepared from, with a *trace* that re-runs the preparation filters and reports kept/dropped and the split), **prepared** (the stored document, or the stored SFT example with green loss-mask chips), **row** (a training row of exactly `seq_len + 1` tokens with red document — or SFT example — boundaries and the target count). **Compare** (`#/data/compare/<a>/<b>`, client-side from two recipe payloads): header diff and the union of sources with weight A / B, the delta in percentage points, planned tokens and epochs; a run's default pairing is its `init_from` parent. **Chain** (`#/data/chain/run:<name>`): the `init_from` walk back to the root, one row per stage with tokens used and per-source tokens (the loader's own counters where the run logged them, `tokens x weight` otherwise — the row says which), a totals row and a stacked bar. **Catalog** (`#/data/catalog`) lists every raw, tokenized and chat-formatted set, with unused and `*-v1` sets behind a "show unused" toggle; `#/data/source/<name>` carries raw files, prepared artifacts per tag, provenance both ways, the recipes that use it with their weights, for a source prepared by a selecting preparer (`gutenberg-pg19`) a **selection filter** panel (books in, kept, dialogue cutoff, mean tokens per book, raw and tokenized size, and one row per rule with its threshold, books removed, tokens removed and example titles; the catalog marks such sources "filtered", and the raw trace reports the per-book verdict from `books.jsonl` instead of re-running `keep_doc`), for a curated set (`gutenberg-canon`) a **curated list** panel (books, tokens, how often each rule was relaxed, every book by list entry with year, tokens, split and the rule relaxed for it, and a toggle for the seed titles not in the set with the reason; the catalog marks it "curated"), and a **browse** panel with the old documents browser (tokenizer tag / source / split / shard or parquet file / row group; selecting a source, shard, file or row group opens its first document right away; text (default), tokens or ids; a raw chat row's text view is the SFT chat format with its loss mask; `window`; `stats` with length percentiles and long-doc counts). The list and preview fill the viewport. |
 | Tokenizer | Playground: encode text in raw, document or chat mode; text view (default: decoded, reserved tokens as chips, loss mask in chat mode) or coloured token chips with offsets and ids; vocabulary lookup. |
 | Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, text (default) vs tokens view (reserved tokens are chips in both), prompt scoring, cancel, release GPU. |
+| Arena (`#/arena`) | The robot grid of `slm/arena/world.py` on a loaded slot: controls, a live SVG grid (robots, doors, comm range, messages as arcs, movement between turns), a turn scrubber, a task panel, a compact table of every robot's turn and one selected robot's transcript; JSON episode download. Details in "Arena tab" below. |
 | Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs measured benchmark, LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
 
 ## Info cards (`components/info.js`, `components/cards.js`)
@@ -71,7 +72,7 @@ there is no room below) and rendered only while open, so it never shifts the lay
 rollouts also carry `runs`, see below) · tokenizer: `GET /tokenizers` (with each tag's `specials`),
 `POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/token/{i}` · model:
 `GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints` (ours, then the external models), `POST /model/slots/{slot}/load|unload`,
-`POST /model/score`, `POST /model/generate` (SSE), `POST /model/swarm` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
+`POST /model/score`, `POST /model/generate` (SSE), `POST /model/swarm` (SSE), `GET /model/arena/tasks`, `POST /model/arena` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
 arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 
 ## Tests and checks
@@ -95,6 +96,7 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
   with scripted sampling/selection (incl. cancel), the tournament path with a scripted `compare_batch` (round events,
   bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), one real pass
   on a tiny CPU model, and an external slot's swarm (stubbed model: own template, verification n/a, majority fallback).
+- `tests/test_portal_arena.py`: `Harness.arena` with a scripted `arena_generate` (event shape per turn, the messages list, the declared tools read back from the prompts, stop at done, the cancel path, refusals incl. an external slot), `arena_messages` against `deliver()`, one real turn of a tiny CPU model, `/api/model/arena` validation and SSE shape against a stub worker, `/api/model/arena/tasks`, the nav entry, an info card for every `arena_*` key, `node --check` of the changed JS.
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
   button clicked, every select cycled; no JS errors, no hangs, no raw template text.
 - `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
@@ -275,6 +277,51 @@ a model whose weights are missing is listed but cannot be loaded (`python -m slm
   is refused.
 - Info card `external_slot`: what an external slot is and where it is not apples-to-apples (tokenizer and token-level
   numbers, chat template and its default system prompt, no tool protocol, no verification, scoring n/a).
+
+## Arena tab (2026-10-02)
+
+`#/arena` (`pages/arena.js`) runs the arena of `slm/arena/world.py` on one slot: an N×N grid of robots, each one a
+conversation with the model, one batched generation per turn (`Runner.step`), streamed turn by turn.
+
+- **Controls**: the two slot cards (the Inference page's `SlotCard`, so a checkpoint can be loaded here, CPU or cuda),
+  slot, task (`key_door`, `relay`, `triangulate`, each with its description from `GET /api/model/arena/tasks`), grid 4-16,
+  robots 1-32 (key_door needs an even count, relay at least 2), seed, turns 1-50, max new tokens (128), max tool calls (4),
+  history (1, the World default: earlier exchanges kept per robot), stop when done; run / stop; download episode log.
+  External slots are refused (the robots act through our tool protocol).
+- **Grid** (SVG): cells with coordinates, doors (amber, green ✓ when opened), the triangulate target hidden until dug (a
+  checkbox reveals it for analysis; a failed dig leaves a grey ×), robots as circles coloured by their unique tool and
+  labelled R1..Rn (several on a cell share it on a small ring). Hover or select a robot: its comm range and sight are shaded.
+  Between turns the robots glide (CSS transform transition) with a dotted trail; then each message of the viewed turn draws
+  as an arc from the speaker to every robot that hears it (a dashed ring when nobody is in range); arcs touching the focused
+  robot are bright, the others pale. Below the grid the messages of the turn as text.
+- **Scrubber**: start / previous / play / next / latest and a slider over 0..turns (0 = the start state). While a run
+  streams, the view follows the newest turn unless you step back.
+- **Task panel**: the task's description and roles, grid / robots / comm range / sight / seed / checkpoint, the score at
+  the viewed turn (the hidden target is masked), the events, and at the end the result (solved in k turns, or not;
+  turns played, seconds, robot turns, tool calls, messages; "stopped by you" after a cancel).
+- **Robots**: one compact table for all robots at the viewed turn (position, unique tool, the tool its prompt declared
+  this turn, the calls, what it said and who heard it, its answer), and below it the transcript of ONE selected robot
+  (click a row or a circle): its declared functions, the briefing (`world.system_prompt`, collapsible), and per turn
+  (newest first, the viewed turn open) the situation line (the world's record, not shown to the model), the user turn
+  exactly as the model saw it, the declared tools, the generated turn with its reserved tokens as chips
+  (`TextWithSpecials`: think span, `<|python_call|>` / `<|python_result|>` spans, `<|end|>`), the tool calls with results,
+  and the answer. With 32 robots nothing renders 32 transcripts.
+- **API**: `POST /api/model/arena` with `{slot, task, n, n_agents, seed, turns, max_new_tokens, max_calls, max_history,
+  stop_when_done}` (`ArenaRequest`, validated as above). SSE: `start` (stream id), then `start` from the worker with
+  `state` (`world.state()`), `robots` (id, name, system prompt, tools as `{name, signature, comment}`) and `meta`
+  (settings, checkpoint, device, comm range, sight); one `turn` per turn with `turn`, `seconds`, `records` (the Runner's,
+  plus `agent_id`, `raw` = the generated turn decoded with its specials, and `declared` = the tools that robot's prompt
+  declared, parsed back from its `<|python_def|>` blocks), `state`, and `messages` (`{speaker, speaker_id, pos, text,
+  heard_by, heard_by_ids}`, computed from `world.pending` before the next `deliver()` with the same range rule); `done` with
+  `result` (score, events, turns, seconds, cancelled, meta, messages per turn, the full transcript). `GET
+  /api/model/arena/tasks`: key, title, description, roles, min agents, comm range, sight.
+- **Worker**: `Harness.arena` (a streaming method). The turns are generated by `harness.arena_generate`, the library's
+  sampler and per-turn seed on the slot's own device (`Runner._generate` builds its generator on cuda, so a CPU slot needs
+  this). Cancel is honoured between turns (a turn is one batch); `torch.cuda.empty_cache()` at the end on cuda.
+- **Cost**: one batch of n_agents rows per turn; on the GPU decode is launch-bound, so up to ~32 rows cost about one row
+  per step (docs/results.md §24). On CPU, keep to a few robots: the 336M model does 4 robots × 64 tokens in ~3-4 s a turn.
+- Info cards: `arena`, `arena_key_door`, `arena_relay`, `arena_triangulate`, `arena_range`, `arena_cost`, `arena_scaffold`,
+  `arena_turn`, `arena_grid`.
 
 ## Eval tab (2026-09-26)
 

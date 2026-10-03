@@ -322,6 +322,17 @@ def test_arch_page(server, browser):
     assert not p.errors, p.errors
 
 
+def test_arena_page(server, browser):
+    p = Page(browser, server)
+    p.goto("/arena")
+    p.settle(1200)
+    body = p.page.inner_text("main")
+    assert "Arena" in body and "Robots work in pairs" in body, "the task list loads and describes the selected task"
+    p.cycle_selects()  # slot / task / checkpoint pickers; nothing is loaded, so run stays disabled
+    assert p.page.get_by_role("button", name="run", exact=True).is_disabled()
+    assert not p.errors, p.errors
+
+
 def test_model_page_load_and_generate(server, browser):
     p = Page(browser, server)
     p.goto("/inference")
