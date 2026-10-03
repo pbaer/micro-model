@@ -126,6 +126,10 @@ def test_harness_arena_turn_events_messages_and_stop_at_done(harness, monkeypatc
     assert m == [{"speaker": "R1", "speaker_id": 0, "pos": r1_pos, "text": f"the code is {code}", "heard_by": ["R2"], "heard_by_ids": [1]}]
     assert "Heard by: R2" in turns[1]["records"][0]["calls"][0][1]
     assert "R1 said: 'the code is" in turns[2]["records"][1].get("status", turns[2]["records"][1]["observation"]), "delivered at the next turn"
+    # every record carries its inbox: what was delivered to that robot at the start of the turn
+    assert all(r["heard"] == [] for r in turns[0]["records"]) and all(r["heard"] == [] for r in turns[1]["records"])
+    assert turns[2]["records"][1]["heard"] == [f"R1 said: 'the code is {code}'"] and turns[2]["records"][0]["heard"] == []
+    assert _heard_matches_status(turns)
     assert all(all(x["speaker"] == "R1" for x in t["messages"]) for t in turns), "only the key holder ever speaks"
     assert sum(len(t["messages"]) for t in turns) >= 1
 
@@ -140,6 +144,16 @@ def test_harness_arena_turn_events_messages_and_stop_at_done(harness, monkeypatc
     # without stop_when_done every turn is played
     evs = list(h.arena("A", task="key_door", n=5, n_agents=2, seed=7, turns=res["turns"] + 2, stop_when_done=False))
     assert evs[-1]["result"]["turns"] == res["turns"] + 2 and sum(e["event"] == "turn" for e in evs) == res["turns"] + 2
+
+
+def _heard_matches_status(turns) -> bool:
+    """`heard` is the same inbox the world's status line reports (the viewer falls back to parsing it)."""
+    for t in turns:
+        for r in t["records"]:
+            tail = r["status"].split(". Heard: ", 1)[1].rstrip(".")
+            if tail != ("; ".join(r["heard"]) if r["heard"] else "nothing"):
+                return False
+    return True
 
 
 def test_harness_arena_cancel_between_turns(harness, monkeypatch):
@@ -293,6 +307,10 @@ def test_arena_js_parses_and_is_routed():
     assert 'from "./pages/arena.js"' in src and 'page === "arena"' in src
     arena = (static / "pages" / "arena.js").read_text(encoding="utf-8")
     assert "/api/model/arena" in arena and "TextWithSpecials" in arena
+    assert "/api/model/arena/episodes" in arena and "/api/model/arena/world" in arena, "viewer mode"
+    views = (static / "components" / "arena_views.js").read_text(encoding="utf-8")
+    assert all(f"export function {x}" in views for x in ("Timeline", "MessageLog", "SummaryStrip", "normalizeEpisode", "analyze", "heardOf"))
+    arena += views
     cards = (static / "components" / "cards.js").read_text(encoding="utf-8")
     import re
 
@@ -301,8 +319,83 @@ def test_arena_js_parses_and_is_routed():
     node = shutil.which("node")
     if not node:
         pytest.skip("node not installed")
-    for f in (static / "app.js", static / "pages" / "arena.js", static / "pages" / "model.js", static / "components" / "cards.js"):
+    for f in (static / "app.js", static / "pages" / "arena.js", static / "pages" / "model.js", static / "components" / "cards.js",
+              static / "components" / "arena_views.js"):
         tmp = Path(tempfile.gettempdir()) / "slm_arena_check.mjs"
         shutil.copy(f, tmp)
         r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
         assert r.returncode == 0, f"{f}: {r.stderr[:400]}"
+
+
+# ------------------------------------------------------------------------------------------ viewer: episode files and the rebuilt world
+def _cli_episode(task="relay", n=10, agents=4, seed=0):
+    """A CLI-shaped episode (python -m slm.arena --out) from a real World and a scripted generator: whoever holds say or
+    submit uses it, the rest call their one declared tool."""
+    from slm.arena.world import Runner
+
+    def generate(prompts, sessions):
+        out = []
+        for s in sessions:
+            name = next(iter(s.functions))
+            res = s.functions[name]("the code is 1234") if name in ("say", "submit", "move") else s.functions[name]()
+            out.append({"think": name, "answer": "ok", "calls": [[f"{name}()", str(res)]]})
+        return out
+
+    w = World(task, n, agents, seed)
+    return Runner(w, generate=generate).run(3, stop_when_done=False)
+
+
+def test_arena_episodes_list_read_and_path_safety(tmp_path, monkeypatch):
+    from slm.portal.services import arena_files as AF
+
+    _, c = _client(tmp_path, [])
+    assert c.get("/api/model/arena/episodes").json() == [], "no runs/arena directory yet"
+    d = tmp_path / "runs" / "arena"
+    d.mkdir()
+    cli = _cli_episode()
+    (d / "cli_relay.json").write_text(json.dumps(cli), encoding="utf-8")
+    portal = {"request": {"task": "key_door"}, "meta": {"task": "key_door", "n": 8, "n_agents": 2, "seed": 3, "checkpoint": "final.pt"}, "robots": [],
+              "start": {"turn": 0}, "turns": [{"turn": 1}], "result": {"turns": 1, "score": {"success": True}}}
+    (d / "tab_download.json").write_text(json.dumps(portal), encoding="utf-8")
+    (d / "eval_sweep.json").write_text(json.dumps({"checkpoint": "x.pt", "turns": 16, "results": []}), encoding="utf-8")
+    (d / "broken.json").write_text("{not json", encoding="utf-8")
+    (d / "notes.txt").write_text("not listed", encoding="utf-8")
+    (d / "sub").mkdir()
+    (d / "sub" / "deep.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "runs" / "secret.json").write_text(json.dumps({"secret": 1}), encoding="utf-8")
+
+    eps = {e["name"]: e for e in c.get("/api/model/arena/episodes").json()}
+    assert set(eps) == {"cli_relay.json", "tab_download.json", "eval_sweep.json", "broken.json"}, "top-level *.json only"
+    assert eps["cli_relay.json"] | {"size": 0, "mtime": 0} == {"name": "cli_relay.json", "size": 0, "mtime": 0, "kind": "cli", "task": "relay", "n": 10,
+                                                                  "agents": 4, "seed": 0, "turns": 3, "success": False}
+    assert eps["tab_download.json"]["kind"] == "portal" and eps["tab_download.json"]["agents"] == 2 and eps["tab_download.json"]["success"] is True
+    assert eps["eval_sweep.json"]["kind"] == "summary" and eps["broken.json"]["kind"] == "unreadable"
+
+    assert c.get("/api/model/arena/episodes/cli_relay.json").json() == json.loads(json.dumps(cli))
+    assert c.get("/api/model/arena/episodes/tab_download.json").json()["meta"]["seed"] == 3
+    assert c.get("/api/model/arena/episodes/missing.json").status_code == 404
+    for bad in ("..%2Fsecret.json", "..%5Csecret.json", "notes.txt", ".hidden.json", "a..b.json", "%2E%2E%2Fsecret.json", "sub%2Fdeep.json"):
+        r = c.get(f"/api/model/arena/episodes/{bad}")
+        assert r.status_code in (400, 404) and set(r.json()) == {"detail"}, (bad, r.status_code, r.text)  # never the file outside
+    for bad in ("../secret.json", "..\\secret.json", "C:\\x.json", "/etc/x.json", "sub/deep.json", "x.json\x00", ""):
+        with pytest.raises(ValueError):
+            AF.episode_path(tmp_path / "runs", bad)
+    monkeypatch.setattr(AF, "MAX_EPISODE_BYTES", 100)
+    assert c.get("/api/model/arena/episodes/cli_relay.json").status_code == 413
+
+
+def test_arena_world_endpoint_rebuilds_the_start(tmp_path):
+    _, c = _client(tmp_path, [])
+    v = c.get("/api/model/arena/world", params={"task": "key_door", "n": 8, "n_agents": 4, "seed": 5}).json()
+    w = World("key_door", 8, 4, 5)
+    assert v["state"] == json.loads(json.dumps(w.state())), "World is deterministic: the start a CLI episode was played from"
+    assert v["meta"] == {"task": "key_door", "n": 8, "n_agents": 4, "seed": 5, "comm_range": 3, "sight": 2}
+    assert [r["name"] for r in v["robots"]] == ["R1", "R2", "R3", "R4"] and v["robots"][1]["tools"][-1]["name"] == "open_door"
+    assert v["robots"][0]["system_prompt"] == w.system_prompt(w.agents[0])
+    # the CLI transcript's turn-1 positions agree with the rebuilt start (relay robots never move)
+    cli = _cli_episode("relay", 10, 4, 0)
+    start = c.get("/api/model/arena/world", params={"task": "relay", "n": 10, "n_agents": 4, "seed": 0}).json()["state"]
+    t1 = {r["agent"]: r["pos"] for r in cli["transcript"] if r["turn"] == 1}
+    assert all(list(t1[a["name"]]) == [a["x"], a["y"]] for a in start["agents"])
+    for bad in ({"task": "key_door", "n_agents": 3}, {"task": "relay", "n_agents": 1}, {"task": "maze"}, {"task": "relay", "n": 3}, {"task": "relay", "n_agents": 33}):
+        assert c.get("/api/model/arena/world", params=bad).status_code == 422, bad

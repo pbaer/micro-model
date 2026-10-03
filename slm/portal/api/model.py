@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import anyio
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
@@ -106,11 +106,11 @@ ARENA_TASKS = {
         "roles": "R1: read_code(); last robot: submit(code); the rest only relay", "min_agents": 2, "even_agents": False, "movement": False},
     "triangulate": {
         "title": "Triangulate",
-        "description": "Something is buried at a secret cell. Every robot's sense() returns its own Manhattan distance to it; only R1 has "
+        "description": "Something is buried at a secret cell. Every robot's distance_to_target() returns its own Manhattan distance to it; only R1 has "
                        "dig(), which works only on the target cell. The others must report their position and distance to R1 with "
                        "say(...), and R1 must work out the cell from the distances, walk there and dig. The target is hidden on the grid "
                        "until it is dug up. Hard: it needs arithmetic over several messages.",
-        "roles": "everyone: sense(); R1: dig()", "min_agents": 1, "even_agents": False, "movement": True},
+        "roles": "everyone: distance_to_target(); R1: dig()", "min_agents": 1, "even_agents": False, "movement": True},
 }
 
 
@@ -302,6 +302,45 @@ def arena_tasks() -> list[dict]:
     from slm.arena.world import TASKS  # torch-free at import
 
     return [{"key": k, **ARENA_TASKS[k], "comm_range": TASKS[k].comm_range, "sight": TASKS[k].sight} for k in sorted(TASKS) if k in ARENA_TASKS]
+
+
+@router.get("/arena/episodes")
+def arena_episodes(request: Request) -> list[dict]:
+    """The episode files under `<runs_root>/arena/*.json` for the Arena tab's viewer: name, size, mtime and a peek
+    (`kind`: cli | portal | summary | unknown, task, grid, robots, seed, turns, success). Read-only."""
+    from slm.portal.services.arena_files import list_episodes
+
+    return list_episodes(request.app.state.settings.runs_root)
+
+
+@router.get("/arena/episodes/{name}")
+def arena_episode(request: Request, name: str) -> dict:
+    """One episode file, as written (`python -m slm.arena --out` or the Arena tab's download). Only a bare `*.json` name
+    directly inside `<runs_root>/arena` is served (400 otherwise); 404 when missing, 413 above 64 MiB."""
+    from slm.portal.services.arena_files import read_episode
+
+    try:
+        return read_episode(request.app.state.settings.runs_root, name)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from None
+    except FileNotFoundError:
+        raise HTTPException(404, f"no episode {name!r} under runs/arena") from None
+    except OverflowError as e:
+        raise HTTPException(413, str(e)) from None
+
+
+@router.get("/arena/world")
+def arena_world(task: Literal["key_door", "relay", "triangulate"], n: int = Query(8, ge=4, le=16), n_agents: int = Query(4, ge=1, le=32),
+                seed: int = Query(0, ge=0, le=2**31 - 1), max_history: int = Query(1, ge=0, le=10)) -> dict:
+    """The world an episode was played in, rebuilt without a model (World(task, n, n_agents, seed) is deterministic):
+    the start state, every robot's briefing and tools, comm range and sight. The viewer uses it for CLI episode files,
+    which carry the transcript but not the start state."""
+    from slm.portal.services.arena_files import world_view
+
+    try:
+        return world_view(task, n, n_agents, seed, max_history)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
 
 
 @router.post("/arena")

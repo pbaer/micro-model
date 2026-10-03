@@ -23,6 +23,7 @@ from slm.data.chat import format_chat, parse_assistant
 from slm.data.tokenizer import SlmTokenizer
 from slm.eval.sampling import sample_next
 from slm.model import KVCache, Transformer
+from slm.portal.services.arena_files import robots as arena_robots
 from slm.tools.functions import parse_defs
 from slm.tools.protocol import run_tool, tool_ids
 from slm.tools.pysandbox import PySession
@@ -649,7 +650,8 @@ class Harness:
         task's comm range and sight, and every robot's system prompt and declared tools; one {'event': 'turn'} per turn
         with the Runner's record of every robot (plus `raw`, the generated turn with its reserved tokens), the state
         after the turn, `messages` (what was said this turn and who hears it, see `arena_messages`) and per record
-        `declared` (the tools that robot's prompt declared this turn, parsed from the prompt); then
+        `declared` (the tools that robot's prompt declared this turn, parsed from the prompt) and `heard` (its inbox:
+        the messages delivered to it at the start of the turn, "R1 said: '...'"); then
         {'event': 'done', 'result'} with the score, events, turns, seconds, `cancelled` and the full transcript.
 
         A cancel is honoured between turns (a turn is one batch). External slots are refused: the robots act through
@@ -680,8 +682,7 @@ class Harness:
         meta = {"slot": slot, "checkpoint": s.info.get("name"), "run": s.info.get("run"), "device": s.info.get("device"), "task": task, "n": int(n),
                 "n_agents": int(n_agents), "seed": int(seed), "turns": int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
                 "max_history": int(max_history), "stop_when_done": bool(stop_when_done), "comm_range": world.task.comm_range, "sight": world.task.sight}
-        robots = [{"id": a.id, "name": a.name, "system_prompt": world.system_prompt(a),
-                   "tools": [{"name": d.name, "signature": d.signature, "comment": d.comment} for d in world.decls[a.id]]} for a in world.agents]
+        robots = arena_robots(world)
         yield {"event": "start", "state": world.state(), "robots": robots, "meta": meta}
         t0, cancelled, all_messages = time.time(), False, []
         try:
@@ -695,6 +696,7 @@ class Harness:
                     rec["raw"] = _turn_text(s.tok, ids)
                     rec["agent_id"] = a.id
                     rec["declared"] = declared[a.id] if a.id < len(declared) else None
+                    rec["heard"] = list(a.inbox)  # delivered at the start of this turn: what the robot heard (its inbox)
                 msgs = arena_messages(world)
                 all_messages.append(msgs)
                 yield {"event": "turn", "turn": out["turn"], "seconds": out["seconds"], "records": out["records"], "state": out["state"], "messages": msgs}

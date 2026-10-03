@@ -960,7 +960,7 @@ export const CARDS = {
     <p>The minimum is one turn per hop plus the submit. Read it as a chain: the first turn where a robot repeats a
       <i>different</i> number than it heard is where the message was corrupted.</p>` },
   arena_triangulate: { t: "Task: triangulate", b: html`
-    <p>Something is buried at a secret cell. Every robot's <code>sense()</code> returns its own Manhattan distance to it;
+    <p>Something is buried at a secret cell. Every robot's <code>distance_to_target()</code> returns its own Manhattan distance to it;
       only R1 has <code>dig()</code>, which works only on the target cell. The others report position and distance to R1,
       and R1 must find the cell, walk there and dig. The target is hidden on the grid until it is dug up (the checkbox under
       the grid shows it for analysis; the robots never see it).</p>
@@ -1001,9 +1001,54 @@ export const CARDS = {
       malformed. <b>history</b> is how many earlier exchanges each robot keeps in its conversation; older ones are dropped.</p>` },
   arena_grid: { t: "Reading the grid", b: html`
     <p>Robots are circles coloured by role (their unique tool); robots on one cell share it. Doors are amber squares (green
-      with ✓ once opened). Each turn, robots glide from where they were (a dotted trail) to where they ended, then the
-      messages said that turn draw as arcs from the speaker to every robot that hears it; a dashed ring is a message nobody
-      was in range to hear. Arcs touching the selected robot are bright, the rest pale.</p>
+      with ✓ once opened). Each turn, robots glide from where they were to where they ended; behind each robot its whole
+      path so far is drawn in that robot's own colour, faint at the start (□) and solid near now (trails: all, the selected
+      robot only, or none). Then the messages said that turn draw as arcs from the speaker to every robot that hears it, in
+      the speaker's colour with the text near the middle (all labels when the turn has a few messages, otherwise only for
+      the focused robot); a dashed ring is a message nobody was in range to hear. Arcs touching the selected robot are
+      bright, the rest pale; a message picked in the log is the only bright one. "Comm range of every robot" outlines each
+      robot's hearing diamond. Hover a robot for its tools, its last action and what it heard.</p>
     <p>The scrubber steps through the episode (0 = the start); play replays it. While a run streams, the view follows the
       newest turn unless you step back.</p>` },
+  arena_timeline: { t: "Interaction timeline", b: html`
+    <p>One row per robot, one column per turn: the whole episode at a glance. A cell is what that robot did that turn,
+      as a glyph: an arrow for a move (the direction it actually went), a quote mark for say, ◉ look, R for reading the
+      key or code, ★ for the goal action (open_door, submit, dig; green border when it worked), ◎ distance_to_target,
+      {} for code that called no tool, a dot for no call; "+" means it called more than one tool. A red corner is a call
+      that failed (a sandbox <code>error:</code>, a wrong code); an amber dot a call that ran but did nothing (blocked by
+      the edge, not on the door cell).</p>
+    <p>Messages are arrows from the speaker's cell to each hearer's cell in the <i>next</i> column, because a message said
+      in turn t is delivered at the start of turn t+1; an arrow into "next" was said in the last turn and never heard. A
+      dashed circle is a message nobody was in range to hear. Arrows touching the selected or hovered robot are bright.</p>
+    <p>Hover a cell for the question the robot was asked, its calls and results, what it heard and its answer; click it
+      to select that robot and jump to that turn. The highlighted column is the scrubber's turn; ★ in the header marks
+      turns with an event (a door opened, the code submitted).</p>` },
+  arena_messages: { t: "Message log", b: html`
+    <p>Every <code>say</code> of the episode in order: the turn it was said, the speaker and who hears it (everyone
+      within comm range of where the speaker ended the turn), the text, and "✓ heard t+1" for the turn it was delivered
+      (or "not delivered" when the episode ended first). Filter by a robot (as speaker or hearer) or by text; click a
+      message to jump the scrubber to its turn and light its arc on the grid alone.</p>
+    <p>What each robot heard, turn by turn, is also its inbox in the transcript below ("heard: ..." lines) and the table's
+      heard column. Read a relay as a chain here: the first message whose number differs from the one before it is where
+      the code was corrupted.</p>` },
+  arena_summary: { t: "Episode summary", b: html`
+    <p>Small charts over turns. <b>Task progress</b> is the task's own <code>progress</code>: the share of doors open
+      (key and door), of hops the code has reached (relay), or how much closer the digger is than at the start
+      (triangulate); ★ marks turns with an event. Then messages, tool calls and failed calls per turn. Click a turn to
+      jump there.</p>
+    <p>A healthy episode shows calls every turn, few errors and progress stepping up; flat progress with steady messages
+      usually means a code was mangled in transit, and many errors mean the model is writing code instead of calling the
+      declared tool.</p>` },
+  arena_viewer: { t: "Viewer mode", b: html`
+    <p>Open an episode from a file instead of running one: every view (grid, summary, timeline, message log, table,
+      transcript) is driven from the file, no model needed. The list shows <code>runs/arena/*.json</code>; a file from
+      elsewhere opens with the file picker. Two shapes work: this tab's download (exactly what was streamed) and
+      <code>python -m slm.arena ... --out x.json</code>. A sweep summary from <code>scripts/arena_eval.py</code> has no
+      transcript and cannot be opened.</p>
+    <p>A CLI file carries the transcript only. The start state is rebuilt from World(task, grid, robots, seed), which is
+      deterministic; positions come from the records, messages from the say calls (hearers by the delivery rule), and
+      the per-turn scores are derived from the transcript (the final score is the file's own). The page says so when it
+      had to rebuild.</p>
+    <p class="see">GET /api/model/arena/episodes lists the files, GET /api/model/arena/episodes/{name} serves one, GET
+      /api/model/arena/world rebuilds a start state.</p>` },
 };
