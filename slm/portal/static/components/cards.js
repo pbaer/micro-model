@@ -1006,8 +1006,9 @@ export const CARDS = {
       robot only, or none). Then the messages said that turn draw as arcs from the speaker to every robot that hears it, in
       the speaker's colour with the text near the middle (all labels when the turn has a few messages, otherwise only for
       the focused robot); a dashed ring is a message nobody was in range to hear. Arcs touching the selected robot are
-      bright, the rest pale; a message picked in the log is the only bright one. "Comm range of every robot" outlines each
-      robot's hearing diamond. Hover a robot for its tools, its last action and what it heard.</p>
+      bright, the rest pale; a message picked in the log is the only bright one. The messages control shows arrows with
+      their text, arrows only (a crowded grid), or hides them from the grid altogether; the message log and the list under
+      the grid keep showing them. "Comm range of every robot" outlines each robot's hearing diamond. Hover a robot for its tools, its last action and what it heard.</p>
     <p>The scrubber steps through the episode (0 = the start); play replays it. While a run streams, the view follows the
       newest turn unless you step back.</p>` },
   arena_timeline: { t: "Interaction timeline", b: html`

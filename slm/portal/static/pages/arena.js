@@ -59,7 +59,7 @@ function robotTitle(a, ix, view) {
     + (view > 0 ? `\nturn ${view}: ${act ? KINDS[act.kind].label.split(" (")[0] : "-"}${act && act.err ? " (error)" : ""}\n  ${last}\nheard: ${heard.length ? heard.map((l) => l.line).join("\n  ") : "nothing"}` : "");
 }
 
-function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHover, showTarget, trails, showRange, focusMsg }) {
+function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHover, showTarget, trails, showRange, showMsgs, focusMsg }) {
   if (!state) return html`<div class="arena-empty muted">Run an episode to see the grid.</div>`;
   const W = PAD + n * C + 4;
   const agents = state.agents;
@@ -72,9 +72,9 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
   const sc = state.score || {};
   const target = state.task === "triangulate" && Array.isArray(sc.target) ? sc.target : null;
   const revealed = target && (sc.success || showTarget);
-  const msgs = turn ? turn.messages || [] : [];
+  const msgs = turn && showMsgs !== "none" ? turn.messages || [] : [];  // "all" = arcs + text, "arcs" = arcs only, "none" = hidden
   const msgOn = (m, i) => (focusMsg ? focusMsg === `${view}:${i}` : focus == null || focus === m.speaker_id || (m.heard_by_ids || []).includes(focus));
-  const labelAll = msgs.length <= 6;
+  const labelAll = showMsgs === "all" && msgs.length <= 6;
   const cc = (p, id) => [PAD + p[0] * C + C / 2 + ((id % 5) - 2) * 2.2, PAD + p[1] * C + C / 2 + ((Math.floor(id / 5) % 5) - 2) * 2.2];
   const trailIds = trails === "all" ? agents.map((a) => a.id) : trails === "sel" && sel != null ? [sel] : [];
   return html`<svg class="arena-grid" viewBox=${`0 0 ${W} ${W}`} role="img" aria-label=${`${n} by ${n} arena grid, turn ${state.turn}`}>
@@ -124,7 +124,7 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
       const s = agents.find((a) => a.id === m.speaker_id), sp = s && spots[s.id];
       if (!sp) return null;
       const hot = msgOn(m, i), col = robotColor(m.speaker_id);
-      const label = (labelAll || hot && (focus != null || focusMsg)) && html`<text class=${"arena-arc-label" + (hot ? "" : " dim")} style=${`fill:${col}`}>${clip(m.text, 22)}</text>`;
+      const label = (labelAll || showMsgs === "all" && hot && (focus != null || focusMsg)) && html`<text class=${"arena-arc-label" + (hot ? "" : " dim")} style=${`fill:${col}`}>${clip(m.text, 22)}</text>`;
       if (!(m.heard_by_ids || []).length) {
         return html`<g key=${`m${view}-${i}`}><circle class=${"arena-nobody" + (hot ? "" : " dim")} style=${`stroke:${col}`} cx=${sp.cx} cy=${sp.cy} r=${sp.r + 4}><title>${m.speaker}: "${m.text}" (nobody within range)</title></circle>
           ${label && html`<g transform=${`translate(${sp.cx},${sp.cy - sp.r - 8})`}>${label}</g>`}</g>`;
@@ -260,6 +260,7 @@ export function ArenaPage() {
   const [showTarget, setShowTarget] = useState(false);
   const [trails, setTrails] = useState("all");
   const [showRange, setShowRange] = useState(false);
+  const [showMsgs, setShowMsgs] = useState("all");  // messages on the grid: all (arcs + text) / arcs / none
   const [focusMsg, setFocusMsg] = useState(null);
   const [now, setNow] = useState(Date.now());
   const abortRef = useRef(null);
@@ -413,7 +414,7 @@ export function ArenaPage() {
       <div>
         <h2>Grid<${Info} k="arena_grid" /></h2>
         <${ArenaGrid} n=${meta.n} state=${state} turn=${turn} view=${view} meta=${meta} ix=${ix} focus=${focus} sel=${sel} setSel=${setSel} setHover=${setHover} showTarget=${showTarget}
-          trails=${trails} showRange=${showRange} focusMsg=${focusMsg} />
+          trails=${trails} showRange=${showRange} showMsgs=${showMsgs} focusMsg=${focusMsg} />
         <div class="arena-scrub">
           <button onClick=${() => scrub(0)} disabled=${view === 0} title="start">⏮</button>
           <button onClick=${() => scrub(view - 1)} disabled=${view === 0} title="previous turn">◀</button>
@@ -426,6 +427,8 @@ export function ArenaPage() {
         <div class="row arena-toggles">
           <span class="grp"><span class="muted">trails</span>
             ${[["all", "all"], ["sel", "selected robot"], ["none", "none"]].map(([k, l]) => html`<label key=${k} class="muted"><input type="radio" name="arena-trails" checked=${trails === k} onChange=${() => setTrails(k)} /> ${l}</label>`)}</span>
+          <span class="grp"><span class="muted">messages</span>
+            ${[["all", "arrows + text"], ["arcs", "arrows only"], ["none", "hidden"]].map(([k, l]) => html`<label key=${k} class="muted" title=${k === "none" ? "hide the messages on the grid (the log and the list below still show them)" : k === "arcs" ? "draw the arrows without the message text" : "arrows with the message text at the middle"}><input type="radio" name="arena-msgs" checked=${showMsgs === k} onChange=${() => setShowMsgs(k)} /> ${l}</label>`)}</span>
           <label class="muted"><input type="checkbox" checked=${showRange} onChange=${(e) => setShowRange(e.target.checked)} /> comm range of every robot</label>
           ${state && state.task === "triangulate" && html`<label class="muted"><input type="checkbox" checked=${showTarget} onChange=${(e) => setShowTarget(e.target.checked)} /> show the hidden target</label>`}
           ${focusMsg && html`<button onClick=${() => setFocusMsg(null)} title="show every message of the turn again">clear message highlight</button>`}
@@ -433,7 +436,7 @@ export function ArenaPage() {
         <div class="legend arena-legend">
           ${roles.map((r) => html`<span key=${r.label}><span class="arena-dot" style=${`background:${r.color}`}></span>${r.label}</span>`)}
           <span><span class="arena-sw comm"></span>comm range of the selected / hovered robot</span><span><span class="arena-sw sight"></span>its sight</span>
-          <span><span class="arena-sw arc"></span>message this turn (speaker → hearer, coloured per speaker, text at the middle)</span><span><span class="arena-sw nobody"></span>said to nobody</span>
+          <span><span class="arena-sw arc"></span>message this turn (speaker → hearer, coloured per speaker, text at the middle; toggle)</span><span><span class="arena-sw nobody"></span>said to nobody</span>
           <span><span class="arena-sw trail"></span>path so far (faint = early; □ = start)</span><span><span class="arena-sw range"></span>comm range (toggle)</span>
           <span><span class="arena-sw door"></span>door</span><span><span class="arena-sw door open"></span>door opened</span>
         </div>

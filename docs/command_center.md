@@ -300,7 +300,8 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   turn draws as an arc from the speaker to every robot that hears it, in the speaker's colour, with the text (22 chars) at
   the arc's midpoint (every label when the turn has at most 6 messages, else only the focused robot's); a dashed ring when
   nobody is in range. Arcs touching the focused robot are bright, the others pale; a message picked in the log is the only
-  bright one ("clear message highlight" undoes it). **Comm range of every robot** (checkbox) outlines each robot's
+  bright one ("clear message highlight" undoes it). **Messages** (radio): arrows + text (default), arrows only, or hidden on
+  the grid (the message log and the per-turn list below the grid are unaffected). **Comm range of every robot** (checkbox) outlines each robot's
   Manhattan diamond, clipped to the grid. Opened doors turn green with ✓, the dig target appears when dug up. The legend
   covers roles, shading, arcs, trails, ranges and doors. Below the grid the messages of the turn as text.
 - **Scrubber**: start / previous / play / next / latest and a slider over 0..turns (0 = the start state). While a run

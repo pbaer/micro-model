@@ -399,3 +399,13 @@ def test_arena_world_endpoint_rebuilds_the_start(tmp_path):
     assert all(list(t1[a["name"]]) == [a["x"], a["y"]] for a in start["agents"])
     for bad in ({"task": "key_door", "n_agents": 3}, {"task": "relay", "n_agents": 1}, {"task": "maze"}, {"task": "relay", "n": 3}, {"task": "relay", "n_agents": 33}):
         assert c.get("/api/model/arena/world", params=bad).status_code == 422, bad
+
+
+def test_arena_grid_has_a_messages_toggle():
+    """The grid's messages control (arrows + text / arrows only / hidden) is wired from the page state into the grid, and
+    hiding it empties the drawn message list rather than the data (the log below the grid keeps them)."""
+    arena = Path("slm/portal/static/pages/arena.js").read_text(encoding="utf-8")
+    assert 'name="arena-msgs"' in arena and '["none", "hidden"]' in arena and '["arcs", "arrows only"]' in arena
+    assert "showMsgs=${showMsgs}" in arena, "the page passes the toggle to the grid"
+    assert 'turn && showMsgs !== "none" ? turn.messages' in arena, "hidden draws no arcs"
+    assert 'const labelAll = showMsgs === "all" && msgs.length <= 6' in arena, "arrows only draws no text"
