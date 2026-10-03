@@ -177,3 +177,11 @@ def test_runner_gives_each_robot_a_fresh_session_with_only_the_turn_tool():
     r.step(); r.step()
     assert seen[0][0] == ["read_key"] and seen[0][1] == ["move"], "turn 1: the key holder has read_key only, the opener move only"
     assert all(len(fs) == 1 for turn in seen for fs in turn), "never more than the turn's tool"
+
+
+def test_events_and_done_turn_are_one_based_like_the_records():
+    w = World("relay", n=10, n_agents=2, seed=0)
+    code = w.task.code
+    w.turn = 3  # the fourth turn is running
+    assert "Correct" in _env(w, w.agents[1])["submit"](code)
+    assert w.task.score(w)["done_turn"] == 4 and w.task.events[-1].startswith("turn 4:")

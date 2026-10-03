@@ -66,7 +66,9 @@ def _direction(frm: tuple[int, int], to: tuple[int, int]) -> str:
 
 # ------------------------------------------------------------------------------------------------ tasks
 class Task:
-    """A task defines the world's objects, which robot gets which unique tool, the goal text, and the checker."""
+    """A task defines the world's objects, which robot gets which unique tool, the goal text, and the checker.
+    `done_at` and the events use the 1-based turn (the turn the records carry; `World.turn` is 0-based while a
+    turn is running)."""
 
     name = "base"
     comm_range = 3
@@ -161,9 +163,9 @@ class KeyDoor(Task):
                 return f"You are at {_a.pos}; door {_i + 1} is at {self._door_cell(_i)}. Move there first."
             if _code_in(code) == self.codes[_i]:
                 if _i not in self.opened:
-                    self.opened.add(_i); self.events.append(f"turn {world.turn}: {_a.name} opened door {_i + 1}")
+                    self.opened.add(_i); self.events.append(f"turn {world.turn + 1}: {_a.name} opened door {_i + 1}")
                     if len(self.opened) == self.pairs and self.done_at is None:
-                        self.done_at = world.turn
+                        self.done_at = world.turn + 1
                 return f"Door {_i + 1} is open. Task complete."
             return f"Wrong code {code!r}. Ask {self._partner(_a).name} for the code."
         return [FunctionDecl("open_door", "def open_door(code: str) -> str", f"Opens door {i + 1} when you stand on its cell and give the right 4-digit code. Only you have this tool.", open_door)]
@@ -241,7 +243,7 @@ class Relay(Task):
             def submit(code: str, _a=agent):
                 self.submitted = _code_in(code)
                 if self.submitted == self.code and self.done_at is None:
-                    self.done_at = world.turn; self.events.append(f"turn {world.turn}: {_a.name} submitted the right code")
+                    self.done_at = world.turn + 1; self.events.append(f"turn {world.turn + 1}: {_a.name} submitted the right code")
                 return "Correct! Task complete." if self.submitted == self.code else f"{code!r} is not the code. Keep listening."
             return [FunctionDecl("submit", "def submit(code: str) -> str", "Submits the 4-digit code you were told. Only you have this tool.", submit)]
         return []
@@ -305,7 +307,7 @@ class Triangulate(Task):
                 self.dug_at = _a.pos
                 if _a.pos == self.target:
                     if self.done_at is None:
-                        self.done_at = world.turn; self.events.append(f"turn {world.turn}: {_a.name} dug up the target")
+                        self.done_at = world.turn + 1; self.events.append(f"turn {world.turn + 1}: {_a.name} dug up the target")
                     return "You found it! Task complete."
                 return f"Nothing here at {_a.pos}. The target is {dist(_a.pos, self.target)} steps away."
             out.append(FunctionDecl("dig", "def dig() -> str", "Digs at your current cell. Only you have this tool.", dig))
