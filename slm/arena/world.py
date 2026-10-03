@@ -172,7 +172,7 @@ class KeyDoor(Task):
     def question(self, world, agent):
         i = agent.id // 2
         partner = self._partner(agent)
-        heard = [m for m in agent.inbox if re.search(r"\d{4}", m)]
+        heard = [m for m in agent.inbox if re.search(r"\d{4}", m) and m.startswith(partner.name + " ")]
         if heard:
             agent.memory["code_msg"] = heard[-1]
         if agent.id % 2 == 0:
@@ -189,7 +189,8 @@ class KeyDoor(Task):
             return f"Door {i + 1} is at {door} and you are at {agent.pos}. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         msg = agent.memory.get("code_msg")
         if msg:
-            return f"You are on door {i + 1}'s cell. Earlier {msg}. Use open_door() with that code to open the door. What does open_door() return?", ["open_door"]
+            code = re.search(r"\d{4}", msg).group(0)
+            return f"You are on door {i + 1}'s cell. Earlier {msg}. Call open_door(\"{code}\") to open the door. What does open_door() return?", ["open_door"]
         return f"You are on door {i + 1}'s cell but have not heard the code yet. Use look() to see who is near. What does look() return?", ["look"]
 
     def after_turn(self, world, agent, record):
@@ -260,7 +261,7 @@ class Relay(Task):
         if msg:
             code = re.search(r"\d{4}", msg).group(0)
             if agent.id == last:
-                return f"Earlier {msg}. Use submit() with that code. What does submit() return?", ["submit"]
+                return f"Earlier {msg}. Call submit(\"{code}\") to submit it. What does submit() return?", ["submit"]
             return f"Earlier {msg}. Pass it on: call say(\"the code is {code}\"). What does say() return?", ["say"]
         return "You have not heard the code yet. Use look() to see who is near. What does look() return?", ["look"]
 
@@ -294,7 +295,7 @@ class Triangulate(Task):
         from slm.tools.functions import FunctionDecl
 
         self.world = world
-        out = [FunctionDecl("sense", "def sense() -> int", "Your distance in steps to the buried target.", lambda _a=agent: dist(_a.pos, self.target))]
+        out = [FunctionDecl("sense", "def sense() -> int", "Returns your distance in steps to the buried target. Only sense() knows it.", lambda _a=agent: dist(_a.pos, self.target))]
         if agent.id == 0:
             def dig(_a=agent):
                 self.dug_at = _a.pos
@@ -315,15 +316,15 @@ class Triangulate(Task):
         if agent.id != 0:
             dsn = dist(agent.pos, self.target)
             if not agent.memory.get("sensed"):
-                return "How far is the buried target from you? Use sense() to find out.", ["sense"]
+                return "How far away is the buried target? Use sense() to find out.", ["sense"]
             if dist(agent.pos, digger.pos) <= self.comm_range:
-                return (f"Your sense() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
+                return (f"sense() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
                         f"What does say() return?"), ["say"]
             d = _direction(agent.pos, digger.pos)
             return f"Robot {digger.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         cur = dist(agent.pos, self.target)
         if cur == 0:
-            return "Your sense() says 0: the target is right here. Use dig() to dig it up. What does dig() return?", ["dig"]
+            return "sense() says 0: the target is right here. Call dig() to dig it up. What does dig() return?", ["dig"]
         reports = [m for m in agent.inbox if "distance" in m]
         if reports:
             agent.memory.setdefault("reports", []).extend(reports)
@@ -334,7 +335,7 @@ class Triangulate(Task):
         else:
             d = self.rng.choice([x for x in DIRS if x != agent.memory.get("dir")])
         agent.memory["dir"] = d
-        return f"Your sense() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
+        return f"sense() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
 
     def after_turn(self, world, agent, record):
         for code_txt, result in record.get("calls", []):
