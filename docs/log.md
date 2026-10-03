@@ -892,3 +892,19 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   re-measured finished stages after a relaunch (fixed: guarded), a watcher died on a stale traceback. Test-order flake:
   four family-split tests fail only when `test_rl_trainer` runs first (pass alone) -- open.
 - Everything is in the Evals tab; M10 final.pt backed up beside the M9 output. Shipping decision pending Peter.
+
+## 2026-10-02 — inference benchmarks; the arena
+
+- Inference throughput of the M10 checkpoint (§24, §24a): decode is launch-bound (75 tok/s single stream, 13 ms a
+  step), so batching is nearly free up to 32 rows and the per-row cost is a slope (not a knee) to 64; the ceiling is
+  a ~15 GiB reservation line that moves with prompt length (last full-speed batch 64 / 56 / 48 / 40 at 256 / 1K / 2K /
+  3K-token prompts); memory model reserved ~ 0.7 + B x (0.19 + 0.052 L/1024) GiB; safe batch 65 / 55 / 45 / 38 / 34
+  at 256 / 1K / 2K / 3K / 4K prompts. torch.compile / CUDA graphs and an int8 KV cache were discussed and declined.
+- The arena (§25): built in a day with five prompt iterations, the decisive one a six-case standalone diagnostic of
+  what the model does with each prompt part (memory note: scaffold to the trained shape). Result: a 31-hop message
+  relay in the minimum turns, 4/5 at 32 robots; key/door two thirds of doors at scale; triangulate 20%. Arena tab
+  (two Opus subagents): live grid, swimlane timeline with message arrows, message log, trails, summary strip, viewer
+  for saved episodes, verified at 32 robots. Core fixes on the way: the per-turn question cached (it had side effects
+  and ran three times), a fresh sandbox per robot per turn with only that turn's tool, 1-based done_turn/events,
+  robot-count validation. Known: a pre-existing e2e failure on the Architecture page ("undefined"); a test-order flake
+  in the family-split tests.

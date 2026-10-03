@@ -127,13 +127,14 @@ context-extended base once the curriculum settles.
    quality (run 3); widening the tool reward gap does not fix the tool-use cost (run 4); training the
    out-of-mix families in the mix does, completely (run 5). Recipe settled: verifiable rewards for every
    behaviour you want including the negative ones, and every contested surface form inside the mix.
-2b. **Goal 5, the swarm** — in progress. Round 1 (2026-09-26, §17-18): sample / collapse / verify / single-prompt
-   select; the selector never beat majority, trained or not, though the RL run built for it (run 6) became the
-   M9 output. Round 2 (2026-09-27, Peter's redesign, §19): a single-elimination **tournament** of pairwise
-   comparisons; the atomic pairwise decision stayed at chance through SFT and RL (0.507 / 0.487). Selection by
-   the model's own judgment is closed at this size. Next, in cost order (§19): cross-method agreement as a
-   mechanical selector; a 10x larger pairwise set to test data-starvation; or parallel sampling only where an
-   external verifier exists. Portal swarm mode shows both paths with a live bracket.
+2b. **Goal 5, the swarm** — round 1 (§17-18) and the tournament (§19) closed selection-by-judgment at this size.
+   Round 3 (2026-10-02, §25): the **arena** -- up to 32 robots on a grid, each a conversation with the model, one
+   batched generation per turn, range-limited `say`, unique declared tools. Scaffolded to the model's trained
+   prompt shape (one declared tool per turn, a bare question naming the call), the untrained M10 model relays a
+   code across 31 robots in the minimum turns (4/5 episodes) and cooperates on key/door; it executes and transfers
+   values reliably but does not plan. Next rung: questions that ask for the plan with the tool set declared (needs
+   training data in that shape), and tasks whose checker is the environment's. Arena tab: timeline, message log,
+   trails, viewer for saved episodes.
 2c. **Local competitor models** — done (2026-09-27, §20): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
    gpt2-medium scored locally by our evals, rows in the Evals tab, loadable in the Inference tab. Verdict: on
    public benchmarks we are a 135M-class model (the training-token ordering, 10B vs 2-18T), judged chat sits

@@ -1493,3 +1493,60 @@ With four prompt lengths the memory model is usable: **reserved ~ 0.7 + B x (0.1
 slope 0.20 / 0.24 / 0.29 / 0.35 GiB at 256 / 1K / 2K / 3K, residuals < 0.4 GiB). Solved for 14 GiB, the safe batch is
 **65 rows at 256-token prompts, 55 at 1K, 45 at 2K, 38 at 3K, 34 at a full 4K prompt**; the measured last-good points
 (64 / 56 / 48 / 40) sit just above it. The 48-row cap suggested earlier holds only for prompts up to ~1.5K.
+
+## 25. The arena: 32 robots on a grid, cooperating through range-limited messages and unique tools (2026-10-02)
+
+Goal 5 as a *system*: every robot is a conversation with the M10 model, one batched generation per turn over all
+robots (`slm/arena/world.py`, the Arena tab). Tasks are verifiable and need cooperation by construction: `key_door`
+(pairs: only the key holder can `read_key()`, only its partner can `open_door(code)`, and only on the door cell),
+`relay` (a line of robots two cells apart, comm range 2: a code must hop robot to robot to the one with `submit()`),
+`triangulate` (every robot's `distance_to_target()`, one robot's `dig()`). Nothing is trained; the question was what
+the model already does.
+
+### 25a. What it took to get the model to act (the scaffold)
+
+Three prompt designs produced empty think spans and echoed observations. A six-case standalone diagnostic settled it
+(log, 2026-10-02): the model calls a declared function correctly when **exactly one** is declared and the question
+names it ("Use read_key() to find out."), writes unrelated code with four declared, *describes* the tool instead of
+calling it when a briefing or a "Turn 1. You are at ... In sight ... You heard ..." preamble precedes the question,
+cannot carry its own previous result across turns ("the code you found" -> a copied placeholder), and copies any
+value stated in the current question into the right call. The arena therefore scaffolds: the task scripts each robot's
+sub-goal as a bare question naming one tool, restates what the robot heard or what its last call returned, declares
+only that tool (a fresh sandbox session per turn), and the code-taking tools accept the digits inside a copied sentence.
+Planning is the environment's; executing the call and transferring the value it heard are the model's.
+
+### 25b. The sweep (`scripts/arena_eval.py`, 5 seeds, 16 turns; relay gets robots + 2)
+
+| task | robots | grid | solved | progress | mean solve turn | s / episode | per-seed progress |
+|---|---|---|---|---|---|---|---|
+| key_door | 4 | 8 | **0.60** | 0.80 | 8.3 | 15 | OK OK .50 OK .50 |
+| key_door | 16 | 12 | 0.00 | 0.63 | -- | 67 | .88 .75 .62 .50 .38 |
+| key_door | 32 | 16 | 0.00 | 0.69 | -- | 121 | .38 .81 .81 .81 .62 |
+| relay | 4 | 10 | **0.80** | 0.80 | 4.0 (the minimum) | 10 | OK OK OK 0 OK |
+| relay | 16 | 34 | 0.40 | 0.80 | 16.0 | 69 | OK 1.0 OK 0 1.0 |
+| relay | 32 | 66 | **0.80** | 0.80 | 32.0 (the minimum) | 190 | OK OK OK 0 OK |
+| triangulate | 4 | 8 | 0.20 | 0.62 | 2.0 | 22 | .75 OK .40 .71 .25 |
+| triangulate | 16 | 12 | 0.20 | 0.78 | 8.0 | 79 | .75 .67 OK .83 .67 |
+| triangulate | 32 | 16 | 0.00 | 0.63 | -- | 120 | .19 .80 .80 .80 .57 |
+
+(progress: share of doors opened / share of the chain the code reached / fraction of the digger's starting distance
+closed.) Tool-call error rate is near zero on key_door and relay (17 and 24 errors in ~2,000 and ~1,000 robot turns).
+
+- **The relay is the result.** A 31-hop message chain -- each hop a robot hearing the code and saying it to the next --
+  completed in the minimum 32 turns in 4 of 5 episodes with 32 robots, and 4 of 5 with 4 robots. The failures are one
+  seed each where a robot's `say` call put the result in a variable instead of speaking, and two 16-robot episodes
+  where the code reached the last robot (progress 1.0) and the submit did not happen inside the budget.
+- **key_door cooperates; the grid is the limit.** At 16 and 32 robots two thirds of the doors open (read -> tell ->
+  walk -> open with the heard code), and no episode finishes every door in 16 turns because walking distances on the
+  12x12 / 16x16 grids exceed the budget, not because a pair failed to talk.
+- **Triangulate is the hard one** and honest about it: 20% solved at 4 and 16 robots once its questions were rephrased
+  (a tool named `sense` read as a variable to the model; "How far away ...?" invited arithmetic), ~0.7 progress, and
+  most of what the model does there is executing a scripted gradient walk.
+- **Cost.** One batched turn is ~1 s at 4 robots, ~4 s at 16, ~7.5 s at 32 (prompts of 100-200 tokens, 128 new tokens),
+  matching §24: the swarm's batch is nearly free.
+
+What this says about goal 5: with scaffolding to the shape it was trained on, the 336M model is a reliable
+*executor* in a multi-agent system -- it makes the right call and moves the right value between robots across 31 hops
+-- and not yet a *planner*: the next rung is to let the question ask for the plan ("what should you do next?") with the
+tool set declared, which today collapses into code soup. The Arena tab (§command_center) shows every hop, trail and
+call; the sweep's episodes open in its viewer.
