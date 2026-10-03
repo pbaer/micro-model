@@ -162,6 +162,8 @@ class KeyDoor(Task):
             if _code_in(code) == self.codes[_i]:
                 if _i not in self.opened:
                     self.opened.add(_i); self.events.append(f"turn {world.turn}: {_a.name} opened door {_i + 1}")
+                    if len(self.opened) == self.pairs and self.done_at is None:
+                        self.done_at = world.turn
                 return f"Door {_i + 1} is open. Task complete."
             return f"Wrong code {code!r}. Ask {self._partner(_a).name} for the code."
         return [FunctionDecl("open_door", "def open_door(code: str) -> str", f"Opens door {i + 1} when you stand on its cell and give the right 4-digit code. Only you have this tool.", open_door)]

@@ -48,7 +48,7 @@ def main() -> None:
                 print(f"{task:12s} k={k:2d} n={n:2d} seed={seed}: {'OK ' if eps[-1]['success'] else '-- '} turns {res['turns']:2d} done {res['score'].get('done_turn')} "
                       f"calls/turn {eps[-1]['calls_per_turn']} errors {errors} [{res['seconds']}s]", flush=True)
                 import torch; torch.cuda.empty_cache()
-            done = [e["done_turn"] for e in eps if e["success"]]
+            done = [e["done_turn"] if e["done_turn"] is not None else e["turns"] for e in eps if e["success"]]
             rows.append({"task": task, "agents": k, "n": n, "episodes": eps, "success_rate": round(sum(e["success"] for e in eps) / len(eps), 2),
                          "mean_done_turn": round(statistics.fmean(done), 1) if done else None, "mean_seconds": round(statistics.fmean(e["seconds"] for e in eps), 1)})
             print(f"== {task} k={k}: success {rows[-1]['success_rate']} mean done turn {rows[-1]['mean_done_turn']} mean s/episode {rows[-1]['mean_seconds']}", flush=True)
