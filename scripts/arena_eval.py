@@ -21,7 +21,7 @@ def main() -> None:
     ap.add_argument("--tasks", default="key_door,relay,triangulate")
     ap.add_argument("--agents", default="4,16,32")
     ap.add_argument("--seeds", type=int, default=5)
-    ap.add_argument("--turns", type=int, default=16)
+    ap.add_argument("--turns", type=int, default=16, help="turn budget; relay gets max(this, hops + 3) since the chain needs one turn per hop")
     ap.add_argument("--n", type=int, default=0, help="grid size; 0 = sized to the robot count")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -40,18 +40,19 @@ def main() -> None:
             for seed in range(a.seeds):
                 w = World(task, n, k, seed)
                 r = Runner(w, model, tok)
-                res = r.run(a.turns)
+                res = r.run(max(a.turns, k + 2) if task == "relay" else a.turns)
                 calls = sum(x["n_calls"] for x in res["transcript"]); turns_rows = len(res["transcript"])
                 errors = sum(1 for x in res["transcript"] for c in x["calls"] if str(c[1]).startswith("error"))
-                eps.append({"seed": seed, "success": bool(res["score"].get("success")), "done_turn": res["score"].get("done_turn"), "turns": res["turns"],
+                eps.append({"seed": seed, "success": bool(res["score"].get("success")), "progress": res["score"].get("progress"), "done_turn": res["score"].get("done_turn"), "turns": res["turns"],
                             "score": res["score"], "calls_per_turn": round(calls / max(1, turns_rows), 2), "call_errors": errors, "seconds": res["seconds"]})
                 print(f"{task:12s} k={k:2d} n={n:2d} seed={seed}: {'OK ' if eps[-1]['success'] else '-- '} turns {res['turns']:2d} done {res['score'].get('done_turn')} "
                       f"calls/turn {eps[-1]['calls_per_turn']} errors {errors} [{res['seconds']}s]", flush=True)
                 import torch; torch.cuda.empty_cache()
             done = [e["done_turn"] if e["done_turn"] is not None else e["turns"] for e in eps if e["success"]]
             rows.append({"task": task, "agents": k, "n": n, "episodes": eps, "success_rate": round(sum(e["success"] for e in eps) / len(eps), 2),
+                         "mean_progress": round(statistics.fmean(e["progress"] or 0 for e in eps), 2),
                          "mean_done_turn": round(statistics.fmean(done), 1) if done else None, "mean_seconds": round(statistics.fmean(e["seconds"] for e in eps), 1)})
-            print(f"== {task} k={k}: success {rows[-1]['success_rate']} mean done turn {rows[-1]['mean_done_turn']} mean s/episode {rows[-1]['mean_seconds']}", flush=True)
+            print(f"== {task} k={k}: success {rows[-1]['success_rate']} progress {rows[-1]['mean_progress']} mean done turn {rows[-1]['mean_done_turn']} mean s/episode {rows[-1]['mean_seconds']}", flush=True)
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps({"checkpoint": a.checkpoint, "turns": a.turns, "results": rows}, indent=1), encoding="utf-8")

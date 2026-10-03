@@ -159,3 +159,17 @@ def test_question_is_computed_once_per_turn_and_counts_are_validated():
     for task, k in (("key_door", 3), ("key_door", 1), ("relay", 1), ("triangulate", 33)):
         with pytest.raises(ValueError):
             World(task, n=8, n_agents=k, seed=0)
+
+
+def test_runner_gives_each_robot_a_fresh_session_with_only_the_turn_tool():
+    w = World("key_door", n=5, n_agents=2, seed=1)
+    seen = []
+
+    def scripted(prompts, sessions):
+        seen.append([sorted(s.functions) for s in sessions])
+        return [{"calls": [], "answer": "", "think": ""} for _ in sessions]
+
+    r = Runner(w, model=None, tok=None, generate=scripted)
+    r.step(); r.step()
+    assert seen[0][0] == ["read_key"] and seen[0][1] == ["move"], "turn 1: the key holder has read_key only, the opener move only"
+    assert all(len(fs) == 1 for turn in seen for fs in turn), "never more than the turn's tool"

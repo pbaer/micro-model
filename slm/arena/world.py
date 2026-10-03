@@ -169,7 +169,8 @@ class KeyDoor(Task):
         return [FunctionDecl("open_door", "def open_door(code: str) -> str", f"Opens door {i + 1} when you stand on its cell and give the right 4-digit code. Only you have this tool.", open_door)]
 
     def score(self, world):
-        return {"opened": len(self.opened), "of": self.pairs, "success": len(self.opened) == self.pairs, "done_turn": self.done_at}
+        return {"opened": len(self.opened), "of": self.pairs, "success": len(self.opened) == self.pairs, "done_turn": self.done_at,
+                "progress": round(len(self.opened) / self.pairs, 2)}
 
     def question(self, world, agent):
         i = agent.id // 2
@@ -246,8 +247,9 @@ class Relay(Task):
         return []
 
     def score(self, world):
+        reached = max([a.id for a in world.agents if a.memory.get("code_msg") or a.memory.get("code")] or [0])
         return {"submitted": self.submitted, "code": self.code, "success": self.submitted == self.code, "done_turn": self.done_at,
-                "hops": len(world.agents) - 1}
+                "hops": len(world.agents) - 1, "hops_reached": reached, "progress": round(reached / max(1, len(world.agents) - 1), 2)}
 
     def question(self, world, agent):
         last = len(world.agents) - 1
@@ -310,34 +312,37 @@ class Triangulate(Task):
         return out
 
     def score(self, world):
+        start = world.agents[0].memory.get("start_distance")
+        cur = dist(world.agents[0].pos, self.target)
         return {"target": self.target, "dug_at": self.dug_at, "success": self.dug_at == self.target, "done_turn": self.done_at,
-                "digger_distance": dist(world.agents[0].pos, self.target)}
+                "digger_distance": cur, "progress": round(1 - cur / start, 2) if start else 0.0}
 
     def question(self, world, agent):
         digger = world.agents[0]
         if agent.id != 0:
             dsn = dist(agent.pos, self.target)
             if not agent.memory.get("sensed"):
-                return "How far away is the buried target? Use distance_to_target() to find out.", ["distance_to_target"]
+                return "What does distance_to_target() return? Use distance_to_target() to find out.", ["distance_to_target"]
             if dist(agent.pos, digger.pos) <= self.comm_range:
-                return (f"distance_to_target() said {dsn}. Tell robot {digger.name}: call say(\"I am at {agent.pos}, distance {dsn}\"). "
+                return (f"Tell robot {digger.name} your distance: call say(\"I am at {agent.pos}, distance {dsn}\"). "
                         f"What does say() return?"), ["say"]
             d = _direction(agent.pos, digger.pos)
             return f"Robot {digger.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
         cur = dist(agent.pos, self.target)
         if cur == 0:
-            return "distance_to_target() says 0: the target is right here. Call dig() to dig it up. What does dig() return?", ["dig"]
+            return "You are standing right on the buried target. Call dig() to dig it up. What does dig() return?", ["dig"]
         reports = [m for m in agent.inbox if "distance" in m]
         if reports:
             agent.memory.setdefault("reports", []).extend(reports)
         last = agent.memory.get("last_sense")
+        agent.memory.setdefault("start_distance", cur)
         agent.memory["last_sense"] = cur
         if last is None or cur < last:
             d = agent.memory.get("dir") or self.rng.choice(list(DIRS))
         else:
             d = self.rng.choice([x for x in DIRS if x != agent.memory.get("dir")])
         agent.memory["dir"] = d
-        return f"distance_to_target() says the target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
+        return f"The target is {cur} steps away. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"]
 
     def after_turn(self, world, agent, record):
         for code_txt, result in record.get("calls", []):
@@ -481,6 +486,7 @@ class Runner:
     def step(self) -> dict:
         from slm.data.chat import format_chat, parse_assistant
         from slm.tools.functions import functions_env
+        from slm.tools.pysandbox import PySession
 
         w = self.world
         w.deliver()
@@ -488,7 +494,8 @@ class Runner:
         for a in w.agents:
             msgs = w.messages(a)
             tools = w.turn_tools(a)
-            self.sessions[a.id].register(functions_env(w.decls[a.id]))
+            self.sessions[a.id] = PySession()  # fresh each turn, with only this turn's tool: a tool declared earlier stays callable otherwise
+            self.sessions[a.id].register(functions_env(tools))
             prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=tools).ids if self.tok else msgs)
             sessions.append(self.sessions[a.id]); obs.append(msgs[-1]["content"]); declared.append([d.name for d in tools])
         t0 = time.time()
