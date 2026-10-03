@@ -144,3 +144,18 @@ def test_every_task_builds_for_up_to_32_agents(task):
     assert all(w.decls[a.id] for a in w.agents)
     s = w.state(); json.dumps(s)
     assert s["score"]["success"] is False
+
+
+def test_question_is_computed_once_per_turn_and_counts_are_validated():
+    w = World("triangulate", n=8, n_agents=3, seed=4)
+    d = w.agents[0]
+    q1, t1 = w.turn_question(d)
+    q2, t2 = w.turn_question(d)
+    assert (q1, t1) == (q2, t2), "the same question twice in one turn (it draws from the RNG otherwise)"
+    assert w.observation(d).startswith(q1) and [x.name for x in w.turn_tools(d)] == t1
+    w.turn += 1
+    assert w.turn_question(d) != (q1, t1) or True  # a new turn recomputes (may or may not differ)
+    assert w.agents[0].memory["_turn"][0] == 1
+    for task, k in (("key_door", 3), ("key_door", 1), ("relay", 1), ("triangulate", 33)):
+        with pytest.raises(ValueError):
+            World(task, n=8, n_agents=k, seed=0)

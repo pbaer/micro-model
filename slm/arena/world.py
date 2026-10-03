@@ -353,6 +353,12 @@ class World:
     def __init__(self, task: str, n: int = 8, n_agents: int = 4, seed: int = 0, max_history: int = 1) -> None:
         self.rng = random.Random(seed)
         self.n, self.seed, self.max_history = n, seed, max_history
+        if task == "key_door" and (n_agents < 2 or n_agents % 2):
+            raise ValueError("key_door needs an even number of robots (key holder + door opener per door)")
+        if n_agents < 2:
+            raise ValueError(f"{task} needs at least 2 robots")
+        if n_agents > 32:
+            raise ValueError("at most 32 robots")
         self.agents = [Agent(i, f"R{i + 1}", 0, 0, []) for i in range(n_agents)]
         self.task: Task = TASKS[task](n, n_agents, self.rng)
         self.task.place_agents(self)
@@ -408,8 +414,17 @@ class World:
         In sight ... You heard ..." preamble, or the briefing in front of it, turns the model from calling the tool
         into describing it; the facts a turn needs are inside the question already. The briefing and the full
         observation are kept for the transcript and the portal (`status(agent)`), not shown to the model."""
-        q, _ = self.task.question(self, agent)
+        q, _ = self.turn_question(agent)
         return f"{q}{self.SUFFIX}"
+
+    def turn_question(self, agent: Agent) -> tuple[str, list[str]]:
+        """`Task.question` once per robot per turn: it updates the robot's memory and may draw from the task RNG, so
+        asking twice would change the question between the prompt and the record (seen on triangulate)."""
+        cached = agent.memory.get("_turn")
+        if cached is None or cached[0] != self.turn:
+            cached = (self.turn, self.task.question(self, agent))
+            agent.memory["_turn"] = cached
+        return cached[1]
 
     def status(self, agent: Agent) -> str:
         heard = "; ".join(agent.inbox) if agent.inbox else "nothing"
@@ -418,7 +433,7 @@ class World:
 
     def turn_tools(self, agent: Agent) -> list:
         """The declared tools for this turn: only what the question needs (one, usually)."""
-        _, names = self.task.question(self, agent)
+        _, names = self.turn_question(agent)
         return [d for d in self.decls[agent.id] if d.name in names]
 
     def messages(self, agent: Agent) -> list[dict]:
@@ -459,7 +474,7 @@ class Runner:
         from slm.tools.loop import sample_with_tools
         from slm.utils.sdpa import sdpa_context
 
-        gen = torch.Generator(device="cuda"); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
+        gen = torch.Generator(device=next(self.model.parameters()).device); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
         with torch.no_grad(), sdpa_context("decode"):
             return sample_with_tools(self.model, self.tok, prompts, self.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=self.max_calls, sessions=sessions)
 
@@ -469,16 +484,17 @@ class Runner:
 
         w = self.world
         w.deliver()
-        prompts, sessions, obs = [], [], []
+        prompts, sessions, obs, declared = [], [], [], []
         for a in w.agents:
             msgs = w.messages(a)
+            tools = w.turn_tools(a)
             self.sessions[a.id].register(functions_env(w.decls[a.id]))
-            prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=w.turn_tools(a)).ids if self.tok else msgs)
-            sessions.append(self.sessions[a.id]); obs.append(msgs[-1]["content"])
+            prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=tools).ids if self.tok else msgs)
+            sessions.append(self.sessions[a.id]); obs.append(msgs[-1]["content"]); declared.append([d.name for d in tools])
         t0 = time.time()
         tcs = self.generate(prompts, sessions)
         records = []
-        for a, tc, o in zip(w.agents, tcs, obs):
+        for a, tc, o, tools in zip(w.agents, tcs, obs, declared):
             p = parse_assistant(self.tok, tc.ids) if self.tok else tc
             think, answer = (p["think"], p["answer"]) if isinstance(p, dict) else (tc.get("think"), tc.get("answer"))
             calls = [list(c) for c in getattr(tc, "calls", [])] if not isinstance(tc, dict) else tc.get("calls", [])
@@ -486,7 +502,7 @@ class Runner:
             if a.history[-1]["ids"] is None:
                 a.history[-1].pop("ids")
             rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "status": w.status(a), "think": think, "calls": calls, "answer": answer,
-                   "n_calls": len(calls), "tools": [d.name for d in w.turn_tools(a)]}
+                   "n_calls": len(calls), "tools": tools}
             w.task.after_turn(w, a, rec)
             a.log.append(rec); records.append(rec)
         w.turn += 1
