@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+import contextlib
+import contextvars
 import re
 
 from slm.data.tokenizer import SlmTokenizer
@@ -25,6 +27,45 @@ class ChatEncoding:
     loss_mask: list[int]
     # (start, end, label) spans over ids, for visualization: role tokens, content, think, specials
     segments: list[tuple[int, int, str]] = field(default_factory=list)
+
+
+_OVERLAY: contextvars.ContextVar[tuple[str, str] | None] = contextvars.ContextVar("slm_system_overlay", default=None)
+
+
+@contextlib.contextmanager
+def system_overlay(text: str | None, where: str = "system"):
+    """Evaluation-only: inside the block every conversation `format_chat` encodes carries `text` as an instruction.
+    where="system" inserts it as the system turn (prepended, blank line between, when the conversation has one of
+    its own); where="user" prepends it to the first user turn instead (the shape the arena found the model follows
+    better than a preamble in its own role). `scripts/prompt_sweep.py` uses it to measure the same checkpoint under
+    several prompts without touching the evals; training never sets it. None (or "") is a no-op."""
+    if where not in ("system", "user"):
+        raise ValueError(f"where must be 'system' or 'user', not {where!r}")
+    token = _OVERLAY.set((text, where) if text else None)
+    try:
+        yield
+    finally:
+        _OVERLAY.reset(token)
+
+
+def apply_overlay(messages: list[dict]) -> list[dict]:
+    """The messages with the active `system_overlay` applied (a copy); unchanged when none is active."""
+    ov = _OVERLAY.get()
+    if not ov or not messages:
+        return messages
+    text, where = ov
+    msgs = [dict(m) for m in messages]
+    if where == "system":
+        if msgs[0].get("role") == "system":
+            msgs[0]["content"] = f"{text}\n\n{msgs[0].get('content', '')}"
+        else:
+            msgs.insert(0, {"role": "system", "content": text})
+        return msgs
+    for m in msgs:
+        if m.get("role") == "user":
+            m["content"] = f"{text}\n\n{m.get('content', '')}"
+            break
+    return msgs
 
 
 def format_chat(
@@ -55,6 +96,7 @@ def format_chat(
     if messages and messages[0].get("role") == "functions":
         functions = functions or messages[0].get("decls")
         messages = messages[1:]
+    messages = apply_overlay(messages)
 
     def push(seq: list[int], m: int, label: str) -> None:
         segs.append((len(ids), len(ids) + len(seq), label))

@@ -402,6 +402,14 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   coherence and task (1-5). `pack` writes shuffled packets with opaque item ids and the rubric text; `ingest`
   validates the judge's JSON and rebuilds `quality/summary.json`, which the run page charts. The three prompts
   the trainer has always sampled are averaged separately (`legacy3`). Protocol and rubric: `docs/quality_eval.md`.
+- **Prompt overlay** (`slm.data.chat.system_overlay`, `scripts/prompt_sweep.py`): an evaluation-only context manager
+  that gives every conversation `format_chat` encodes an extra instruction, as the system turn (prepended to an
+  existing one) or inside the first user turn, without touching any eval's own prompt. The sweep script measures one
+  checkpoint under several such prompts on the evals a prompt could plausibly move (GSM8K / SVAMP with the tool, the
+  judged suite, the multi-turn diagnostics) and writes a judgeable `quality/outputs/` per variant under
+  `runs/<run>/` (no `run.json`, so the portal's run list ignores it). The published evals send no system prompt;
+  the bare variant is the headline number and a prompt that helps becomes a recorded eval setting, never a silent
+  change. Results: `docs/results.md` §26.
 - `external.py`: **external comparison models** — seven similarly sized open-weight LMs (SmolLM2-135M/360M base and
   Instruct, Qwen2.5-0.5B base and Instruct, GPT-2 medium; Apache-2.0 / MIT) scored by our own evals as comparison
   rows. `EXTERNAL_MODELS` is the registry (hf id, params, license, chat or base, max positions, published training

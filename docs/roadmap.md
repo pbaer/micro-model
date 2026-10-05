@@ -181,3 +181,7 @@ context-extended base once the curriculum settles.
   `scripts/backup_models.sh`; Peter's call (2026-09-26) is that off-machine backup of data and models is not
   needed, since everything is reproducible from public sources plus this repo.
 - No long-form fiction in any mixture; narrative is the weakest judged category on the base.
+- A system prompt switches the model out of tool use (results §26, 2026-10-04): the tool SFT mixture has no
+  system-prompted conversations, so "system turn present" and "may call the tool" never co-occur in training. Any
+  deployment that needs a system prompt (a persona, house rules) needs system-prompted tool conversations in stage B
+  first; until then the evals and the portal send none, and prompt text is not a lever on the benchmarks.

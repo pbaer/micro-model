@@ -117,6 +117,7 @@ python -u -m slm.eval.lm_eval_wrapper --checkpoint <ckpt> --tasks hellaswag,arc_
 python -u scripts/diagnose.py <ckpt> --root C:/slm-data/tokenized/v1 --source fineweb-edu --seq 2048 --batches 8 --mb 4
 python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 16 --out runs/<run>/needle.json   # --batch-tokens 16384 caps the generation batch
 python -u -m slm.eval.reasoning --checkpoint <ckpt> --n 100 --gsm8k 200 --out runs/<run>/reasoning_eval.json   # post-M5/M6
+python -u scripts/prompt_sweep.py --checkpoint <ckpt> --run m10_psweep_336m > runs/m10_psweep_336m/sweep.log 2>&1   # the same checkpoint under several system prompts (inference only, ~1 h); then quality pack/judge/ingest on that run
 python -u -m slm.eval.quality generate --run <run> --device cpu --threads 8   # judged-quality suite on every snapshot; then pack / judge / ingest (docs/quality_eval.md)
 python -u -m slm.eval.needle_sweep --run <run> --n 64 --lengths 1024 2048 4096   # every snapshot at one n; GPU must be free (~35 s per 336M snapshot)
 ```

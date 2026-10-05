@@ -1550,3 +1550,64 @@ What this says about goal 5: with scaffolding to the shape it was trained on, th
 -- and not yet a *planner*: the next rung is to let the question ask for the plan ("what should you do next?") with the
 tool set declared, which today collapses into code soup. The Arena tab (§command_center) shows every hop, trail and
 call; the sweep's episodes open in its viewer.
+
+
+## 26. Prompt sweep: can a system prompt hill-climb the M10 evals? No -- every one of them hurts (2026-10-04)
+
+Peter asked whether we had looked at the system prompt as a lever ("think harder", problem-solving techniques).
+The published evals send none: the math prompts already end with "Think step by step, then give the final answer
+on its own line as '#### <answer>'", the judged suite and the chat diagnostics are bare user turns, and the public
+benchmarks are log-likelihood scoring with no generation. Measured on `m10_rl` final.pt with
+`scripts/prompt_sweep.py` (the prompt applied through `slm.data.chat.system_overlay`, every eval otherwise unchanged;
+inference only, 58 min; the judged suite scored blind by Sonnet, 172 unique outputs):
+
+| variant (system turn unless noted) | GSM8K acc / malformed / tool use (n=200) | SVAMP acc / malformed / tool use (n=300) | judged overall (corr / coh / task) | prose / python / arithmetic / narrative | mt recall / format / revise / sysrule |
+|---|---|---|---|---|---|
+| **bare** (the published eval) | **0.060** / 0.07 / 0.87 | 0.070 / 0.05 / 0.94 | **4.10** (3.78 / 4.34 / 4.19) | 4.42 / 3.39 / **4.50** / 3.33 | 0.906 / **0.969** / 0.406 / 0.727 |
+| persona: "You are a careful, helpful assistant. Answer fully and precisely, in complete sentences." | 0.040 / 0.49 / 0.38 | 0.073 / 0.51 / 0.42 | 3.58 (3.38 / 3.50 / 3.88) | 3.17 / 3.56 / 2.17 / 3.33 | 0.906 / 0.926 / 0.331 / 0.703 |
+| check: "... Work the problem out before answering, then check the result once for mistakes ..." | 0.045 / 0.20 / 0.69 | 0.077 / 0.19 / 0.75 | 4.06 (3.94 / 4.00 / 4.25) | 3.75 / 3.72 / 3.33 / 2.17 | 0.906 / 0.906 / 0.404 / 0.734 |
+| techniques: "... restate what is being asked, break it into steps, use Python for any arithmetic, and verify ..." | 0.020 / 0.58 / 0.28 | 0.037 / 0.55 / 0.32 | 3.92 (3.72 / 3.94 / 4.09) | 3.00 / 4.22 / 2.50 / 2.33 | 0.906 / 0.867 / 0.380 / 0.656 |
+| think_hard: "Think carefully and at length before you answer. Write out all of your reasoning, step by step ..." | 0.040 / 0.26 / 0.63 | 0.060 / 0.17 / 0.80 | 3.40 (3.28 / 3.38 / 3.53) | 3.42 / 3.00 / 3.67 / 3.33 | 0.891 / 0.855 / 0.372 / 0.695 |
+| the techniques text inside the first user turn | 0.010 / 0.68 / 0.07 | 0.027 / 0.67 / 0.11 | 3.74 (3.28 / 3.97 / 3.97) | 3.33 / 4.17 / 3.08 / 2.50 | 0.828 / 0.930 / 0.372 / 0.617 |
+
+(bare re-judged here at 4.10 against §23d's 4.13 on the same outputs: the judge's own noise is about 0.05 overall and
+up to a point on a single category of 2-6 items. GSM8K at n=200 needs about 4 points to mean anything.)
+
+What happens, from the rollouts (500 math problems per variant):
+
+| variant | tool called | `<<a*b=>>` annotation instead | think opens with the chat-routing line | no answer produced |
+|---|---|---|---|---|
+| bare | 0.91 | 0.03 | 0.01 | 0.04 |
+| persona | 0.41 | 0.34 | 0.06 | 0.37 |
+| check | 0.73 | 0.12 | 0.11 | 0.16 |
+| techniques | 0.31 | 0.40 | 0.21 | 0.53 |
+| think_hard | 0.73 | 0.10 | 0.25 | 0.15 |
+| techniques in the user turn | 0.09 | 0.43 | 0.01 | 0.69 |
+
+- **A system prompt is a distribution switch, not an instruction.** The only system-prompted conversations the model
+  was trained on are SmolTalk's systemchats (10% of stage A) and the `sysrule` RL family -- chat turns with an empty
+  or prose think span and no tool. Given one, the model answers in that regime: it drops `<|python_call|>` (use
+  0.91 -> 0.09-0.73) and writes the pretraining-era GSM8K calculator annotation `18 x 2.5 = $<<18*2.5=>>` instead,
+  which nothing evaluates, so the generation stalls there with no `####` line (no answer 0.04 -> 0.15-0.69). "Use
+  Python for any arithmetic" in the prompt made it use Python *less* (0.31): the words are not what the model reads,
+  the shape is. The same text inside the user turn is worse still (0.09), which is the arena's lesson again -- a
+  preamble before the question is not the trained shape either (§25, memory: scaffold to the trained shape).
+- **"Think harder" produced the chat-routing line, not more reasoning.** Under `think_hard` a quarter of the think
+  spans open with the stage-B routing phrase ("Let me think this through before answering.") and then answer in
+  prose; judged overall fell 4.10 -> 3.40, the largest drop of the sweep, with coherence 4.34 -> 3.38 as the longer
+  answers loop. The think span at this size is a routing device (§23c, `slm/data/direct_think.py`), and asking for
+  length buys derailment.
+- **Nothing beats bare on anything that matters.** `check` is within judge noise overall (4.06) with facts and pattern
+  up and prose, arithmetic and narrative down; judged python reads higher under the two techniques variants (4.22 /
+  4.17 against 3.39 on 6 items) because the model writes the function without reaching for the tool loop, which is
+  the one place a prompt changed a judged category for the better -- and it costs 3 points of GSM8K and half the
+  suite's arithmetic. Multi-turn recall is immune (0.906 under every system variant), format adherence and sysrule
+  degrade mildly.
+
+Decision: the evals keep sending no system prompt; `bare` stays the headline number. The lever for the math and
+python numbers is on the training side (a `verify_recall`-style constraint reward for "don't use X", more math RL
+draws) and on the sampling side (self-consistency: oracle@16 is 0.26 against 0.06 greedy, §23d); the prompt is not
+one. If a system prompt is ever to be usable at inference, the tool SFT mixture needs system-prompted conversations
+that call the tool, so the two regimes stop being disjoint -- noted in the roadmap. The sweep harness stays
+(`scripts/prompt_sweep.py`, `runs/m10_psweep_336m/`: `sweep.json`, per-variant rollouts and multi-turn files, the
+judged suite in the usual `quality/` layout).

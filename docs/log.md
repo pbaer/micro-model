@@ -908,3 +908,18 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   and ran three times), a fresh sandbox per robot per turn with only that turn's tool, 1-based done_turn/events,
   robot-count validation. Known: a pre-existing e2e failure on the Architecture page ("undefined"); a test-order flake
   in the family-split tests.
+
+
+## 2026-10-04 — the Arena grid's messages toggle; the prompt sweep (no system prompt helps)
+
+- Arena tab: a messages control on the grid (arrows + text / arrows only / hidden), verified at 32 robots.
+- Peter asked whether the system prompt had been explored as a lever on the benchmarks ("think harder", techniques).
+  Built `slm.data.chat.system_overlay` (eval-only context manager that adds a system turn, or text in the first user
+  turn, to every conversation `format_chat` encodes) and `scripts/prompt_sweep.py`; six variants on `m10_rl` final,
+  58 min of inference plus five Sonnet judge packets. Result (§26): every variant is worse than the bare eval. A
+  system prompt switches the model into the systemchats regime (empty think, no tool): tool use 0.91 -> 0.09-0.73,
+  the GSM8K `<<a*b=>>` annotation comes back, no-answer 0.04 -> up to 0.69; "think harder" surfaces the stage-B
+  routing line and drops judged overall 4.10 -> 3.40. The evals keep sending no system prompt. Gap recorded in the
+  roadmap: the tool SFT data has no system-prompted conversations, so the two regimes are disjoint.
+- The heredoc escape collapse bit once more (a `\n` inside an f-string in a patch script, and a quoted heredoc that
+  bash refused to close); both fixed by writing the file with the Write tool.
