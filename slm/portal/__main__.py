@@ -20,11 +20,14 @@ def main() -> None:
     ap.add_argument("--data-root", default=None)
     ap.add_argument("--gpu-policy", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--no-browser", action="store_true")
+    ap.add_argument("--default-chat", default=None, help="checkpoint the chat mode loads on first use, as <run>/<file> (default: the settings' m10_rl_336m/final.pt)")
     ap.add_argument("--reload", action="store_true", help="dev: auto-reload on code changes")
     a = ap.parse_args()
     s = PortalSettings(runs_root=Path(a.runs_root), host=a.host, port=a.port, gpu_policy=a.gpu_policy, open_browser=not a.no_browser)
     if a.data_root:
         s.data_root = Path(a.data_root)
+    if a.default_chat:
+        s.default_chat_checkpoint = a.default_chat
     url = f"http://{s.host}:{s.port}/"
     if s.open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()

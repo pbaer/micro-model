@@ -17,3 +17,6 @@ class PortalSettings:
     gpu_policy: str = "auto"  # auto | cuda | cpu
     worker_idle_timeout_s: float = 900.0
     open_browser: bool = True
+    # the Inference tab's chat mode loads this on first use: "<run>/<file>" (or a path); when it is not on disk the
+    # newest RL / reasoning / SFT final.pt stands in (slm.portal.api.model.mark_default_chat)
+    default_chat_checkpoint: str = "m10_rl_336m/final.pt"

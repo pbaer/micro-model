@@ -1052,4 +1052,33 @@ export const CARDS = {
       had to rebuild.</p>
     <p class="see">GET /api/model/arena/episodes lists the files, GET /api/model/arena/episodes/{name} serves one, GET
       /api/model/arena/world rebuilds a start state.</p>` },
+
+  // ---------------------------------------------------------------------------------------------- inference: chat mode
+  chat_mode: { t: "Chat mode", b: html`
+    <p>A plain chat with the project's best all-round chat checkpoint (the one marked <i>default</i> in the settings;
+      <code>m10_rl_336m/final.pt</code> unless the portal was started with <code>--default-chat</code>). It loads into
+      slot A the first time you open this page or send a message. Replies stream in; a reply that opens with a think
+      span shows it folded under <i>reasoning</i> (click to expand; Python calls appear as code with their result).</p>
+    <p>Conversations live in this browser (localStorage), one Python session each, so a variable computed in one reply
+      is still there for the next. Every reply draws a fresh random seed (shown under the reply); <i>regenerate</i>
+      re-rolls the last one. A reply that ran out of tokens before closing its turn is kept and marked
+      <i>stopped early</i>.</p>
+    <p class="see">Everything else the worker can do — slots A and B side by side, completion and swarm modes, the token
+      view with log-probs, teacher-forced scoring, declared functions — is the advanced mode (link at the bottom of
+      the conversation list).</p>` },
+  chat_model: { t: "Which model answers", b: html`
+    <p>Any of our SFT, reasoning or RL checkpoints, or a downloaded external chat model (its own template; no think
+      span or Python tool). A base checkpoint is never offered: it has not seen the chat tokens. Choosing a model here
+      loads it into slot A, replacing what was there.</p>
+    <p class="see">The default is the checkpoint the portal settings name, or, when that is not on disk, the newest RL /
+      reasoning / SFT final.pt (GET /api/model/checkpoints marks it <code>default_chat</code>).</p>` },
+  chat_settings: { t: "Sampling defaults", b: html`
+    <p>Temperature 0.8, top-p 0.95, top-k off, up to 512 new tokens, Python tool on. Measured on the suite's chat
+      prompts plus conversational ones with three seeds each (docs/results.md §27): this setting closed the most replies
+      (95%) with the least word-for-word repetition (13%, against 24% for greedy) and a different reply on nearly every
+      seed; anything from 0.6 to 0.8 is within noise of it, and at 1.0 the small model starts losing the thread and the
+      turn's closing token. The one cost of sampling: unnecessary Python calls on everyday questions rise from 3% (greedy)
+      to about 12%.</p>
+    <p>Temperature 0 is greedy (deterministic, repetitive on long answers). The Python tool lets an RL / reasoning
+      checkpoint run arithmetic and code inside its think span instead of guessing.</p>` },
 };

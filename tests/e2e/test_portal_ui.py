@@ -335,7 +335,7 @@ def test_arena_page(server, browser):
 
 def test_model_page_load_and_generate(server, browser):
     p = Page(browser, server)
-    p.goto("/inference")
+    p.goto("/inference/advanced")  # the Inference tab opens in chat mode; the full page is the advanced mode
     assert "Inference" in p.page.inner_text("main")
     sel = p.page.locator("main select").first
     opts = [o.get_attribute("value") for o in sel.locator("option").all() if o.get_attribute("value")]
@@ -361,4 +361,23 @@ def test_model_page_load_and_generate(server, browser):
     p.page.get_by_role("button", name="chat").click()
     p.settle()
     assert "force <|think|>" in p.page.inner_text("main")
+    assert not p.errors, p.errors
+
+
+def test_chat_mode_is_the_inference_default(server, browser):
+    p = Page(browser, server)
+    p.goto("/inference")
+    p.settle(800)
+    body = p.page.inner_text("main")
+    assert "What would you like to talk about?" in body, "the chat mode's welcome card"
+    assert "New chat" in body and "Advanced mode" in body
+    # hermetic data has only a base run: nothing is chat-capable, so the page says so and the composer stays disabled
+    assert "no chat model" in body
+    assert p.page.locator(".chat-compose textarea").is_disabled()
+    p.page.get_by_role("button", name="settings").click()
+    p.settle(300)
+    assert "temperature" in p.page.inner_text(".chat-opts")
+    p.page.get_by_role("link", name="Advanced mode").click()
+    p.settle(600)
+    assert "advanced mode" in p.page.inner_text("main h1")
     assert not p.errors, p.errors

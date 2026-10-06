@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import queue
+import re
 import threading
 import uuid
 from pathlib import Path
@@ -192,9 +193,40 @@ def external_models() -> list[dict]:
              "local_dir": str(m.local_dir), "tokens": None, "val_loss": None} for m in E.EXTERNAL_MODELS.values()]
 
 
+CHAT_STAGES = ("rl", "reasoning", "sft")  # stages whose checkpoint answers the chat format (a base model never saw its tokens)
+
+
+def mark_default_chat(entries: list[dict], wanted: str | None) -> list[dict]:
+    """Set `chat_ok` on every entry (our non-base checkpoints and external chat models) and `default_chat` on exactly one:
+    the configured `<run>/<file>` (or path) when it is listed, else the best stand-in -- an RL final before a reasoning
+    or SFT one, a later milestone (`m10_` over `m9_`) before an earlier, `final.pt` before `best.pt`, newest last."""
+    for c in entries:
+        c["chat_ok"] = bool(c.get("is_chat")) if c.get("external") else c.get("stage") in CHAT_STAGES
+        c["default_chat"] = False
+    ours = [c for c in entries if not c.get("external")]
+    pick = None
+    if wanted:
+        w = wanted.replace("\\", "/")
+        pick = next((c for c in ours if f"{c.get('run')}/{c['name']}" == w or str(c.get("path", "")).replace("\\", "/") == w), None)
+    if pick is None:
+        cands = [c for c in ours if c.get("chat_ok") and c.get("kind") in ("final", "best")]
+
+        def milestone(c: dict) -> int:
+            m = re.match(r"m(\d+)_", c.get("run") or "")
+            return int(m.group(1)) if m else -1
+
+        rank = {"rl": 3, "reasoning": 2, "sft": 1}
+        pick = max(cands, key=lambda c: (rank.get(c.get("stage"), 0), milestone(c), c.get("kind") == "final", c.get("mtime") or 0), default=None)
+    if pick is not None:
+        pick["default_chat"] = True
+    return entries
+
+
 @router.get("/checkpoints")
 def checkpoints(request: Request) -> list[dict]:
-    """Our checkpoints (every run's, stage-tagged), then the external comparison models (`external: true`)."""
+    """Our checkpoints (every run's, stage-tagged), then the external comparison models (`external: true`). Every entry
+    carries `chat_ok`; the one the chat mode loads on first use carries `default_chat` (settings.default_chat_checkpoint,
+    or the newest RL / reasoning / SFT final when that is not on disk)."""
     out = []
     ri = request.app.state.runs
     for name in ri.names():
@@ -206,7 +238,8 @@ def checkpoints(request: Request) -> list[dict]:
             c["run"] = name
             c["stage"] = stage
             out.append(c)
-    return out + external_models()
+    settings = getattr(request.app.state, "settings", None)
+    return mark_default_chat(out + external_models(), getattr(settings, "default_chat_checkpoint", None))
 
 
 @router.post("/slots/{slot}/load")

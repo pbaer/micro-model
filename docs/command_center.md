@@ -38,7 +38,7 @@ portal never launches training.
 | Evals (`#/evals`) | One table: rows = every checkpoint with at least one result file, columns = the public benchmarks (lm-eval) and the homebrew evals (facts, reasoning families, multi-turn, needle, judged, pass@k, swarm) under group headers; cells coloured per column from red (worst) to green (best), grey n/a. Details in "Eval tab" below. |
 | Data (`#/data`) | **Recipes** (default): one row per training config and per run, by stage, with a marker where the yaml no longer matches what the run started with. A recipe (`#/data/recipes/<id>`, id = `run:<name>` or `config:<path>`) is the mixture table with weight, planned and available tokens, epochs (red above 1.5), the loader's own per-source consumption when the checkpoint records carry it, the `extra_val_mixture` drift set, and for RL a prompt/reward panel with the deterministic prompt list (rendered as the exact generation prompt) and, for a run, a rollouts viewer (step selector, prompt + completion chips, reward, parsed answer, malformed flag). Clicking a mixture row opens the inspector (on the shard's first document or example, in the text view): **raw** (a parquet row of the source it was prepared from, with a *trace* that re-runs the preparation filters and reports kept/dropped and the split), **prepared** (the stored document, or the stored SFT example with green loss-mask chips), **row** (a training row of exactly `seq_len + 1` tokens with red document — or SFT example — boundaries and the target count). **Compare** (`#/data/compare/<a>/<b>`, client-side from two recipe payloads): header diff and the union of sources with weight A / B, the delta in percentage points, planned tokens and epochs; a run's default pairing is its `init_from` parent. **Chain** (`#/data/chain/run:<name>`): the `init_from` walk back to the root, one row per stage with tokens used and per-source tokens (the loader's own counters where the run logged them, `tokens x weight` otherwise — the row says which), a totals row and a stacked bar. **Catalog** (`#/data/catalog`) lists every raw, tokenized and chat-formatted set, with unused and `*-v1` sets behind a "show unused" toggle; `#/data/source/<name>` carries raw files, prepared artifacts per tag, provenance both ways, the recipes that use it with their weights, for a source prepared by a selecting preparer (`gutenberg-pg19`) a **selection filter** panel (books in, kept, dialogue cutoff, mean tokens per book, raw and tokenized size, and one row per rule with its threshold, books removed, tokens removed and example titles; the catalog marks such sources "filtered", and the raw trace reports the per-book verdict from `books.jsonl` instead of re-running `keep_doc`), for a curated set (`gutenberg-canon`) a **curated list** panel (books, tokens, how often each rule was relaxed, every book by list entry with year, tokens, split and the rule relaxed for it, and a toggle for the seed titles not in the set with the reason; the catalog marks it "curated"), and a **browse** panel with the old documents browser (tokenizer tag / source / split / shard or parquet file / row group; selecting a source, shard, file or row group opens its first document right away; text (default), tokens or ids; a raw chat row's text view is the SFT chat format with its loss mask; `window`; `stats` with length percentiles and long-doc counts). The list and preview fill the viewport. |
 | Tokenizer | Playground: encode text in raw, document or chat mode; text view (default: decoded, reserved tokens as chips, loss mask in chat mode) or coloured token chips with offsets and ids; vocabulary lookup. |
-| Inference | Two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, text (default) vs tokens view (reserved tokens are chips in both), prompt scoring, cancel, release GPU. |
+| Inference (`#/inference`) | **Chat mode** (default): a plain chat with the best all-round chat checkpoint, loaded on arrival, streamed replies with the think span folded under "reasoning", several conversations kept in the browser, the few settings that matter behind a gear (see "Inference tab: chat mode" below). **Advanced mode** (`#/inference/advanced`): two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, text (default) vs tokens view (reserved tokens are chips in both), prompt scoring, cancel, release GPU. |
 | Arena (`#/arena`) | The robot grid of `slm/arena/world.py` on a loaded slot, or an episode file in viewer mode: controls, a live SVG grid (robots, doors, comm range, path trails, messages as labelled arcs), a turn scrubber, a task panel, an episode summary strip, an interaction timeline (swimlanes), a message log, a compact table of every robot's turn and one selected robot's transcript; JSON episode download. Details in "Arena tab" below. |
 | Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs measured benchmark, LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
 
@@ -71,7 +71,7 @@ there is no room below) and rendered only while open, so it never shifts the lay
 `/data/sft/{tag}/{set}/{split}/shards|examples|example|window|stats` (doc / example / window / trace / RL prompts and
 rollouts also carry `runs`, see below) · tokenizer: `GET /tokenizers` (with each tag's `specials`),
 `POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/token/{i}` · model:
-`GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints` (ours, then the external models), `POST /model/slots/{slot}/load|unload`,
+`GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints` (ours, then the external models; every entry carries `chat_ok`, one carries `default_chat`), `POST /model/slots/{slot}/load|unload`,
 `POST /model/score`, `POST /model/generate` (SSE), `POST /model/swarm` (SSE), `GET /model/arena/tasks`, `POST /model/arena` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
 arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 
@@ -97,6 +97,8 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
   bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), one real pass
   on a tiny CPU model, and an external slot's swarm (stubbed model: own template, verification n/a, majority fallback).
 - `tests/test_portal_arena.py`: `Harness.arena` with a scripted `arena_generate` (event shape per turn, the messages list, the declared tools read back from the prompts, stop at done, the cancel path, refusals incl. an external slot), `arena_messages` against `deliver()`, one real turn of a tiny CPU model, `/api/model/arena` validation and SSE shape against a stub worker, `/api/model/arena/tasks`, the nav entry, an info card for every `arena_*` key, `node --check` of the changed JS.
+- `tests/test_portal_chat.py`: `mark_default_chat` (the configured checkpoint, the stand-in order, `chat_ok`), the chat page's
+  wiring (routing, API use, localStorage, a seed per reply, an info card for every `k`) and `node --check` of the page.
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
   button clicked, every select cycled; no JS errors, no hangs, no raw template text.
 - `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
@@ -139,6 +141,43 @@ text goes through the same component.
 P1: batch replay inspector (exact rows of a given update), run comparison overlays, sampled document
 search, A/B side-by-side with divergence marker, prompt-scoring view. P2: diagnostics viewer in the
 portal, animations on the architecture page, stage "lenses", STOP control for runs, a run scheduler.
+
+## Inference tab: chat mode (2026-10-05)
+
+`pages/chat.js`. The Inference tab opens in a chat a regular user can drive; everything the worker can do beyond that is
+the **advanced mode** (`pages/model.js`, `#/inference/advanced`, linked at the bottom of the conversation list and back
+from the page's title).
+
+- **Model.** `GET /api/model/checkpoints` marks every chat-capable entry `chat_ok` (our SFT / reasoning / RL checkpoints,
+  external chat models with weights on disk; never a base checkpoint) and one entry `default_chat`:
+  `PortalSettings.default_chat_checkpoint` (`m10_rl_336m/final.pt`; `python -m slm.portal --default-chat <run>/<file>`
+  overrides) when it is listed, else the stand-in `mark_default_chat` picks (RL before reasoning before SFT, a later
+  milestone before an earlier, `final.pt` before `best.pt`, newest last). The page uses slot A: an empty slot loads the
+  default on arrival (device auto, so CPU while a training run is live); a slot already holding a chat-capable
+  checkpoint is used as is (the advanced mode's choice is respected); the gear's model picker loads what it names.
+  The header pill shows the model and device, "loading …" while the worker loads, "training live" when a run is.
+- **Sampling.** Defaults temperature 0.8, top-p 0.95, top-k off, 512 new tokens, Python tool on, measured on the model
+  (`scripts/chat_sampling_defaults.py`, results §27); a fresh random seed per reply, shown under the reply (the
+  advanced mode's fixed seed stays there). `think_required` follows slot A's stage as in the advanced mode; an
+  external chat model takes neither the think span nor the tool. Settings persist in `localStorage`
+  (`slm.chat.settings.v1`); "reset to defaults" restores the measured ones.
+- **Conversations.** `localStorage` `slm.chat.v1`: id, title (the first user line unless renamed), timestamps, one
+  Python `session` id each (variables persist across turns; deleting a conversation resets its session), and the
+  messages. An assistant message keeps the generated turn's `ids` when it closed properly, so re-encoding never
+  re-runs its tool calls; one that ran out of tokens is kept without ids, marked "stopped early", and still feeds the
+  next turn. New / rename / delete in the list; "regenerate" drops the last reply and re-rolls with a new seed; Enter
+  sends, Shift+Enter breaks a line; the stop button cancels the stream (`POST /streams/{id}/cancel`) and keeps what
+  arrived.
+- **Streaming and the think span.** The SSE tokens are routed by the reserved tokens they carry: `<|think|>` /
+  `<|/think|>` switch between the folded reasoning and the answer, `<|python_call|>` … diverts the code into a pending
+  call, `tool` events supply the result, inserted (result) tokens are skipped. A finished turn's think text carries
+  the calls as `<<code=result>>` markup (`slm/tools/protocol.py`), split for display into text and code/result
+  blocks. The reasoning row is folded by default (word count, number of calls; "thinking…" while the model is still in
+  the span) and expands on click. Answers go through a small markdown renderer (fenced code, headings, bullet and
+  numbered lists, inline code / bold / italic) that builds nodes, never HTML strings.
+- **Layout.** A two-column panel the height of the viewport: the conversation list (collapses below 900 px) and the
+  chat column (header with the model pill and gear, optional settings strip, the scrolling transcript with a welcome
+  card and four suggestions when empty, the composer). Info cards `chat_mode`, `chat_model`, `chat_settings`.
 
 ## Inference page: chat with the Python tool (2026-09-15)
 

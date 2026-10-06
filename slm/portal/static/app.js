@@ -9,6 +9,7 @@ import { DataPage } from "./pages/data.js";
 import { TokenizerPage } from "./pages/tokenizer.js";
 import { ArchPage } from "./pages/arch.js";
 import { ModelPage } from "./pages/model.js";
+import { ChatPage } from "./pages/chat.js";
 import { ArenaPage } from "./pages/arena.js";
 import { EvalsPage, EvalDetailPage } from "./pages/evals.js";
 
@@ -74,7 +75,8 @@ function App() {
   } else if (page === "evals") body = html`<${EvalsPage} />`;
   else if (page === "tokenizer") body = html`<${TokenizerPage} />`;
   else if (page === "arch") body = html`<${ArchPage} />`;
-  else if (page === "inference" || page === "model") body = html`<${ModelPage} />`;
+  else if (page === "inference" && parts[1] !== "advanced") body = html`<${ChatPage} />`;  // chat mode is the Inference tab's default
+  else if (page === "inference" || page === "model") body = html`<${ModelPage} />`;  // advanced mode: slots, completion, swarm, token views, scoring
   else if (page === "arena") body = html`<${ArenaPage} />`;
   else body = html`<${Placeholder} name=${page} />`;
   const pages = meta ? meta.pages : [{ id: "home", label: "Home" }, { id: "runs", label: "Runs" }];

@@ -180,7 +180,7 @@ export function ModelPage() {
   const chatBlocked = mode === "chat" && extBase.length > 0;  // a base external model has no chat template: n/a, never invented
   const divergence = useBoth && out.A.tokens.length && out.B.tokens.length ? out.A.tokens.findIndex((t, i) => !out.B.tokens[i] || out.B.tokens[i].id !== t.id) : -1;
   return html`<div>
-    <h1>Inference</h1>
+    <h1>Inference <span class="chat-advtag">advanced mode</span> <a class="chat-back" href="#/inference">← back to chat</a></h1>
     <div class="sub">${status ? (status.worker ? `worker alive · VRAM in worker ${fmtNum(status.vram_gib, 2)} GiB` : "worker idle (no VRAM held)") : "…"}<${Info} k="worker" /> ${status && status.live_runs && status.live_runs.length ? ` · ⚠ training live: ${status.live_runs.join(", ")} — loads default to CPU` : ""}
       ${status && status.worker && html` · <a href="#" onClick=${(e) => { e.preventDefault(); api("/api/model/worker/stop", { method: "POST" }).then(refresh); }}>release GPU (stop worker)</a>`}</div>
     ${err && html`<div class="panel" style="border-color:#fca5a5;color:#b91c1c">${err}</div>`}

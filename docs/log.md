@@ -923,3 +923,16 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   roadmap: the tool SFT data has no system-prompted conversations, so the two regimes are disjoint.
 - The heredoc escape collapse bit once more (a `\n` inside an f-string in a patch script, and a quoted heredoc that
   bash refused to close); both fixed by writing the file with the Write tool.
+
+
+## 2026-10-05 — the Inference tab opens in a chat mode; the full page is the advanced mode
+
+- Peter: a clean, simple chat as the Inference tab's default (best all-round chat model, good sampling defaults, a random
+  seed, the think span folded, only the essential options and hidden, several conversations), everything else behind
+  an advanced mode. Built as `pages/chat.js` + `#/inference/advanced` for the old page; `GET /api/model/checkpoints`
+  now marks `chat_ok` and `default_chat` (settings `default_chat_checkpoint`, `--default-chat`; stand-in order when
+  absent). Verified live: the default loads on arrival (cuda), "17 × 23" answers through a folded Python call,
+  "add 9 to that" carries the turn (400), a code prompt renders its bullets, two conversations survive a reload, the
+  advanced page is unchanged under its new route. Sampling defaults measured on the model (results §27).
+- The portal needed a restart for the API change (it runs without --reload); the old e2e test now opens the advanced
+  route.

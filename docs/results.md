@@ -1611,3 +1611,33 @@ one. If a system prompt is ever to be usable at inference, the tool SFT mixture 
 that call the tool, so the two regimes stop being disjoint -- noted in the roadmap. The sweep harness stays
 (`scripts/prompt_sweep.py`, `runs/m10_psweep_336m/`: `sweep.json`, per-variant rollouts and multi-turn files, the
 judged suite in the usual `quality/` layout).
+
+
+## 27. Chat-mode sampling defaults for `m10_rl` (2026-10-05)
+
+The Inference tab's new chat mode needed defaults with a reason behind them. `scripts/chat_sampling_defaults.py`: the
+judged suite's 32 non-bash chat prompts plus 10 conversational ones, three seeds per setting (one for greedy), up to
+320 new tokens with the Python tool; "closed" = the reply ended its turn properly (`<|end|>` within budget, not
+malformed), "repeat" = a 4-gram repeated inside the answer, "misfire" = a Python call on a prompt that is neither
+arithmetic nor code, "diversity" = distinct answers across the seeds (1.0 = all different).
+
+| temperature | top-p | top-k | closed | repeat | misfire | words | diversity |
+|---|---|---|---|---|---|---|---|
+| 0 (greedy) | – | – | 0.91 | 0.24 | 0.03 | 45 | – |
+| 0.5 | 0.9 | 40 | 0.91 | 0.24 | 0.08 | 47 | 0.94 |
+| 0.6 | 0.9 | 40 | 0.93 | 0.22 | 0.12 | 50 | 0.94 |
+| 0.7 | 0.9 | 40 | 0.89 | 0.25 | 0.12 | 58 | 0.97 |
+| 0.7 | 0.95 | off | 0.94 | 0.20 | 0.12 | 55 | 0.98 |
+| **0.8** | **0.95** | **off** | **0.95** | **0.13** | 0.12 | 51 | **0.98** |
+| 0.8 | 0.9 | 40 | 0.93 | 0.16 | 0.12 | 51 | 0.95 |
+| 1.0 | 0.9 | 40 | 0.88 | 0.19 | 0.14 | 62 | 0.95 |
+
+(n = 126 replies per sampled row, 42 for greedy; closed and repeat carry about ±0.03.)
+
+- Between 0.6 and 0.8 the settings are within noise of each other on closing; repetition falls with temperature, and
+  0.8 / 0.95 / top-k off is the best row on both, so it is the default. At 1.0 closing and misfires start to slip and
+  answers run long.
+- Greedy is not safer: it closes no more often (0.91) and repeats a 4-gram in a quarter of answers.
+- The one cost of sampling is tool routing: unnecessary Python calls on everyday prompts go from 3% (greedy) to 8% at
+  0.5 and 12% from 0.6 up, flat thereafter. The call usually returns something harmless and the answer still comes.
+- The advanced mode's own default for RL checkpoints stays greedy (its purpose is inspection, where determinism helps).
