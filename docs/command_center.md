@@ -165,7 +165,10 @@ from the page's title).
   Python `session` id each (variables persist across turns; deleting a conversation resets its session), and the
   messages. An assistant message keeps the generated turn's `ids` when it closed properly, so re-encoding never
   re-runs its tool calls; one that ran out of tokens is kept without ids, marked "stopped early", and still feeds the
-  next turn. New / rename / delete in the list; "regenerate" drops the last reply and re-rolls with a new seed; Enter
+  next turn. New / rename (✎ or a double-click: the title becomes an input; Enter or leaving it saves, Escape cancels,
+  an emptied title returns to the automatic one) / delete (✕: an empty conversation goes at once, one with messages asks
+  "Delete this chat?" inside its row) in the list -- never `window.prompt`/`confirm`, which embedded browsers such as
+  the Claude desktop pane block; "regenerate" drops the last reply and re-rolls with a new seed; Enter
   sends, Shift+Enter breaks a line; the stop button cancels the stream (`POST /streams/{id}/cancel`) and keeps what
   arrived.
 - **Streaming and the think span.** The SSE tokens are routed by the reserved tokens they carry: `<|think|>` /

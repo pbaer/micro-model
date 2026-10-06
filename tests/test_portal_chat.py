@@ -1,5 +1,6 @@
 """The Inference tab's chat mode: the default-chat checkpoint flag on /api/model/checkpoints and the page's wiring."""
 
+import re
 from pathlib import Path
 
 from slm.portal.api.model import mark_default_chat
@@ -35,9 +36,10 @@ def test_chat_page_is_the_inference_default_and_parses():
     chat = (static / "pages" / "chat.js").read_text(encoding="utf-8")
     assert "/api/model/generate" in chat and "default_chat" in chat and "chat_ok" in chat
     assert "localStorage" in chat, "conversations persist per browser"
+    # embedded browsers (the Claude desktop pane) block native dialogs: prompt() throws, confirm() returns false
+    assert not re.search(r"\b(?:window\.)?(?:prompt|confirm|alert)\s*\(", chat), "no native dialogs: rename and delete are inline"
     assert "seed: null" in chat or "seed: undefined" in chat or "seed: randomSeed" in chat or "newSeed" in chat, "a fresh random seed per reply"
     cards = (static / "components" / "cards.js").read_text(encoding="utf-8")
-    import re
 
     for k in set(re.findall(r'k="(chat[a-z_]*)"', chat)):
         assert f"  {k}: {{" in cards, f"info card {k} missing"

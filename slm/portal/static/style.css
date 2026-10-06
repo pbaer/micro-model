@@ -345,3 +345,9 @@ pre.arena-obs{margin:0 0 4px;font-size:12px;max-height:220px}
 .chat-send:hover{background:#1d4ed8}.chat-send.stop{background:#dc2626;border-color:#dc2626}.chat-send.stop:hover{background:#b91c1c}
 .chat-advtag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:#e0e7ff;color:#3730a3;vertical-align:middle;margin-left:4px}
 .chat-back{font-size:12.5px;font-weight:400;margin-left:10px;vertical-align:middle}
+.chat-item.editing,.chat-item.deleting{background:#fff;box-shadow:0 0 0 1px #c7d2fe inset;cursor:default}
+.chat-item-input{width:100%;font:500 13px system-ui,"Segoe UI",Arial,sans-serif;padding:2px 6px;border:1px solid #93c5fd;border-radius:5px;outline:none;margin-bottom:2px}
+.chat-item-confirm{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;margin-top:3px}
+.chat-item-confirm span{color:#991b1b;margin-right:auto}
+.chat-item-confirm button{padding:1px 8px;font-size:12px;border-radius:5px}
+.chat-item-confirm button.danger{background:#dc2626;border-color:#dc2626;color:#fff}.chat-item-confirm button.danger:hover{background:#b91c1c}

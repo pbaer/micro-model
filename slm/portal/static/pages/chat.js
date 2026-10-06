@@ -147,6 +147,8 @@ export function ChatPage() {
   const [streamId, setStreamId] = useState(null);
   const [loading, setLoading] = useState(null);  // "loading <model>…" while the worker loads a checkpoint
   const [err, setErr] = useState(null);
+  const [editing, setEditing] = useState(null);  // {id, text}: the conversation whose title is being edited in place
+  const [confirmDel, setConfirmDel] = useState(null);  // id of the conversation asking "delete?" in its row
   const abortRef = useRef(null);
   const scrollRef = useRef(null);
   const taRef = useRef(null);
@@ -246,14 +248,31 @@ export function ChatPage() {
     await generate(c);
   };
   const create = () => { const c = newChat(); setChats((cs) => [c, ...cs]); setCur(c.id); setDraft(""); setTimeout(() => taRef.current && taRef.current.focus(), 0); };
+  // Rename and delete are inline (an input in the row, a confirm strip in the row), never window.prompt/confirm:
+  // embedded browsers such as the Claude desktop app's pane block native dialogs (prompt throws, confirm returns false).
   const remove = (id) => {
     const c = chats.find((x) => x.id === id);
-    if (c && c.messages.length && !confirm(`Delete "${titleOf(c)}"?`)) return;
-    api(`/api/model/sessions/${c.session}/reset`, { method: "POST" }).catch(() => {});
+    if (!c) return;
+    setConfirmDel(null);
+    if (c.session) api(`/api/model/sessions/${c.session}/reset`, { method: "POST" }).catch(() => {});
     setChats((cs) => { const rest = cs.filter((x) => x.id !== id); return rest.length ? rest : [newChat()]; });
     if (cur === id) setCur(null);
   };
-  const rename = (id) => { const c = chats.find((x) => x.id === id); const t = prompt("Conversation title", titleOf(c)); if (t != null) update(id, (x) => ({ ...x, title: t.trim() })); };
+  const askRemove = (id) => {  // an empty conversation goes at once; one with messages asks in its row
+    const c = chats.find((x) => x.id === id);
+    setEditing(null);
+    if (c && c.messages.length) setConfirmDel(id); else remove(id);
+  };
+  const startRename = (id) => { const c = chats.find((x) => x.id === id); setConfirmDel(null); if (c) setEditing({ id, text: titleOf(c) }); };
+  const commitRename = () => {
+    if (!editing) return;
+    const c = chats.find((x) => x.id === editing.id);
+    const t = editing.text.trim();
+    // an emptied title falls back to the first user line; an unchanged one stays automatic
+    if (c && t !== titleOf(c)) update(editing.id, (x) => ({ ...x, title: t }));
+    setEditing(null);
+  };
+  const focusOnce = (el) => { if (el && !el.dataset.focused) { el.dataset.focused = "1"; el.focus(); el.select(); } };
   const onKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
   const grow = (e) => { const el = e.target; el.style.height = ""; el.style.height = Math.min(200, el.scrollHeight) + "px"; };
   const setS = (k, v) => setSettings((s) => ({ ...s, [k]: v }));
@@ -269,14 +288,27 @@ export function ChatPage() {
     <aside class="chat-side">
       <button class="chat-new" onClick=${create}>+ New chat</button>
       <div class="chat-list">
-        ${chats.map((c) => html`<div key=${c.id} class=${"chat-item" + (chat && c.id === chat.id ? " sel" : "")} onClick=${() => setCur(c.id)} title=${titleOf(c)}>
-          <div class="t">${titleOf(c)}</div>
-          <div class="s muted">${c.messages.length ? `${c.messages.length} messages · ${ago(c.updated)}` : "empty"}</div>
-          <div class="chat-item-acts">
-            <button title="rename" onClick=${(e) => { e.stopPropagation(); rename(c.id); }}>✎</button>
-            <button title="delete" onClick=${(e) => { e.stopPropagation(); remove(c.id); }}>✕</button>
-          </div>
-        </div>`)}
+        ${chats.map((c) => {
+          const isEdit = editing && editing.id === c.id, isDel = confirmDel === c.id;
+          return html`<div key=${c.id} class=${"chat-item" + (chat && c.id === chat.id ? " sel" : "") + (isEdit ? " editing" : "") + (isDel ? " deleting" : "")}
+              onClick=${() => { if (!isEdit) setCur(c.id); }} title=${isEdit || isDel ? "" : titleOf(c)}>
+            ${isEdit ? html`<input class="chat-item-input" ref=${focusOnce} value=${editing.text} aria-label="conversation title"
+                onClick=${(e) => e.stopPropagation()} onInput=${(e) => setEditing({ id: c.id, text: e.target.value })}
+                onKeyDown=${(e) => { if (e.key === "Enter") { e.preventDefault(); commitRename(); } else if (e.key === "Escape") { e.preventDefault(); setEditing(null); } }}
+                onBlur=${commitRename} />`
+              : html`<div class="t" onDblClick=${(e) => { e.stopPropagation(); startRename(c.id); }}>${titleOf(c)}</div>`}
+            ${isDel ? html`<div class="chat-item-confirm" onClick=${(e) => e.stopPropagation()}>
+                <span>Delete this chat?</span>
+                <button class="danger" onClick=${() => remove(c.id)}>Delete</button>
+                <button onClick=${() => setConfirmDel(null)}>Cancel</button>
+              </div>`
+              : html`<div class="s muted">${c.messages.length ? `${c.messages.length} messages · ${ago(c.updated)}` : "empty"}</div>`}
+            ${!isEdit && !isDel && html`<div class="chat-item-acts">
+              <button title="rename" aria-label="rename" onClick=${(e) => { e.stopPropagation(); startRename(c.id); }}>✎</button>
+              <button title="delete" aria-label="delete" onClick=${(e) => { e.stopPropagation(); askRemove(c.id); }}>✕</button>
+            </div>`}
+          </div>`;
+        })}
       </div>
       <a class="chat-adv" href="#/inference/advanced" title="slots A/B, completion and swarm modes, token views, scoring, declared functions">Advanced mode →</a>
     </aside>
