@@ -936,3 +936,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   advanced page is unchanged under its new route. Sampling defaults measured on the model (results §27).
 - The portal needed a restart for the API change (it runs without --reload); the old e2e test now opens the advanced
   route.
+
+- Architecture page, budget tab: crashed on every config since 2026-10-02 (Peter hit it on 336M). The page loaded the
+  alphabetically last file in artifacts/bench, which became `infer_m10_rl_cliff_3k.json` once the inference benchmarks
+  landed there, and called `.toFixed` on training fields those rows lack. The listing now keeps only training-throughput
+  files, the tab shows the ones measured on the selected config's model file (it had shown the same file for every
+  config), every field is formatted defensively, and a stale graph reply (336M takes ~2 s, tiny ~20 ms) can no longer
+  overwrite a newer selection. This was likely the "pre-existing Architecture-page e2e failure" noted 2026-10-02; that
+  test passes now.

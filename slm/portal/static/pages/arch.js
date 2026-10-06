@@ -2,6 +2,9 @@ import { h } from "preact";
 import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 import { api, fmtTok, fmtInt, fmtBytes, fmtNum, fmtSci } from "../components/util.js";
+
+const fx = (v, d) => (v == null || !isFinite(v) ? "-" : Number(v).toFixed(d));  // a benchmark row may lack a field: show "-", never throw
+const pct = (v) => (v == null || !isFinite(v) ? "-" : `${(v * 100).toFixed(1)}%`);
 import { Chart } from "../components/chart.js";
 import { Info } from "../components/info.js";
 
@@ -55,12 +58,27 @@ export function ArchPage() {
   const [open, setOpen] = useState(new Set(["model", "blocks", "block0"]));
   const [train, setTrain] = useState(null);
   const [hp, setHp] = useState(null);
-  const [bench, setBench] = useState(null);
+  const [bench, setBench] = useState(null);  // {model_file, files: [{path, config, results}]}: the training benchmarks measured on the selected config
   const [tab, setTab] = useState("graph");
   useEffect(() => { api("/api/arch/configs").then((c) => { setCfgs(c); if (c.trains.length) setTrain(c.trains[0]); }); }, []);
-  useEffect(() => { api(`/api/arch/graph?config=${encodeURIComponent(spec)}&B=${B}&T=${T}&grad_checkpointing=${gc}&loss_chunk=${chunk}`).then(setG).catch((e) => setG({ error: String(e) })); }, [spec, B, T, gc, chunk]);
+  useEffect(() => {  // a 336M graph takes ~2 s and a tiny one ~20 ms: drop a reply that arrives after the selection moved on
+    let alive = true;
+    api(`/api/arch/graph?config=${encodeURIComponent(spec)}&B=${B}&T=${T}&grad_checkpointing=${gc}&loss_chunk=${chunk}`)
+      .then((x) => alive && setG(x)).catch((e) => alive && setG({ error: String(e) }));
+    return () => { alive = false; };
+  }, [spec, B, T, gc, chunk]);
   useEffect(() => { if (train) api(`/api/arch/hparams?config=${encodeURIComponent(train)}`).then(setHp).catch(() => setHp(null)); }, [train]);
-  useEffect(() => { if (cfgs && cfgs.benchmarks.length) api(`/api/arch/benchmark?path=${encodeURIComponent(cfgs.benchmarks[cfgs.benchmarks.length - 1])}`).then(setBench).catch(() => {}); }, [cfgs]);
+  // only training-throughput files (the API leaves out the inference benchmarks), only those measured on the selected config's model file
+  const modelFile = g && !g.error ? g.model_file : null;
+  useEffect(() => {
+    if (!cfgs) return;
+    const mine = (cfgs.training_benchmarks || []).filter((b) => modelFile && b.config === modelFile);
+    if (!mine.length) { setBench({ model_file: modelFile, files: [] }); return; }
+    let alive = true;
+    Promise.all(mine.map((b) => api(`/api/arch/benchmark?path=${encodeURIComponent(b.path)}`).then((d) => ({ ...d, path: b.path })).catch(() => null)))
+      .then((fs) => alive && setBench({ model_file: modelFile, files: fs.filter(Boolean) }));
+    return () => { alive = false; };
+  }, [cfgs, modelFile]);
   const toggle = (id) => setOpen((o) => { const n = new Set(o); n.has(id) ? n.delete(id) : n.add(id); return n; });
   if (!cfgs) return html`<div>loading…</div>`;
   const byId = g && g.nodes ? Object.fromEntries(g.nodes.map((n) => [n.id, n])) : {};
@@ -116,8 +134,10 @@ export function ArchPage() {
         <div class="tile"><div class="k">bf16 weights (inference)</div><div class="v">${fmtBytes(m.weights_bf16_inference)}</div></div>
       </div>
       <div class="legend">${m.note}</div>
-      ${bench && html`<h2>Measured (benchmark ${bench.config})<${Info} k="bench" /></h2><table><tr><th>seq</th><th>microbatch</th><th>compile</th><th>tok/s</th><th>step ms</th><th>fwd</th><th>bwd</th><th>opt</th><th>peak VRAM</th><th>MFU</th><th>MFU (causal)</th></tr>
-        ${bench.results.map((r) => html`<tr><td>${r.seq}</td><td>${r.microbatch}</td><td>${r.compile ? "yes" : "no"}</td><td>${fmtInt(r.tokens_per_sec)}</td><td>${r.step_ms.toFixed(0)}</td><td>${r.fwd_ms.toFixed(0)}</td><td>${r.bwd_ms.toFixed(0)}</td><td>${r.opt_ms.toFixed(0)}</td><td>${r.peak_vram_gib.toFixed(2)} GiB</td><td>${(r.mfu_palm * 100).toFixed(1)}%</td><td>${(r.mfu_causal * 100).toFixed(1)}%</td></tr>`)}</table>`}
+      ${bench && bench.files.length > 0 && html`<h2>Measured (training benchmarks of ${bench.model_file})<${Info} k="bench" /></h2><table><tr><th class="l">file</th><th>seq</th><th>microbatch</th><th>compile</th><th>tok/s</th><th>step ms</th><th>fwd</th><th>bwd</th><th>opt</th><th>peak VRAM</th><th>MFU</th><th>MFU (causal)</th></tr>
+        ${bench.files.flatMap((b) => (Array.isArray(b.results) ? b.results : []).map((r, i) => html`<tr key=${b.path + i}><td class="l">${b.path.split("/").pop()}</td><td>${r.seq ?? "-"}</td><td>${r.microbatch ?? "-"}</td><td>${r.compile ? "yes" : "no"}</td><td>${fmtInt(r.tokens_per_sec)}</td><td>${fx(r.step_ms, 0)}</td><td>${fx(r.fwd_ms, 0)}</td><td>${fx(r.bwd_ms, 0)}</td><td>${fx(r.opt_ms, 0)}</td><td>${r.peak_vram_gib == null ? "-" : `${fx(r.peak_vram_gib, 2)} GiB`}</td><td>${pct(r.mfu_palm)}</td><td>${pct(r.mfu_causal)}</td></tr>`))}</table>
+        ${bench.model_file !== g.label && html`<div class="legend" style="margin-top:4px">Measured on the plain model file; the selected ${String(g.label).startsWith("run:") ? "run" : "config"} may override some of its fields (context length, dropout), which the benchmark does not reflect.</div>`}`}
+      ${bench && !bench.files.length && html`<div class="legend" style="margin-top:14px">No training-throughput benchmark was measured on ${bench.model_file || "this config's model file"}. <code>scripts/bench_throughput.py</code> writes one to <code>artifacts/bench/</code>.</div>`}
     </div>`}
     ${tab === "hparams" && html`<div>
       <div class="row"><span class="muted">train config</span><select value=${train} onChange=${(e) => setTrain(e.target.value)}>${cfgs.trains.map((x) => html`<option value=${x}>${x}</option>`)}</select></div>

@@ -474,3 +474,32 @@ def test_text_view_is_the_default_everywhere():
     for name in ("data.js", "model.js", "tokenizer.js", "evals.js", "runs.js"):
         assert "TextWithSpecials" in (static / "pages" / name).read_text(encoding="utf-8"), name
     assert "TextWithSpecials" in (static / "components" / "swarm.js").read_text(encoding="utf-8")
+
+
+def test_arch_training_benchmarks_skip_other_kinds_and_the_budget_tab_never_throws(tmp_path):
+    """The budget tab crashed (2026-10-05) once scripts/bench_inference.py wrote infer_*.json into artifacts/bench:
+    the page took the alphabetically last file and called .toFixed on training fields it lacks. The listing now keeps
+    only training-throughput files, keyed by model file, and the table formats every field defensively."""
+    import json as _json
+
+    from slm.portal.api.arch import model_file_of, training_benchmarks
+
+    d = tmp_path / "bench"
+    d.mkdir()
+    row = {"seq": 2048, "microbatch": 4, "tokens_per_sec": 28600, "step_ms": 286.0, "fwd_ms": 90.0, "bwd_ms": 180.0, "opt_ms": 16.0,
+           "peak_vram_gib": 12.5, "mfu_palm": 0.6, "mfu_causal": 0.55, "compile": True}
+    (d / "base_336m_2k.json").write_text(_json.dumps({"config": "configs/model/base_336m.yaml", "results": [row]}))
+    (d / "infer_m10_rl.json").write_text(_json.dumps({"checkpoint": "x.pt", "results": [{"batch": 1, "prompt_len": 256, "output_tok_s": 75.0}]}))
+    (d / "broken.json").write_text("{not json")
+    (d / "no_config.json").write_text(_json.dumps({"results": [row]}))
+    got = training_benchmarks(d)
+    assert [b["path"].split("/")[-1] for b in got] == ["base_336m_2k.json"]
+    assert got[0]["config"] == "configs/model/base_336m.yaml" and got[0]["rows"] == 1
+    assert model_file_of("configs/model/base_336m.yaml", tmp_path) == "configs/model/base_336m.yaml"
+    assert model_file_of("train:configs/train/m10_rl_336m.yaml", tmp_path).endswith("base_336m.yaml")
+    assert model_file_of("run:does_not_exist", tmp_path) is None
+    page = Path("slm/portal/static/pages/arch.js").read_text(encoding="utf-8")
+    assert "training_benchmarks" in page and "cfgs.benchmarks[" not in page, "the tab no longer takes the last file of any kind"
+    import re
+
+    assert not re.search(r"\br\.[a-z_]+\.toFixed", page), "benchmark row fields go through fx()/pct(), which tolerate a missing field"
