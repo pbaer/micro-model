@@ -206,7 +206,18 @@ def test_home_and_runs(server, browser):
     for name in ("update", "time", "tokens", "log y"):
         p.page.get_by_role("button", name=name, exact=True).click()
         p.settle()
-    assert p.page.locator(".chart .u-legend").count() >= 5
+    # charts: a static legend per chart (no uPlot live legend), hover values in a card, no horizontal crosshair
+    assert p.page.locator(".chart .chart-legend").count() >= 5 and p.page.locator(".chart .u-legend").count() == 0
+    over = p.page.locator(".chart .u-over").first
+    over.scroll_into_view_if_needed()
+    box = over.bounding_box()
+    p.page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
+    p.settle(300)
+    assert p.page.locator(".chart-card:visible").count() == 1, "one card, for the chart under the pointer"
+    assert p.page.evaluate("[...document.querySelectorAll('.u-cursor-y')].every(e => getComputedStyle(e).display === 'none' || e.offsetWidth === 0)")
+    p.page.mouse.move(2, 2)
+    p.settle(200)
+    assert p.page.locator(".chart-card:visible").count() == 0
     p.cycle_selects()
     # legacy #/runs route lands on the overview
     p.goto("/runs")

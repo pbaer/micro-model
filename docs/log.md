@@ -981,3 +981,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (latest, step_00200 x3, snap_800M); a parent missing from runs/ would be a dashed ghost node. Nodes are links (keyboard
   and middle-click work); hover shows the details card and lights up ancestors and descendants (m9_rl7: 9 runs back
   to the 336M base). Layout is a pure function tested under node (tests/test_portal_home.py); e2e updated.
+
+- Charts (all of them, via components/chart.js): Peter asked for hover values in a card near the cursor instead of in the
+  legend, no colour boxes, no horizontal cursor line, and then the card sorted highest value first. uPlot's legend is off;
+  a static legend (line swatches, hover highlights, click hides) and a per-chart hover card replace it; the card shows only
+  for the chart under the pointer, a sparse series (val loss) its nearest point within 24 px; cursor y off. Tested in
+  tests/test_portal_charts.py and the e2e runs page.
