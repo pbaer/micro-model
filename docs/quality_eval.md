@@ -26,7 +26,8 @@ The stage comes from `run.json` (`slm.utils.stage.run_stage`). A checkpoint trai
 real result inserted; without that the model derails on an empty result and the score measures the harness, not
 the model. Tool spans render as `<<code=result>>` in the stored think text, and the record carries `tool_calls`,
 `tool_errors` and `termination`. Each prompt carries `expect`, a short description
-of what a good answer contains, and its own `max_new_tokens` (24 for a fact, 96 for code or prose). Decoding is
+of what a good answer contains, and its own `max_new_tokens` (24-48 for a fact, up to 96 for code or prose; 64 more
+for a stage with a forced think span). Decoding is
 greedy, so a checkpoint's outputs are reproducible. The three prompts the trainer has sampled since M1 (`rome`,
 `fib`, `cap_france`) are also averaged separately as `legacy3`.
 
@@ -51,7 +52,9 @@ code is mentally executed; length is not rewarded; the judge does not know which
 ```bash
 # 1. outputs: every snapshot + final.pt of a run, on CPU beside a training job (~1 min per 336M checkpoint)
 python -m slm.eval.quality generate --run m8_base_stable_336m --device cpu --threads 8
-# 2. blind packets for the judge: unjudged items across all checkpoints, shuffled, 40 per packet
+#    an external chat model (slm.eval.external) instead: --external <name>, outputs under runs/ext_<name>/quality/
+python -m slm.eval.quality generate --external qwen2.5-0.5b-instruct --device cuda
+# 2. blind packets for the judge: unjudged items across all checkpoints, shuffled, 40 per packet (--batch)
 python -m slm.eval.quality pack --run m8_base_stable_336m
 # 3. judge each packet (see below) -> a json list of {item_id, correctness, coherence, task, note}
 # 4. validate + store, rebuild summary.json (the portal reads it on the next page load)
@@ -65,6 +68,10 @@ subagent running a cheaper model (Sonnet), given the packet file path and told t
 the instructions describe. One subagent per packet, packets in parallel. The judge name goes into every stored
 score (`--judge`), so a judge change is visible in `summary.json["judges"]` and can be re-run with `--replace`.
 `ingest` rejects unknown ids and out-of-range or missing rubrics and reports what it rejected.
+
+**Identical outputs are judged once.** Adjacent checkpoints often produce byte-identical text for a prompt, and two
+judge instances scoring the same text a point apart is pure noise. `pack` therefore packs each (prompt id, output) pair
+once, and `ingest` copies the score to every unjudged twin at other checkpoints (the copy carries `copied_from`).
 
 Why blind, shuffled packets: a judge that sees one prompt's answers ordered by checkpoint will assume later is
 better. Item ids are `sha1(run|tokens|prompt_id|suite)[:12]`, and the packet carries nothing else about origin.
@@ -83,14 +90,20 @@ digits of the logits, occasionally in a greedy token, never in what the judge is
 runs/<run>/quality/
   outputs/<tokens:012d>.jsonl   header {run, tokens, checkpoint, stage, suite, device, seconds} + one line per prompt
   packets/<run>-NN.json         blind judge packets (rewritten by every `pack`)
-  scores.jsonl                  {item_id, tokens, prompt_id, scores{correctness,coherence,task}, note, judge, suite, rubric, judged_at}
-  summary.json                  {checkpoints: [{tokens, checkpoint, stage, n_items, n_scored, overall, <rubrics>, legacy3, categories{...}}], judges, ...}
+  scores.jsonl                  {item_id, tokens, prompt_id, scores{correctness,coherence,task}, note, run, judge, suite, rubric, judged_at[, copied_from]}
+  summary.json                  {checkpoints: [{tokens, checkpoint, stage, n_items, n_scored, overall, overall_all, <rubrics>, legacy3,
+                                 stopped_frac, tool_misfire, tool_misfire_n, tool_misfire_cats, tool_errors, categories{...}}],
+                                 judges, excluded_from_overall, ...}
 ```
+
+**Tool misfire** needs no judge: the share of eligible prompts (every category except `bash` and `arithmetic`, where
+running code can help) on which the model reached for the sandbox anyway, counting an executed call or a tool-markup
+opener in the answer. It is in `summary.json` as soon as the outputs exist, and the run page charts it per checkpoint.
 
 ## Reading the chart
 
 The run page shows `overall` (black), the three rubrics, and `legacy3` (grey, dashed) against tokens, plus a
-second chart of `overall` per category. Things to expect: `facts` and `pattern` move first and saturate;
+second chart of `overall` per category (and a tool-misfire chart when the outputs carry it). Things to expect: `facts` and `pattern` move first and saturate;
 `python` and `prose` climb slowly; `coherence` lags `correctness` on base checkpoints because the right answer
 arrives long before the model learns to stop (repetition loops after a correct first sentence are the dominant
 failure mode of a base model at this size, and the rubric is designed to show exactly that split). SFT should

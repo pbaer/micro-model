@@ -26,9 +26,14 @@ enlarged to 589M tokens (1.3M files) and swapped in at 63M tokens of phase 1, so
 M8 (the 336M base) and M9 (its post-training chain) are complete. The current model is
 **`runs/m9_rl6_336m/checkpoints/final.pt`** (GRPO run 6: run 5's recipe plus the swarm's word-problem pools,
 2026-09-27; `results.md` §18). Numbers in `results.md`
-§10-14, narrative in `log.md`.
+§10-18 (M9) and §23 (M10), narrative in `log.md`.
 
 Known state (2026-10-01): shipped model is still `runs/m9_rl6_336m/checkpoints/final.pt` (judged 4.11, GSM8K 0.085, multi-turn recall 0.61); the M10 candidate `runs/m10_rl_336m/checkpoints/final.pt` (results.md §23) judges 4.13 with prose 4.42 (+1.0), multi-turn recall 0.91 (+0.30, ahead of every local comparison model), LAMBADA 39.1 (+5), misfire 0, needle 3072 -- and GSM8K 0.05 (-0.035), SVAMP 0.07, judged python 3.4 (-0.8). **Peter's call which ships.** recall_absent is 0.00 for both (the reward was gamed; fixed for the next run).
+
+Known state (2026-10-10): `runs/m10_rl_336m/checkpoints/final.pt` is the portal chat mode's default model
+(2026-10-05, `default_chat_checkpoint`; sampling defaults `results.md` §27); `log.md` records no formal M9-vs-M10
+shipping call. No RL run has used the fixed `verify_recall` yet. Since 2026-10-01: inference throughput (§24), the
+arena (§25), the prompt sweep (§26), chat mode (§27).
 
 ## After the base (in order)
 
@@ -37,7 +42,8 @@ Known state (2026-10-01): shipped model is still `runs/m9_rl6_336m/checkpoints/f
    of this project so far.
 2. Context: 8K only through the gated retrieval curriculum, and only if short-context evals stay within 5%. The 149M
    curriculum reached 7K effective (window-edge failures beyond ~7.5K); 16K/32K are off the table unless 8K is clean.
-3. RL stage C (code with unit tests, logic puzzles) and a factual-recall probe so knowledge is measured.
+3. RL stage C (code with unit tests, logic puzzles) and a factual-recall probe so knowledge is measured
+   (probe ~~done~~ 2026-09-15: `slm.eval.facts`; the unit-test and logic-puzzle families are still open, item 5 below).
 4. Ablations on the 26M model, portal P1/P2, writeups (unchanged).
 
 ## First base (149M): status at hand-off
@@ -134,7 +140,7 @@ context-extended base once the curriculum settles.
    code across 31 robots in the minimum turns (4/5 episodes) and cooperates on key/door; it executes and transfers
    values reliably but does not plan. Next rung: questions that ask for the plan with the tool set declared (needs
    training data in that shape), and tasks whose checker is the environment's. Arena tab: timeline, message log,
-   trails, viewer for saved episodes.
+   trails, viewer for saved episodes, a messages toggle on the grid (2026-10-04).
 2c. **Local competitor models** — done (2026-09-27, §20): SmolLM2-135M/360M, Qwen2.5-0.5B (base + Instruct) and
    gpt2-medium scored locally by our evals, rows in the Evals tab, loadable in the Inference tab. Verdict: on
    public benchmarks we are a 135M-class model (the training-token ordering, 10B vs 2-18T), judged chat sits
@@ -144,15 +150,30 @@ context-extended base once the curriculum settles.
    pretraining tokens). Plan: same 336M budget, ~30B tokens (~12 GPU-days at 28.6k tok/s, ~2 epochs of the
    high-quality subset), z-loss 1e-4, 4K context from the start with the needle gate in-run, and what M9
    taught baked in: conversation-count balance in the mixture, the humanized answer style, chat/tool
-   conversations in pretraining, and narrative/Gutenberg prose (open: Peter's call on fiction). Gate: close at
+   conversations in pretraining, and narrative/Gutenberg prose (open: Peter's call on fiction; Gutenberg PG-19 plus a
+   curated canon went into the M10 continued pretraining, 2026-09-30, §23a, and moved judged prose). Gate: close at
    least half the gap to SmolLM2-135M base on LAMBADA / ARC-E / facts. Shape ablation done (§21, 2026-09-28):
    18x768 beat 26x640 and 32x576 at the 149M budget (val 3.261 / 3.271 / 3.303) and is 15-18% faster per
    token; z-loss cost 0.002 nats and pulled log Z down 1.2. **Shape stays 24x1024, z-loss on.** Waiting on
-   Peter: the 12-day commitment and whether fiction goes in.
+   Peter: the 12-day commitment and whether fiction goes in. Not started as of 2026-10-10; the 2026-09-30
+   direction puts honing the current 336M first.
 4. **Suite v1 `expect` defect** for `days`/`months`/`evens`, written against the completion prompt so a
    correct chat answer reads as wrong (`quality_eval.md`). Fixing it bumps `SUITE_VERSION` and invalidates
    every stored score, so it waits for a moment when re-judging the chain is acceptable.
 5. Unit-test and logic-puzzle RL families; 26M ablations; portal P1/P2.
+
+Done since this list was written (details in `log.md` / `results.md`):
+- ~~M10: prose-sprinkled base + the M9 recipe replayed~~ done 2026-10-01 (§23).
+- ~~Inference throughput of the M10 checkpoint~~ done 2026-10-02 (§24); the swarm's batch clamp by the memory formula
+  is proposed there, not built.
+- ~~The arena~~ done 2026-10-02 (§25), messages toggle 2026-10-04.
+- ~~Prompt sweep: does a system prompt help the evals?~~ done 2026-10-04 (§26): no; the gap is under Known gaps.
+- ~~Portal: Inference tab chat mode~~ done 2026-10-05 (`pages/chat.js`, old page at `#/inference/advanced`; §27).
+- ~~Architecture page budget tab crash (the "pre-existing e2e failure" of 2026-10-02)~~ fixed 2026-10-05.
+- ~~Portal: a dead inference worker hung requests forever~~ fixed 2026-10-09 (`WorkerDied`, tests/test_portal_worker.py).
+- ~~Portal port~~ moved to 8930 (spares 8931-8939, `slm.portal.settings.PORT_RANGE`) 2026-10-09; the launch.json
+  preview owns it since 2026-10-10.
+- ~~Overview as the run lineage graph~~ done 2026-10-10.
 
 ## Future projects (parked 2026-09-30, Peter's call: hone the current 336M first)
 
@@ -177,10 +198,20 @@ context-extended base once the curriculum settles.
 ## Known gaps
 
 - ~~MMLU subsets not run~~ done 2026-09-22: at chance on every checkpoint, deliberately not tracked.
-- `runs/` is untracked. The four checkpoints that matter are backed up off-drive by
+- `runs/` is untracked. The checkpoints that matter (M8 base, the M9 chain and output, the M10 base and output) are
+  backed up off-drive by
   `scripts/backup_models.sh`; Peter's call (2026-09-26) is that off-machine backup of data and models is not
   needed, since everything is reproducible from public sources plus this repo.
-- No long-form fiction in any mixture; narrative is the weakest judged category on the base.
+- ~~No long-form fiction in any mixture~~ done 2026-09-30: `m10_base_prose_336m` has Gutenberg PG-19 12% + a curated
+  canon 3% (§23a); judged prose rose at every M10 stage; narrative is mixed
+  (base +0.2, the M10 RL output 3.17 vs M9's 3.67 on three items).
+- Test-order flake: four family-split tests fail only when `test_rl_trainer` runs first (log 2026-10-01/02, open;
+  `test_rl_trainer.py` + `test_synth_python.py` passed together on 2026-10-10, the full-suite order not re-checked).
+- `m10_base_prose_336m` mixed `tool-chat-v3` (2%), which is the *pre-hoist* build of the tool set, not the newest:
+  rebuilds take the plain name `tool-chat` and keep the previous build numbered, so the numbers run backwards in time
+  (design.md §6b, found 2026-10-10). In that build some traces state a result before the call that computes it (8.3% of
+  gsm8k-tools calls, 2.8% metamathqa, ~1% elsewhere), the pattern `hoist_calls` was written to remove. M10's tool use
+  measured fine (0.88-0.93, §23d), so no rerun is planned on this alone; any new mixture names `tool-chat`.
 - A system prompt switches the model out of tool use (results §26, 2026-10-04): the tool SFT mixture has no
   system-prompted conversations, so "system turn present" and "may call the tool" never co-occur in training. Any
   deployment that needs a system prompt (a persona, house rules) needs system-prompted tool conversations in stage B

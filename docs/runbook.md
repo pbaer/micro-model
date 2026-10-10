@@ -11,7 +11,7 @@ pip install uv
 uv venv .venv --python 3.13
 uv pip install --python .venv/Scripts/python.exe "torch==2.14.0+cu130" --index-url https://download.pytorch.org/whl/cu130
 uv pip install --python .venv/Scripts/python.exe "triton-windows==3.8.0.post28"
-uv pip install --python .venv/Scripts/python.exe -e ".[portal,dev]"
+uv pip install --python .venv/Scripts/python.exe -e ".[portal,dev,external]"   # external: lm-eval + transformers (lm_eval_wrapper, comparison models)
 .venv/Scripts/python.exe -m playwright install chromium     # only for tests/e2e and scripts/portal_smoke.py
 .venv/Scripts/python.exe -m pytest                            # CUDA tests skip without a GPU
 ```
@@ -27,13 +27,16 @@ python -m slm.data.download fineweb-edu --n-files 7                   # raw parq
 python -m slm.data.download cosmopedia --n-files 2
 python -m slm.data.download finemath --n-files 3
 python -m slm.data.download python-edu --all && python -m slm.data.swh python-edu --max-files 200000
-python -m slm.data.download stack-edu-shell --all && python -m slm.data.swh stack-edu-shell --max-files 50000
+python -m slm.data.download stack-edu-shell --all && python -m slm.data.swh stack-edu-shell --max-files 50000   # first base only: bash dropped 2026-09-19
 python -m slm.data.download tinystories --all
 python scripts/train_tokenizer.py --out C:/slm-data/tokenizer/v1 --chars 1.5e9     # once; tokenizer is frozen afterwards
 python scripts/eval_tokenizer.py C:/slm-data/tokenizer/v1
-python -m slm.data.prepare tinystories cosmopedia finemath python-edu stack-edu-shell --tokenizer C:/slm-data/tokenizer/v1
+python -m slm.data.prepare tinystories cosmopedia finemath python-edu --tokenizer C:/slm-data/tokenizer/v1   # (+ stack-edu-shell for the first base)
 python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1 --name fineweb-edu-b        # all downloaded files
 python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1 --min-doc-tokens 4096 --name fineweb-edu-long
+python -m slm.data.download gutenberg-pg19 --all && python -m slm.data.gutenberg download    # PG-19 split lists, then books -> parquet
+python -m slm.data.gutenberg prepare --tokenizer C:/slm-data/tokenizer/v1                   # gutenberg-pg19 (--dry-run: selection report only)
+python -m slm.data.gutenberg canon --tokenizer C:/slm-data/tokenizer/v1                     # gutenberg-canon curated supplement
 ```
 
 SFT and reasoning data:
@@ -46,7 +49,7 @@ python -m slm.data.sft smoltalk-metamathqa-50k --tokenizer C:/slm-data/tokenizer
 python -m slm.rl.synth --tokenizer C:/slm-data/tokenizer/v1 --n 40000
 ```
 
-Rules: stop the portal (or make sure no Documents page is open) before re-tokenizing a source, because
+Rules: stop the portal (or make sure no Data page browser or inspector is open) before re-tokenizing a source, because
 a memory-mapped shard cannot be replaced on Windows. Never change the tokenizer after a model has been
 trained with it; a new tokenizer is a new `tokenized/<tag>` tree.
 
@@ -81,7 +84,7 @@ mkdir -p runs/<run>
 python -u -m slm.train.pretrain --config configs/train/<run>.yaml > runs/<run>/train.log 2>&1 &
 ```
 
-Always `-u` and a redirect to a log file. Never pipe a long job through `grep`/`tail`: buffered output
+SFT, reasoning and tool SFT runs use the same trainer (`data.kind: sft` in the config). Always `-u` and a redirect to a log file. Never pipe a long job through `grep`/`tail`: buffered output
 is lost if the pipeline dies, and the job keeps running invisibly.
 
 - The console prints one line per `log_every_updates`: tokens, loss, LR, grad norm, tok/s, step time,
@@ -94,7 +97,7 @@ is lost if the pipeline dies, and the job keeps running invisibly.
   (another GPU process, or a spill), `GPU HOT` warnings above 80 °C, `data_ms` growing (loader starved).
 
 RL runs: `python -u -m slm.train.rl --config configs/train/<run>.yaml > runs/<run>/train.log 2>&1 &`.
-Same STOP/resume semantics; progress is in steps; rollouts land in `runs/<run>/rollouts/`.
+Same STOP/resume semantics (it always resumes from `latest.pt` when one exists; there is no `--fresh`); progress is in steps; rollouts land in `runs/<run>/rollouts/`.
 
 ## 5. Phase changes (the pipeline)
 
@@ -108,6 +111,10 @@ Each stage starts from the previous stage's checkpoint via `init_from` with a fr
 | M5 reasoning SFT | `m5_reasoning_149m.yaml` | `runs/m4_sft_149m/checkpoints/final.pt` |
 | M6 RL stage A | `m6_rl_arith_149m.yaml` | `runs/m5_reasoning_149m/checkpoints/final.pt` |
 | M7 16K extension | `m7_ctx16k_149m.yaml` | `runs/m3_base_8k_149m/checkpoints/final.pt` |
+| M8 336M base, phase 1 | `m8_base_stable_336m.yaml` | random init |
+| M8 phase 2 (4K + decay) | `m8_base_4k_336m.yaml` | `runs/m8_base_stable_336m/checkpoints/final.pt` + `init_loader_from` its `latest.pt` |
+| M10 prose continuation | `m10_base_prose_336m.yaml` | `runs/m8_base_4k_336m/checkpoints/latest.pt` (+ `init_optimizer`, `init_loader_from`) |
+| M10 SFT → tool SFT → RL | `m10_sft_336m.yaml`, `m10_tool_336m.yaml`, `m10_rl_336m.yaml` | each the previous stage's `final.pt` |
 
 `scripts/pipeline_after_m2.sh` shows how to chain evals → M4 → M5 → M6 unattended (each stage waits
 for the previous checkpoint). After every base checkpoint run the evaluation set:
@@ -115,7 +122,7 @@ for the previous checkpoint). After every base checkpoint run the evaluation set
 ```bash
 python -u -m slm.eval.lm_eval_wrapper --checkpoint <ckpt> --tasks hellaswag,arc_easy,piqa --batch-size 16 --out runs/<run>/lm_eval.json
 python -u scripts/diagnose.py <ckpt> --root C:/slm-data/tokenized/v1 --source fineweb-edu --seq 2048 --batches 8 --mb 4
-python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 16 --out runs/<run>/needle.json   # --batch-tokens 16384 caps the generation batch
+python -u -m slm.eval.long_context --checkpoint <ckpt> --lengths 1024 2048 4096 8192 --n 16 --out runs/<run>/needle_v2.json   # real-text haystack (default); --batch-tokens 16384 caps the generation batch; the Evals tab ignores the v1 name needle.json
 python -u -m slm.eval.reasoning --checkpoint <ckpt> --n 100 --gsm8k 200 --out runs/<run>/reasoning_eval.json   # post-M5/M6
 python -u scripts/prompt_sweep.py --checkpoint <ckpt> --run m10_psweep_336m > runs/m10_psweep_336m/sweep.log 2>&1   # the same checkpoint under several system prompts (inference only, ~1 h); then quality pack/judge/ingest on that run
 python -u -m slm.eval.quality generate --run <run> --device cpu --threads 8   # judged-quality suite on every snapshot; then pack / judge / ingest (docs/quality_eval.md)

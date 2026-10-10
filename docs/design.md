@@ -13,10 +13,12 @@ Read the README first for the big picture. File references are relative to the r
   overridden by the training config's `model:` mapping, so a run can change context length or RoPE
   scaling without a new model file.
 - `TrainConfig` composes `DataConfig`, `OptimConfig`, `ScheduleConfig`, `BatchConfig`, `RuntimeConfig`,
-  `CheckpointConfig`, `EvalConfig`, plus `init_from`, `milestone_tokens`, `notes`. Derived value:
+  `CheckpointConfig`, `EvalConfig`, plus `init_from`, `init_optimizer`, `init_loader_from` (§5),
+  `milestone_tokens`, `notes`. Derived value:
   `grad_accum = tokens_per_update / (microbatch × seq_len)` (must divide exactly).
-- `RlConfig` (`slm/train/rl.py`) is flat: tasks, prompt counts, generation settings, objective
-  settings, step budget.
+- `RlConfig` (`slm/train/rl_config.py`, torch-free so the portal can read RL yamls; re-exported by
+  `slm/train/rl.py`) is flat: tasks, prompt counts, generation and tool settings, reward schemes, objective
+  settings, collapse guards, step budget.
 
 ## 2. Model (`slm/model/`)
 
@@ -38,6 +40,7 @@ the tables on an existing model, which is how a checkpoint trained at 8K is exte
 **Loss** (`loss.py`). `chunked_cross_entropy(h, W, targets, chunk)` computes logits chunk by chunk in
 fp32 and returns `(loss_sum, n_valid)` with `IGNORE_INDEX = -100` targets skipped. Returning sums (not
 means) is what makes gradient accumulation exact: the trainer divides by the global valid-token count.
+An optional `z_loss` coefficient adds the PaLM z-loss term (§5, "z-loss").
 
 **Initialization.** All linear and embedding weights N(0, 0.02); `wo` and `w2` (the projections that
 write into the residual stream) use std 0.02/√(2L).
@@ -49,7 +52,7 @@ write into the residual stream) use std 0.02/√(2L).
 
 **FLOPs and MFU** (`utils/profiling.py`). PaLM-style training FLOPs per token
 `6·N_nonembed + 6·V·d + 12·L·d_attn·T`; MFU divides by the RTX 4080 SUPER dense bf16 peak
-(104.5 TFLOPS with fp32 accumulate). `mfu_causal` halves the attention term.
+(104.5 TFLOPS with fp32 accumulate). `causal=True` (the benchmark's `mfu_causal`) halves the attention term.
 
 ## 3. Tokenizer (`slm/data/tokenizer.py`, `scripts/train_tokenizer.py`)
 
@@ -77,7 +80,7 @@ tokens, and writes:
     tokenized/<tag>/<name>/train/shard_00000.bin      uint16 tokens, 100M per shard, docs = <|bos|> … <|eos|>
     tokenized/<tag>/<name>/train/shard_00000.idx.npy  int64 document start offsets within the shard
     tokenized/<tag>/<name>/train/shard_00000.src.npy  int32 [n_docs, 3] raw-row sidecar, aligned with .idx.npy
-    tokenized/<tag>/<name>/val/…                       10 ‰ of documents by sha1(text[:2048]); never trained on
+    tokenized/<tag>/<name>/val/…                       5 ‰ of documents by sha1(text[:2048]) (`--val-permille`); never trained on
     tokenized/<tag>/<name>/manifest.json               counts, tokenizer sha256, min_doc_tokens
 
 The sidecar names the raw row every kept document came from — `(file_index, row_group, row)`, where
@@ -152,7 +155,10 @@ loss mask; `parse_assistant` splits a generated assistant turn into think/final 
 `tokens_*.bin` / `mask_*.bin` / `idx_*.npy` per split; examples longer than `max_len` are dropped rather
 than truncated (a cut-off answer teaches bad endings). `SftLoader` packs examples back to back like
 pretraining and turns the mask into `IGNORE_INDEX` targets; cross-example attention inside a window is
-the accepted packing compromise.
+the accepted packing compromise. `prepare_sft(direct_think=…)` gives that share of chat conversations a short,
+content-free prose think line (`slm/data/direct_think.py`) instead of an empty span — the "think without reaching for
+code" case whose absence made M9 stage B v1 misfire — and `short_only` keeps only short first-turn conversations, so
+no-tool decisions are counted per conversation rather than per token.
 
 **Synthetic traces** (`rl/synth.py`). Templated step-by-step solutions for the RL task generators,
 correct by construction, written straight into SFT shards (`synthetic-reasoning`).
@@ -187,7 +193,9 @@ Schedules (`schedule.py`), all in tokens: linear warmup to `lr` over `warmup_tok
 Cadence: log every `log_every_updates` (tokens/sec, EMA, step/fwd/bwd/opt/data ms, peak VRAM, GPU
 temperature/power/utilization, ETA); validation every `eval.every_tokens`; samples every
 `gen_every_tokens` under `sdpa_context("decode")`; milestone every `milestone_tokens` (bf16 snapshot,
-segment timing); `latest.pt` every `ckpt.every_minutes`; `report.html` every `report_every_minutes`.
+segment timing, and with `eval.quality_suite` the judged-quality prompts written to `quality/outputs/`);
+`latest.pt` every `ckpt.every_minutes`; `report.html` every `eval.report_every_minutes`. The needle eval and the
+in-run quality suite are followed by `torch.cuda.empty_cache()` so the KV cache's segments are not kept reserved.
 The initial wall-clock estimate is taken from the first post-warmup window and written into `run.json`.
 Non-finite loss stops the run without checkpointing. A `warn` event is logged and printed when the GPU
 temperature exceeds `runtime.gpu_warn_temp_c` (rate-limited to one per 5 minutes).
@@ -204,7 +212,7 @@ logged when `tokens ≥ total_tokens`, followed by a final eval, samples, `final
 | `snap_<tokens>.pt` | bf16 model only + meta (`snap_800M.pt`, `snap_1p20B.pt`) | every milestone |
 | `best.pt` | bf16 model at the best validation loss | on eval improvement |
 | `final.pt` | bf16 model at the end | on finish |
-| `index.json` | `{name: {kind, tokens, update, val_loss, time}}` | on every write (backfill script for old runs) |
+| `index.json` | `{name: {kind, tokens, update, val_loss}}` (RL: `heldout_acc` instead of `val_loss`; RL snapshots are `step_<n>.pt`) | on every write (backfill script for old runs) |
 
 ### `metrics.jsonl` schema
 
@@ -214,16 +222,18 @@ One JSON object per line, always with `kind`, `time` (epoch seconds), and usuall
 |---|---|
 | `start`, `resume`, `stop`, `finish` | `msg`; `finish`/`stop` carry `elapsed_s` and `sources` |
 | `checkpoint` | `msg` (file, seconds), `sources` |
-| `train` | `update, loss, lr, grad_norm, tok_s, tok_s_ema, step_ms, fwd_ms, bwd_ms, opt_ms, data_ms, vram_gib, gpu_temp_c, gpu_power_w, gpu_util, elapsed_s, eta_s` (+ RL fields below) |
-| `eval` | `val_loss, val_ppl, best, eval_s, val_pt_loss` (extra validation), RL: `heldout_acc, train_acc, heldout_malformed, heldout_len` |
+| `train` | `update, loss, lr, grad_norm, tok_s, tok_s_ema, step_ms, fwd_ms, bwd_ms, opt_ms, data_ms, vram_gib, vram_reserved_gib, gpu_temp_c, gpu_power_w, gpu_util, elapsed_s, eta_s` (+ RL fields below; RL records have no `vram_reserved_gib`) |
+| `eval` | `val_loss, val_ppl, best, eval_s, val_pt_loss` (extra validation), `val_logz_mean, val_logz_max`, with `eval.needle_lengths` also `needle_<L>, needle_min_<L>, needle_effective, retrieval_by_depth, retrieval_worst`; RL: `step, heldout_acc, heldout_score, heldout_malformed, heldout_len, train_acc, train_score, train_len` |
 | `milestone` | `tokens, segment_s, elapsed_s, tok_s, loss, val_loss` |
-| `warn` | `msg` (GPU temperature) |
+| `quality` | `tool_misfire`, `msg` (in-run judged-quality outputs written) |
+| `warn` | `msg` (GPU temperature; a failed in-run quality suite; an RL collapse guard firing) |
 
 `sources` is `PretrainLoader.consumed()`: per mixture source `{tokens, epoch, shard, offset}`, the tokens
 taken from that source's stream since the run started (`epoch` fractional); `null` for loaders without it.
 
-RL `train` records add `reward_mean, success_rate, group_std_mean, groups_no_signal, adv_abs_mean,
-len_mean, len_correct, len_wrong, malformed_rate, length_term_rate, kl, entropy, clip_frac, ratio_mean`.
+RL `train` records add `step, reward_mean, success_rate, score_mean, group_std_mean, groups_no_signal, adv_abs_mean,
+len_mean, len_max, len_correct, len_wrong, malformed_rate, length_term_rate, tool_calls_mean, tool_error_rate,
+tool_use_rate, answer_from_tool_rate, policy_loss, kl, entropy, clip_frac, ratio_mean, n_minibatches, n_live`.
 `slm/utils/metrics.py` (torch-free) reads this incrementally for both the HTML report and the portal;
 `summary()` derives status, progress (tokens, or steps for RL), ETA, cumulative tokens along the
 `init_from` chain, and the latest GPU state.
@@ -237,7 +247,8 @@ predicts. Off by default (0 = byte-identical to every run before it; `tests/test
 both the chunked and the single-chunk path and that one gradient step shrinks `log Z`). The trainer passes it only
 into the *training* forward, so `val_loss` stays plain cross-entropy and comparable across runs, and every eval
 record carries `val_logz_mean` / `val_logz_max` from the first val batch whether or not the term is on. Set at
-1e-4 (PaLM's value) for the third base and its ablations.
+1e-4 (PaLM's value) in the shape ablations (`m10_abl_*`; `m10_abl_wide_noz_149m` is the 0 control) and in
+`m10_base_prose_336m`, and planned for the third base.
 
 ## 6. RL trainer (`slm/train/rl.py`, `slm/rl/`)
 
@@ -253,6 +264,9 @@ Families:
 | `gsm8k` | GSM8K *train* split (test is reserved for the benchmark) | number after `####` |
 | `pytool_pipeline` `pytool_strings` `pytool_numbers` `pytool_sim` `pytool_runcode` `pytool_declared`, umbrella `pytool` | `pytool.py`, over the grammars of `synth_python.py` | whatever the sandbox printed: a number, a word, a list, a boolean |
 | `constraints` | `constraints.py` | the JSON constraint spec |
+| `chat` | pooled: short, non-computational first user turns of three SmolTalk chat sets (`chat_pool`) | none (`verifier: plain`) |
+| `recall` `revise` `sysrule` | `synth_chat.py`: multi-turn conversations whose earlier turns are given in `meta["history"]` | recall: JSON `{"fact"}` or `{"absent", "not_these"}` (`verifier: recall`); revise / sysrule: a constraint spec (`verifier: constraints`) |
+| `select`, `pair` | pooled from `synth_select` files (swarm, below) | the dataset answer; for `pair` the letter A or B |
 
 `pytool.py` holds no grammar of its own: `synth_python.generate_sample` produces the conversation and
 `synth_python.sample_question` returns its `(prompt, gold, declarations)`, so the SFT set and the RL
@@ -277,22 +291,28 @@ reference log-probs teacher-forced. `greedy_accuracy` batches prompts by length 
 function set (one session env per batch) for evaluation.
 
 **Rewards** (`rewards.py`): `parse_final_answer` takes the LAST `#### …` line and the first number-like
-token after it (commas and `$` stripped, fractions allowed); `binary` reward = exact numeric match;
-a malformed completion (no think span when required, no answer line) scores 0 and is counted.
+token after it (commas and `$` stripped, fractions allowed); `binary` reward = exact numeric match.
+A malformed completion (no closed think span when required, a tool token in the answer, not terminated) is counted
+in `malformed_rate`; it scores 0 under `tool`, `tool_strict`, `fraction` and `plain`, while `binary` and `signed`
+score only correctness (no answer line is simply wrong) and `shaped` gives -0.5.
 
 **Verifiers**: `verify_answer(answer_text, gold, kind="auto")` is the single entry point.
 `auto` dispatches on the gold's shape (`slm.data.answers.is_numeric_answer`): a numeric gold takes the
 numeric path (`verify_numeric`, unchanged), anything else `verify_exact`, and `kind="constraints"` takes
-`verify_constraints`. `verify_exact` compares the whole `#### …` span (`parse_final_span`, not the first
+`verify_constraints`; a task picks its kind with `meta["verifier"]`. `kind="plain"` (`verify_plain`, the chat anchor)
+accepts any non-empty answer that has no `####` line and is not a bare verifier template ("So the answer is X.");
+`kind="recall"` (`verify_recall`) applies the same checks and then requires the stated fact, or, for a fact that was
+never stated, an acknowledgement phrase and no asserted name (none of the table, no "is called/named/known as X"). `verify_exact` compares the whole `#### …` span (`parse_final_span`, not the first
 number in it) and is tolerant of packaging — case, surrounding punctuation, quotes, list brackets and
 spacing, `5` vs `5.0` — and strict about content: a wrong item, a missing item, an extra item or an extra
 word fails. `verify_constraints` returns a `Verdict` whose `correct` is "all satisfied" and whose new
 `fraction` field carries the share. `answer_from_tool` now also credits a non-numeric answer that is
 exactly what a (non-trivial) call printed.
 
-**Reward schemes per family**: `reward_from_verdict(v, malformed, scheme, from_tool)` gained
-`fraction` (the verdict's partial credit, else 1/0 for a binary verdict; malformed is still 0 under every
-scheme). `RlConfig.reward_scheme` remains the run default and `RlConfig.reward_schemes` overrides it per
+**Reward schemes per family**: `reward_from_verdict(v, malformed, scheme, from_tool, n_calls)` knows `binary`,
+`signed` (±1), `shaped`, `tool` (1.0 from a call, 0.5 without), `tool_strict` (1.0 / 0.25), `fraction` (the
+verdict's partial credit, else 1/0 for a binary verdict; malformed 0) and `plain` (1 for a plain chat answer with
+no tool call, else 0). `RlConfig.reward_scheme` remains the run default and `RlConfig.reward_schemes` overrides it per
 family: `resolve_scheme(task, schemes, default)` takes an exact family name first, then the group prefix
 (`pytool_declared` → `pytool`), then the default. A mixed run needs this — constraint tasks have no tool
 to use, so under `tool` they could never score above 0.5.
@@ -311,7 +331,9 @@ the total number of live completion tokens in the step (accumulation-invariant l
 `rollouts/step_<n>.jsonl` with prompt, completion, reward, advantage, and both log-prob vectors.
 Evaluation every `eval_every_steps` on held-out prompts (greedy) and an equal-size train sample;
 `val_loss` for RL runs is `1 − heldout_acc` so `best.pt` semantics carry over. Checkpoints:
-`step_<n>.pt`, `latest.pt`, `final.pt`.
+`step_<n>.pt` (bf16, at every eval), `best.pt`, `latest.pt`, `final.pt`. Collapse guards (`entropy_stop`,
+`kl_stop`, 0 = off) stop the run when the *mean* rollout entropy or KL over the last `guard_window` (10) steps
+exceeds the limit, never on one step.
 
 ## 6a. Final-answer style (`slm/data/answers.py`)
 
@@ -333,26 +355,34 @@ tool results, as plain next-token targets. The second base mixes `smoltalk-chat`
 at 1.5% into its 4K decay phase, following the SmolLM2 recipe of putting instruction data in the decay. Decision
 (Peter, 2026-09-16): pretraining is not limited to human text.
 
-The tool source was rebuilt for phase 2 as `tool-chat-v2` (36.1M train / 2.9M val tokens, 225K docs): the four
+The tool source `tool-chat` was rebuilt for phase 2 (36.0M train / 2.9M val tokens, 225K docs): the four
 calculator-style sets (`gsm8k-tools`, `synthetic-reasoning-tools`, `metamathqa-tools`, `synthetic-multiturn-tools`,
-7.6M tokens together, the old `tool-chat`) plus `synthetic-python-tools` (28.4M), the grammar-generated set below.
-At 1.5% of a 2.5B-token phase it is sampled for ~0.96 epochs, which is why the size was chosen. The old `tool-chat`
-directory is kept as it is; swapping the data is a rename at launch time.
+7.6M tokens together) plus `synthetic-python-tools` (28.4M), the grammar-generated set below. At 1.5% of a 2.5B-token
+phase it is sampled for ~0.96 epochs, which is why the size was chosen. Each rebuild takes the plain name and keeps the
+previous build under a numbered one, so the numbers run *backwards* in time: `tool-chat` is the newest build (natural
+answer templates fixed and calls hoisted in front of the sentence that uses their result, `hoist_calls`), and the kept
+builds are `tool-chat-v3` (before hoisting), `tool-chat-v2` (the first 36M build) and `tool-chat-v1` (the calculator sets
+only, 7.6M). M8 phase 2 sampled `tool-chat`. `m10_base_prose_336m` names `tool-chat-v3`, the pre-hoist build, at 2%
+(log 2026-10-10); a new mixture should name `tool-chat`.
 
 ## 7. Context extension
 
 `RopeScaling` in the training config's `model:` block rebuilds the RoPE tables when the model is
 constructed; `init_from` then loads the 8K weights unchanged. The training row length comes from
 `data.seq_len`; memory is handled with `grad_checkpointing: true` and `loss_chunk_size`. The
-long-context eval (`slm/eval/long_context.py`) inserts a needle sentence at given depths in filler
-text of a given total length, reserves 16 tokens for the answer within the RoPE table, and reports
-retrieval accuracy per (length, depth); multi-needle mode asks for several facts at once. Extension
+long-context eval (`slm/eval/long_context.py`) inserts a needle sentence at given depths in a haystack
+of a given total length, reserves 16 tokens for the answer within the RoPE table, and reports
+retrieval accuracy per (length, depth); multi-needle mode asks for several facts at once. The haystack is
+`real` by default (continuous validation text of `eval.needle_source`, `fineweb-edu-b`, with document-boundary
+tokens removed); `filler`, an 8-sentence loop, is kept only as a control (repetitive text is much easier).
+`eval.needle_seed` (0) fixes the draw so every in-run eval scores the same haystacks. Extension
 runs also keep `extra_val_mixture` pointed at the ordinary 2K validation mixture so short-context loss
 is tracked next to the long-context metric.
 
-Every prompt the eval builds for one length is exactly that length (the haystack budget absorbs the
-needle and question tokens), so all cells of a length decode in one batch: `answer_all` groups prompts
-by length and fills batches up to `max_batch_tokens` prompt tokens (`eval.needle_batch_tokens`, 16384).
+Every prompt the eval builds for one length is exactly that length minus the reserve (the haystack budget
+absorbs the needle and question tokens), so all cells of a length decode in one batch: `answer_all` groups prompts
+by length and fills batches up to `max_batch_tokens` prompt tokens (16384 standalone; in the trainer
+`eval.needle_batch_tokens`, default 8192, because on WDDM the reservation is what pushes the device over its limit).
 Decoding 16 rows costs about what one row costs, which is what makes a statistically useful `n`
 affordable inside a training run. A batch that runs out of memory is retried row by row, and rows that
 still fail are dropped from that cell rather than counted as misses. The batched path is asserted to
@@ -363,6 +393,12 @@ fixed haystack draw (`runs/<run>/needle_sweep.json`, resumable, ~35 s per 336M s
 the run page overlays it on the needle chart as heavy lines. Use it when a run's in-run settings changed
 mid-way, or when the in-run n was too small for the gate to be trustworthy: at n=16 a true 90% cell reads below
 the 80% gate 21% of the time, at n=64 1.4%.
+
+Training signal for the skill comes from `synth-retrieval` (`slm/data/synth_retrieval.py`, templated, no model):
+needle documents (real training text with document boundaries stripped, 1-4 templated facts at random depths, then a
+question and answer per fact) and key-value ledger documents, log-uniform in length between `--min-len` and
+`--max-len`, written as an ordinary pretraining source. The eval uses validation text and different fact values,
+so this trains the skill, not the test items.
 
 In-run sample size matters more than it looks: at `needle_n: 4` over three depths a cell is 4 samples
 and the logged worst-depth line is the minimum of three 4-sample estimates, which swings by 25 points
@@ -377,20 +413,27 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   units; per-head attention entropy, BOS-sink mass, mean distance, local mass; head and layer ablation
   deltas on validation loss; effective rank and spectral norms; embedding usage. `scripts/diagnose.py`
   writes `diagnostics.json` and `diagnostics.html`.
-- `reasoning.py`: greedy accuracy per task on held-out prompts and on GSM8K test with the chat
-  format and a mandatory think span.
+- `reasoning.py`: greedy accuracy per task on held-out prompts and on GSM8K test (`--gsm8k`) and SVAMP
+  (`--svamp`) with the chat format and a mandatory think span; `--tools` makes the Python tool available and
+  adds tool-use and answer-from-tool rates.
+- `facts.py`: a 194-question factual-recall probe (capitals, science, dates, authors, units), greedy, scored by
+  whether an accepted answer appears as a whole word; completion form for base checkpoints, `--chat` for SFT/RL ones.
+- `row_positions.py`: per-position loss inside packed validation rows (tokens before the first `<|bos|>` vs after
+  it, by distance), the packing diagnostic of `docs/results.md` §9; writes `runs/<run>/row_position_loss.json`.
 - `multiturn.py`: scripted chat conversations, greedy, scored without a judge, `--n` of each `--kinds`:
   `recall` (a fact, a distractor, a question that needs it), `recall_absent` (the last question asks about something
   never stated; correct = names none of the stated fact's table and says so, by `slm.rl.rewards.verify_recall`, the
   RL reward's rule), `revise` (a question with a *given* answer, then "rewrite it so that ..." with 1-3
   `slm.rl.constraints` types; share kept and all kept by `verify_constraints`) and `sysrule` (a system-prompt rule,
   sometimes two-part, kept by the given first answer and checked on the reply to a new question). `format` and
-  `misfire` count every generated turn of every kind. Each kind draws from its own seeded RNG, so `recall` keeps the
+  `misfire` count every generated turn of every kind; `templated` is the share of recall answers that are a bare
+  verifier template. Each kind draws from its own seeded RNG, so `recall` keeps the
   conversations it always had; the three newer kinds use material held out from `slm.rl.synth_chat` (their own
   fact tables, 30 hand-written paragraphs instead of SmolTalk, their own rule and instruction wording, phrases and
   banned words; `tests/test_multiturn_eval.py` asserts the disjointness on the constants). External chat models
   run the same conversations through their template, the `sysrule` prompt through its system role (which replaces
-  the template's default system prompt). The result keeps a per-kind breakdown and every conversation for the
+  the template's default system prompt; a template without a system role gets the rule prepended to the first user
+  turn, recorded in `summary.system_prompt`). The result keeps a per-kind breakdown and every conversation for the
   Evals detail page.
 - `lm_eval_wrapper.py`: an `lm_eval` `LM` subclass implementing `loglikelihood` (context/continuation
   split that respects BPE merges), `loglikelihood_rolling` and greedy `generate_until`; run from the
@@ -401,10 +444,14 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   beside a training job, ~1 min per 336M checkpoint) and scored blind by an LLM judge on correctness,
   coherence and task (1-5). `pack` writes shuffled packets with opaque item ids and the rubric text; `ingest`
   validates the judge's JSON and rebuilds `quality/summary.json`, which the run page charts. The three prompts
-  the trainer has always sampled are averaged separately (`legacy3`). Protocol and rubric: `docs/quality_eval.md`.
+  the trainer has always sampled are averaged separately (`legacy3`); `bash` items are still scored but excluded
+  from `overall` since 2026-09-19, and the summary carries the judge-free `tool_misfire`. Protocol and rubric:
+  `docs/quality_eval.md`.
 - **Prompt overlay** (`slm.data.chat.system_overlay`, `scripts/prompt_sweep.py`): an evaluation-only context manager
-  that gives every conversation `format_chat` encodes an extra instruction, as the system turn (prepended to an
-  existing one) or inside the first user turn, without touching any eval's own prompt. The sweep script measures one
+  that gives every conversation `format_chat` encodes an extra instruction, as the system turn (`where="system"`,
+  prepended to an existing one) or prepended to the first user turn (`where="user"`), without touching any eval's own
+  prompt. It is a context variable; `format_chat` calls `apply_overlay(messages)`, which returns a modified copy, so
+  a conversation encoded outside the block is unchanged, and training never sets it. The sweep script measures one
   checkpoint under several such prompts on the evals a prompt could plausibly move (GSM8K / SVAMP with the tool, the
   judged suite, the multi-turn diagnostics) and writes a judgeable `quality/outputs/` per variant under
   `runs/<run>/` (no `run.json`, so the portal's run list ignores it). The published evals send no system prompt;
@@ -433,8 +480,10 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   the next turn) and asymmetric declared tools (one robot reads a key, another opens the door). `World` holds the grid,
   the task (`key_door`, `relay`, `triangulate`: verifiable, so an episode has a score) and per-robot `FunctionDecl`s whose
   impls act on the world; each turn the task asks every robot its current sub-goal as a question and declares only the
-  tool it needs (the scaffold the 336M model can climb). `Runner.step` is one batched `sample_with_tools` over all robots
-  with one `PySession` each, so a turn is simultaneous. `python -m slm.arena` runs an episode, `scripts/arena_eval.py`
+  tool it needs (the scaffold the 336M model can climb): the user turn is that question plus the `####` instruction, with
+  no observation preamble, after at most `max_history` (1) earlier exchange. `Runner.step` is one batched greedy
+  `sample_with_tools` over all robots, each with a fresh `PySession` per turn holding only that turn's declared tools
+  (a tool declared earlier would otherwise stay callable), so a turn is simultaneous. `python -m slm.arena` runs an episode, `scripts/arena_eval.py`
   sweeps seeds, and the portal's Arena tab streams it with a live grid (`docs/command_center.md`).
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
@@ -451,12 +500,16 @@ exposes the latest temperature, power, utilization, clocks and throttle reasons;
 - Model: causal masking, GQA equals manual KV repeat, KV-cache decode equals full forward, RoPE
   relative-position property and scaling variants, chunked CE equals full CE and respects ignore
   index, gradient checkpointing matches, gradient accumulation invariance, generation determinism,
-  a tiny overfit, parameter counts of shipped configs.
+  a tiny overfit, parameter counts of shipped configs, the z-loss formula (`test_zloss.py`).
 - Data: tokenizer round trips and single-digit tokens, token stream windows/wrap, loader resume
-  reproduces batches, fixed val loader, chat formatting masks and parsing, SFT shards and loaders.
+  reproduces batches, fixed val loader, chat formatting masks and parsing, the eval-only prompt overlay, SFT shards
+  and loaders, the PG-19 filter on synthetic books, synthetic retrieval documents, the Python-tool grammars.
 - Training: resume equivalence (a run stopped and resumed matches an uninterrupted run to 2e-3 in
   loss and 1e-4 in weights), SFT epochs, RL objective clipping and REINFORCE equivalence, task split
-  disjointness, verifier and reward schemes, synthetic-trace correctness, a two-step GRPO run.
+  disjointness, verifier and reward schemes, the chat / multi-turn / select families, synthetic-trace correctness,
+  a two-step GRPO run, GPU telemetry and the metrics log.
+- Evals and systems (CPU, no GPU model): needle batching and sweep, multi-turn eval disjointness, judged-quality
+  packing and ingest, the external-model registry and offline switches, the swarm's pure parts, the arena world.
 - Portal: API routes on synthetic runs, SSE live tail against a real server, worker harness on CPU,
   JS module parse check, and a Playwright suite that clicks every control on every page.
 
@@ -577,13 +630,24 @@ portal's inference tab can show what the swarm saw and chose.
   other behaviour. `slm.rl.synth_select` samples k=8 candidates from a checkpoint on GSM8K-train, SVAMP-train and
   the synthetic word families, collapses them, and writes (a) an SFT set `select-sft` — the selection prompt as
   the user turn, a one-line templated think stating what the pool showed, `#### <gold>` — for pools that contain
-  a correct group, and (b) `select_pool.jsonl` for the RL `select` family (`slm.rl.tasks.select_pool`, in
-  `POOLED`), which keeps *every* pool including those with no correct candidate: there the only rewarded move is
+  a correct group, and (b) `select_pool.jsonl`, every built pool with its gold. `--rebuild-from` rewrites the SFT
+  set from that file without a model and splits it: `--sft-permille` (500) of the correct pools go to SFT, the
+  rest plus every no-correct pool to `select_pool_rl.jsonl`, the RL `select` family's file
+  (`slm.rl.tasks.select_pool`, in `POOLED`, read from `select-sft2/`), so SFT and RL prompts are disjoint. The RL
+  pool keeps pools with no correct candidate: there the only rewarded move is
   to solve the problem afresh, which is the override behaviour a selector needs and that imitation cannot teach.
   No teacher is involved: the candidates are the model's own, the evidence is mechanical, the target is the
   dataset's gold. `reward_schemes: {select: binary}` — the evidence is already in the prompt, so no tool credit.
+- **Tournament.** `swarm_answer(mode=…)` takes `"select"`, `"tournament"` or `"both"` (`final` then follows the
+  tournament; `scripts/swarm_eval.py --mode` defaults to `both`). `tournament` is single elimination over up to 16
+  groups, seeded first against last with a bye for the odd one out; each round is one greedy batch of `pair_messages`
+  prompts (`PAIR_INTRO` / `PAIR_ASK`: the task, Answer A and Answer B with support, provenance and a rationale,
+  1200-token budget, no tool), every other pair presented swapped so position bias cancels, and an unparsable pick
+  falls back to the evidence order. `synth_select --rebuild-from … --pairs` writes the pairwise SFT set and
+  `pair_pool_rl.jsonl` for the RL `pair` family (gold = the letter); `scripts/pair_eval.py` measures the atomic
+  pairwise decision alone (chance 0.5, plus position bias). Result: at chance, trained or not (`docs/results.md` §19).
 - **Ceilings.** `scripts/swarm_eval.py` reports, from the same k samples, greedy / majority / verified_majority /
-  selector, and the ceilings oracle (pass@k), oracle_verified (a correct verified candidate exists) and in_prompt
+  selector / tournament, and the ceilings oracle (pass@k), oracle_verified (a correct verified candidate exists) and in_prompt
   (the correct group survived into the selector prompt). The gaps locate the work: oracle − oracle_verified is
   what verification throws away, oracle_verified − in_prompt what the budget throws away, in_prompt − selector
   what the selector still gets wrong.

@@ -8,15 +8,16 @@ in-house and instrumented for inspection:
     pretraining (2K → 4K/8K context) → instruction SFT → reasoning and tool-use SFT (think spans,
     a sandboxed Python tool) → RL with verifiable rewards (GRPO) → context extension (RoPE scaling)
 
-The code is deliberately small (about 10K lines of Python plus a no-build web UI), config-driven,
+The code is deliberately small (about 20K lines of Python plus a no-build web UI), config-driven,
 tested, and written to be read. The Python package is `slm`; the project name is a placeholder and is
 not baked into the code.
 
 **Hardware and constraints.** One RTX 4080 SUPER (16 GB), native Windows 11, Python 3.13, PyTorch
 2.14 + CUDA 13 with `triton-windows` so `torch.compile` works. Training data lives on `C:\slm-data`;
 code, configs, checkpoints and reports live in this repo. Data policy: English prose, Python and Linux
-shell only in the first base; from 2026-09-19 prose and Python only, and shell knowledge is allowed to fade. No teacher models and no model-generated training data (synthetic reasoning traces are
-templated and correct by construction). No paid APIs.
+shell only in the first base; from 2026-09-19 prose and Python only, and shell knowledge is allowed to fade. No teacher
+models for our own data generation (our synthetic reasoning and tool traces are templated and correct by construction);
+public datasets that were model-written (SmolTalk, MetaMathQA, Cosmopedia) are used as published. No paid APIs.
 
 **Where things stand** is deliberately kept out of this file. Current numbers live in
 [docs/results.md](docs/results.md), the narrative in [docs/log.md](docs/log.md), remaining work in
@@ -37,7 +38,8 @@ templated and correct by construction). No paid APIs.
 | M6 | `m6_rl_arith_149m` (+ stages B/C, `m6_rl_gsm_tools_149m`) | GRPO with programmatic verifiers, no critic, no reward model; later with a sandboxed Python tool (`slm/tools`) | Group-relative advantages, clipped ratios, KL to a reference, reward hacking, held-out generalization |
 | M7 | `m7_ctx16k_149m`, `m7_ctx8k_retrieval*_149m` | YaRN RoPE scaling; a gated retrieval curriculum (templated needle documents, gate = worst-depth retrieval ≥ 80%) | Configured vs effective context, needle-in-a-haystack, why the window edge fails, short-context regression checks |
 | M8 | `m8_base_stable_336m` → `m8_base_4k_336m` | The second base: 336M, 10B tokens, 2K then 4K rows, chat and tool-call conversations mixed into the decay phase | Scaling the model instead of the microbatch, size/throughput trade-offs, pretraining the chat format |
-| M9 | `m9_sft_336m` → `m9_tool4_336m` → `m9_rl2_336m` | Post-training the second base: chat SFT, then reasoning and Python-tool SFT, then GRPO over tool, math and instruction-following tasks | When a capability regresses everything around it, why mixture weights are token shares but behaviours are learned per conversation, and how to tell a collapsed RL policy from a noisy one |
+| M9 | `m9_sft_336m` → `m9_tool4_336m` → GRPO (`m9_rl2_336m` … `m9_rl6_336m`, with a selection SFT step `m9_select_336m`) | Post-training the second base: chat SFT, then reasoning and Python-tool SFT, then GRPO over tool, math and instruction-following tasks | When a capability regresses everything around it, why mixture weights are token shares but behaviours are learned per conversation, and how to tell a collapsed RL policy from a noisy one |
+| M10 | `m10_base_prose_336m` → `m10_sft_336m` → `m10_tool_336m` → `m10_rl_336m` (+ `m10_abl_*_149m` depth-vs-width ablations) | Continued pretraining of the M8 base with narrative prose (filtered PG-19 plus a curated canon supplement) mixed into a replay of its sources, inheriting weights, optimizer and data cursors; then the M9 post-training recipe replayed stage for stage, with multi-turn chat families (recall, revise, system-prompt rules) added to GRPO | Continual pretraining (re-warm, re-decay, replay), what a base-stage change does to every stage after it, teaching the negative case in multi-turn chat |
 
 Everything is measured. Each run writes a self-contained `runs/<run>/report.html`, a JSONL metrics log,
 bf16 snapshots every 100M tokens, and the command center renders all of it live.
@@ -47,7 +49,8 @@ bf16 snapshots every 100M tokens, and the command center renders all of it live.
 Two bases share one architecture family (Llama-3-style decoder-only Transformer). The first, `base_149m.yaml`, was
 used for M1–M7 and for every ablation; the second, `base_336m.yaml`, is the model the project now builds on. The
 size was chosen from a throughput/VRAM sweep (docs/results.md §1): 336M keeps the 149M model's utilization and
-leaves headroom for 4K rows, while ~565M is the memory ceiling of a 16 GB card with fp32 Adam state.
+leaves headroom for 4K rows below the memory ceiling of a 16 GB card with fp32 Adam state. Measured throughput for
+both is in docs/results.md §1.
 
 | | base_149m (first) | base_336m (second) |
 |---|---|---|
@@ -57,7 +60,6 @@ leaves headroom for 4K rows, while ~565M is the memory ceiling of a 16 GB card w
 | RoPE base | 100 000 | 500 000 |
 | Params (non-embedding) | 149.1M (123.9M) | 335.6M (302.0M) |
 | Native context | 2K, extended to 8K | 2K for 75% of tokens, then 4K |
-| Throughput | 62K tok/s at 2K | 28.6K tok/s at 2K, 25.4K at 4K |
 
 Common to both:
 
@@ -99,8 +101,11 @@ Chat format (one example, reasoning stage):
 
 Rules: `<|end|>` is a loss target and the generation stop token; `<|eos|>` is masked (the model cannot
 know whether another turn follows); after reasoning SFT the think span is mandatory; verifiable
-answers use the plain-text `#### <answer>` convention (last such line wins). Tool tokens are reserved
-now and unused.
+answers use the plain-text `#### <answer>` convention (last such line wins). The Python tool lives inside
+the think span: `<|python_call|>code<|/python_call|><|python_result|>out<|/python_result|>`, run by a sandboxed
+subset interpreter (`slm/tools/pysandbox.py`, never `exec`/`eval`) with one session per conversation; the result
+span is never a loss target. A conversation may also declare functions before its first turn
+(`<|python_def|>signature<|python_comment|>description<|/python_def|>`, fully masked; `slm/tools/functions.py`).
 
 ## 4. Data
 
@@ -110,15 +115,16 @@ volumes are on the Data page of the command center and in [docs/results.md](docs
 
 | Source | Kind | Role |
 |---|---|---|
-| fineweb-edu (sample-10BT): `fineweb-edu-10bt` = all 14 files (10.07B tokens, the second base); `fineweb-edu` / `fineweb-edu-b` = the first 2 / 7 files; `fineweb-edu-long` = docs ≥ 4096 tokens | educational web prose | 66–80% of the pretraining mixture; long-doc variant for the context phases |
+| fineweb-edu (sample-10BT): `fineweb-edu-10bt` = all 14 files (the second base); `fineweb-edu` / `fineweb-edu-b` = the first 2 / 7 files; `fineweb-edu-long` = docs ≥ 4096 tokens | educational web prose | 66–80% of the pretraining mixture; long-doc variant for the context phases |
 | cosmopedia v2 | synthetic textbooks | ~10% |
 | finemath 4+ | math web text with LaTeX | ~5% |
 | python-edu (file contents fetched from Software Heritage S3) | Python | ~3% |
 | stack-edu Shell (Software Heritage S3) | bash/sh | ~2% of the first base and of M8 phase 1; dropped from every later mixture (2026-09-19) |
+| PG-19 books from the release's public GCS bucket: `gutenberg-pg19` (published 1850 or later, ranked by dialogue density, archaic forms capped; `slm/data/gutenberg.py`) and `gutenberg-canon` (a curated literary-canon supplement the ranking left out) | narrative prose | 12% + 3% of the M10 continued pretraining |
 | tinystories | children's stories | M1 only |
 | SmolTalk subsets (magpie-ultra, openhermes, systemchats, constraints, everyday) | chat | instruction SFT; also mixed into the second base's decay phase as `smoltalk-chat` (4.5%) |
 | GSM8K / MetaMathQA / templated traces with Python tool calls (`gsm8k-tools`, `synthetic-reasoning-tools`) | tool-use reasoning | tool SFT; also mixed into the decay phase as `tool-chat` (1.5%) |
-| `synthetic-python-tools` (grammar-generated: data pipelines, strings, number theory, simulations, multi-turn REPL, "run this code", error-and-recover, declared functions) | real Python in the tool, not a calculator | tool SFT; the bulk of `tool-chat-v2`, the decay-phase tool source from 2026-09-19 |
+| `synthetic-python-tools` (grammar-generated: data pipelines, strings, number theory, simulations, multi-turn REPL, "run this code", error-and-recover, declared functions) | real Python in the tool, not a calculator | tool SFT; the bulk of `tool-chat` as rebuilt on 2026-09-19, the decay-phase tool source |
 | `synth-retrieval*` (templated: facts inserted into real text + questions; key-value ledgers) | retrieval | context curriculum and 3.5% of the second base's mixture |
 | GSM8K, MetaMathQA (converted to think spans + `#### X`), synthetic traces from our task generators | reasoning | reasoning SFT |
 
@@ -142,8 +148,10 @@ training. SFT examples are packed like pretraining rows with a parallel loss mas
 - **Checkpoints.** `latest.pt` (full state, atomic write, previous copy kept) every 15 minutes and on
   Ctrl-C or a `STOP` file; bf16 `snap_<tokens>.pt` every 100M tokens; `best.pt`, `final.pt`;
   `checkpoints/index.json` with exact token counts. Rerunning the same command resumes.
-- **Phase changes** use `init_from` (weights only by default; optimizer state optional) and a fresh
-  schedule, which is how M2 → M3a → M3b → M4 → M5 → M6 → M7 chain together.
+- **Phase changes** use `init_from` (weights only by default) and a fresh schedule, which is how
+  M2 → M3a → M3b → M4 → M5 → M6 → M7 chain together. A run that continues another also sets the other two
+  switches: `init_optimizer` (AdamW moments) and `init_loader_from` (data-stream positions, from the parent's
+  `latest.pt`; `final.pt` carries none), or every source restarts at token 0.
 - **Observability.** `metrics.jsonl` (one record per event, keyed by tokens and time), console lines
   with ETA and GPU temperature/power, `report.html` refreshed every 10 minutes and at milestones,
   fixed-prompt samples every 100M tokens, an up-front wall-clock estimate written into `run.json`.
@@ -171,38 +179,49 @@ group-relative advantages (mean-centered, optionally std-normalized), and optimi
 importance-ratio objective plus a k3 KL penalty to the frozen bf16 starting policy. Old and reference
 log-probs are recomputed teacher-forced after sampling so the ratio is honest. Every rollout is saved to
 `rollouts/step_<n>.jsonl`. Train and held-out prompts are split by a hash of the problem text, so
-generalization is measured on problems the policy never saw. Curriculum: A arithmetic → B multi-step
-and algebra → C code with unit tests and logic puzzles.
+generalization is measured on problems the policy never saw. Task families (`slm/rl/tasks.py`): arithmetic,
+multi-step expressions, linear equations and word problems; Python-tool problems drawn from the tool SFT
+grammars (`pytool_*`); instruction following with machine-checkable constraints (`slm/rl/constraints.py`); and
+multi-turn chat families whose earlier turns are given and whose final turn is checked (`recall`, `revise`,
+`sysrule`; `slm/rl/synth_chat.py`).
 
 **Post-training the second base (M9)** ran the same three stages against `base_336m` and is where most of
-what this project knows about SFT was learned. Chat SFT lifted judged quality 3.06 → 3.47. Reasoning and
-tool SFT then took four attempts: the first three taught the tool and broke everything around it — the model
-answered "What is the capital of France?" with an invented Python call — because the mixture contained
-"empty think, then answer" and "think with a tool call, then answer" and no third case, and because mixture
-weights are token shares while the decision to reach for a tool is made once per conversation (a tool
-conversation is ~180 tokens against a chat conversation's ~1400, so a 33% token share was 34:1 in
-conversations). `scripts/mixture_decisions.py` prints that ratio for a candidate config. GRPO then lifted
-tool use from 0.00–0.54 to 0.96–1.00 and algebra from 0.35 to 0.99, at the cost of terser answers to
-knowledge questions. Numbers in [docs/results.md](docs/results.md) §10–11, the full narrative in
+what this project knows about SFT was learned. Reasoning and tool SFT took four attempts: the first three
+taught the tool and broke everything around it — the model answered "What is the capital of France?" with an
+invented Python call — because the mixture contained "empty think, then answer" and "think with a tool call,
+then answer" and no third case, and because mixture weights are token shares while the decision to reach for a
+tool is made once per conversation (a tool conversation is far shorter than a chat conversation, so a modest
+token share is a large majority of conversations). `scripts/mixture_decisions.py` prints that ratio for a
+candidate config. GRPO then installed reliable tool use on math, at the cost of terser answers to knowledge
+questions. **M10** continued the M8 base with narrative prose and replayed the M9 recipe on it, adding the
+multi-turn RL families. Numbers in [docs/results.md](docs/results.md) §10–11 and §23, the full narrative in
 [docs/log.md](docs/log.md).
 
 ## 7. Context extension
 
 Context length changes no parameters. It changes the RoPE table, the attention cost, activation memory
-and the KV cache. The plan: bulk pretraining at 2K, the final phase at 8K on a long-document mixture
-(M3b), then branch from the finished 8K base to 16K with YaRN (factor 2) and a short continuation at
-16K with gradient checkpointing (M7), optionally 32K after that. The base checkpoint is never modified,
-and each extension is checked against the needle-in-a-haystack eval and the short-context validation
+and the KV cache. The first base: bulk pretraining at 2K, the final phase at 8K on a long-document mixture
+(M3b), then a branch from the finished 8K base to 16K with YaRN (factor 2) and a short continuation at
+16K with gradient checkpointing (M7). The second base trained 2K rows, then 4K rows in its decay phase (M8). The
+base checkpoint is never modified, and each extension is checked against the needle-in-a-haystack eval (real-text
+haystack; a length counts only where the worst depth retrieves at least 80%) and the short-context validation
 loss so a regression would be visible.
 
 ## 8. Evaluation
 
 - Validation loss/perplexity on held-out shards of the training mixture, at a fixed token cadence.
-- `slm.eval.lm_eval_wrapper`: an lm-evaluation-harness adapter (HellaSwag, ARC-Easy, PIQA, MMLU subsets)
-  with a loglikelihood implementation that respects BPE merges.
-- `slm.eval.reasoning`: greedy accuracy on held-out programmatic tasks and GSM8K test, with malformed
-  rate and lengths.
-- `slm.eval.long_context`: single- and multi-needle retrieval across lengths and depths.
+- `slm.eval.lm_eval_wrapper`: an lm-evaluation-harness adapter (HellaSwag, ARC-Easy, PIQA by default;
+  LAMBADA, OpenBookQA and SciQ in the stage measurements) with a loglikelihood implementation that respects BPE merges.
+- `slm.eval.reasoning`: greedy accuracy on held-out programmatic tasks, GSM8K test and SVAMP, with malformed
+  rate, lengths and (with `--tools`) tool use.
+- `slm.eval.facts` (factual-recall probe) and `slm.eval.multiturn` (does the model use the conversation it is
+  in: recall, revision, system-prompt rules).
+- `slm.eval.long_context`: single- and multi-needle retrieval across lengths and depths (real-text haystack;
+  `slm.eval.needle_sweep` re-measures every snapshot of a run).
+- `slm.eval.external`: similarly sized open-weight models (SmolLM2, Qwen2.5, GPT-2 medium) downloaded once and run
+  locally through the same evals (`--external <name>`) as comparison rows.
+- Swarm inference (`slm/swarm.py`, `scripts/swarm_eval.py`): sample many, group by answer, verify in the sandbox,
+  select with the same model.
 - `slm.eval.diagnostics`: per-layer residual norms, dead SwiGLU units, attention entropy and BOS-sink
   mass, head/layer ablations, weight spectra (writes `diagnostics.html` next to the checkpoint).
 - Fixed-prompt samples (greedy and sampled) during every run.
@@ -211,18 +230,27 @@ loss so a regression would be visible.
   task (1-5), charted per checkpoint in the command center; the steady-improvement signal validation loss
   cannot give. Protocol: `docs/quality_eval.md`.
 
+Every result file lands beside the run it measures, and the command center's Evals tab gathers them into one
+table (one row per evaluated checkpoint, external models as their own group) with per-item drill-down.
+
 ## 9. Command center
 
 `python -m slm.portal` serves a local web UI at http://127.0.0.1:8930 (FastAPI, torch-free server;
-vendored Preact + uPlot, no build step). Pages: **Overview** (pipeline table, live runs, GPU state, data
-readiness), run detail (live charts including GPU temperature/power, milestones, samples timeline,
-checkpoints, events, config), **Data** (a recipe per training config or run: its mixture with
+vendored Preact + uPlot, no build step). Port 8930 is the portal's (this project's range is 8930-8939); when it
+is taken the portal refuses to start and names the holder rather than moving. In the Claude desktop app the browser
+preview starts it from `.claude/launch.json` (the `portal` entry; [docs/runbook.md](docs/runbook.md) §7). Pages:
+**Overview** (live runs, GPU state, the run lineage graph built from `init_from`, data readiness), run detail (live charts including GPU temperature/power, milestones, samples timeline,
+checkpoints, events, config), **Evals** (every benchmark and homebrew eval, one row per evaluated checkpoint,
+external comparison models as their own group, per-item detail pages), **Data** (a recipe per training config or run: its mixture with
 epochs and drift set, and per source an inspector from raw parquet row to prepared document or SFT
 example to the exact training row the loader cuts, with loss masks; for RL the prompt list and the
 stored rollouts with their rewards; two recipes side by side, the cumulative exposure along the
 `init_from` chain, and a source catalog with provenance, "used by" and the document browser), **Tokenizer** playground, **Inference**
-(checkpoint slots A/B in a torch worker subprocess with a GPU guard, streaming generation with per-token
-log-probs, scoring), and **Architecture** (interactive module graph, FLOPs/memory, LR/RoPE
+(opens in a chat mode with the best all-round chat checkpoint and the reasoning span folded away; the advanced
+mode at `#/inference/advanced` has checkpoint or external-model slots A/B in a torch worker subprocess with a GPU
+guard, completion, chat and swarm modes, streaming generation with per-token log-probs, scoring), **Arena** (the
+multi-robot grid of `slm/arena/`: instances of one model cooperating through range-limited messages, live or
+replayed from an episode file), and **Architecture** (interactive module graph, FLOPs/memory, LR/RoPE
 illustrations computed by the real functions). It is a supplement to working in the repo, not the
 primary interface. Details: [docs/command_center.md](docs/command_center.md).
 
@@ -251,7 +279,7 @@ The pipeline, in order (all commands use `.venv/Scripts/python.exe`):
 | tokenize to shards | `python -m slm.data.prepare fineweb-edu --tokenizer C:/slm-data/tokenizer/v1` (`--min-doc-tokens 4096 --name fineweb-edu-long` for the long-doc source) |
 | benchmark | `python scripts/bench_throughput.py --config configs/model/base_336m.yaml --seq 2048 4096` |
 | pretrain / continue | `python -m slm.train.pretrain --config configs/train/m8_base_stable_336m.yaml` (`scripts/pipeline_m8.sh` chains both phases) |
-| SFT data | `python -m slm.data.sft smoltalk-openhermes-100k --tokenizer C:/slm-data/tokenizer/v1` (`--think-required` for reasoning sets); `python -m slm.rl.synth --n 40000` for synthetic traces |
+| SFT data | `python -m slm.data.sft smoltalk-openhermes-100k --tokenizer C:/slm-data/tokenizer/v1` (`--think-required` for reasoning sets); `python -m slm.rl.synth --tokenizer C:/slm-data/tokenizer/v1 --n 40000` for synthetic traces |
 | instruct / reasoning SFT | `python -m slm.train.pretrain --config configs/train/m4_sft_149m.yaml` (same loop, `data.kind: sft`) |
 | GRPO RL | `python -m slm.train.rl --config configs/train/m6_rl_arith_149m.yaml` |
 | evaluate | `python -m slm.eval.lm_eval_wrapper --checkpoint … --tasks hellaswag,arc_easy,piqa`; `python -m slm.eval.reasoning --checkpoint … --gsm8k 200`; `python -m slm.eval.long_context --checkpoint … --lengths 1024 4096 8192`; `python scripts/diagnose.py <ckpt> --root C:/slm-data/tokenized/v1 --source fineweb-edu` |
@@ -267,22 +295,32 @@ slm/
   config.py            ModelConfig, RopeScaling, YAML/override plumbing
   model/               attention.py (GQA, QK-norm, KVCache), rope.py (none/linear/ntk/yarn), mlp.py (SwiGLU),
                        transformer.py (blocks, generate), loss.py (chunked CE), introspect.py (module graph)
-  data/                sources.py (registry), download.py, swh.py (code contents), tokenizer.py, prepare.py (shards),
-                       loader.py (packing/mixture/resume), chat.py (format + loss mask), sft.py (SFT shards/loaders)
-  train/               config.py, schedule.py, pretrain.py (Trainer: pretrain + SFT), rl.py (RlTrainer: GRPO)
-  rl/                  tasks.py (generators, disjoint splits), rewards.py (verifier), advantages.py, objectives.py,
-                       rollout.py (groups, greedy eval), synth.py (correct-by-construction traces)
-  eval/                generation.py, sampling.py, diagnostics.py, reasoning.py, long_context.py, lm_eval_wrapper.py,
+  data/                sources.py (registry), download.py, swh.py (code contents), gutenberg.py (PG-19 download and
+                       selection), tokenizer.py, prepare.py (shards), synth_retrieval.py, loader.py (packing/mixture/
+                       resume), chat.py (format + loss mask), sft.py (SFT shards/loaders), answers.py, direct_think.py
+  tools/               pysandbox.py (sandboxed Python subset), protocol.py, loop.py (batched generation with calls),
+                       functions.py (declared functions), calculator.py
+  train/               config.py, rl_config.py, schedule.py, pretrain.py (Trainer: pretrain + SFT), rl.py (RlTrainer: GRPO)
+  rl/                  tasks.py (generators, disjoint splits), rewards.py (verifiers), advantages.py, objectives.py,
+                       rollout.py (groups, greedy eval), synth.py / synth_python.py / synth_multiturn.py (correct-by-
+                       construction traces), pytool.py, constraints.py, synth_chat.py, synth_select.py
+  eval/                generation.py, sampling.py, diagnostics.py, reasoning.py, facts.py, multiturn.py, long_context.py,
+                       needle_sweep.py, row_positions.py, lm_eval_wrapper.py, external.py (open-weight comparison models),
                        quality_suite.py + quality.py (judged-quality suite: generate / pack / ingest / summary)
-  utils/               checkpoint.py, logging.py, metrics.py, report.py, sdpa.py, profiling.py, gpu.py
-  portal/              app.py, settings.py, api/ (runs, data, tokenizer, model, arch, system), services/
-                       (runs, datasets, tokenizer, hparams, worker, harness), static/ (Preact SPA)
-configs/model/         tiny (tests), sanity_26m (M1), base_149m (M2–M7), base_336m (M8+), base_250m/360m/500m/620m (size sweep candidates)
+  arena/               world.py (multi-robot arena; python -m slm.arena)
+  swarm.py             swarm inference: sample, group by answer, verify, select
+  utils/               checkpoint.py, logging.py, metrics.py, report.py, sdpa.py, profiling.py, gpu.py, stage.py
+  portal/              app.py, settings.py, api/ (runs, evals, data, tokenizer, model, arch, system), services/
+                       (runs, evals, eval_detail, datasets, tokenizer, hparams, worker, harness, arena_files),
+                       static/ (Preact SPA)
+configs/model/         tiny (tests), sanity_26m (M1), base_149m (M2–M7), base_336m (M8+), base_250m/360m/500m/620m (size sweep candidates), abl_deep/abl_deeper_149m (shape ablation)
 configs/train/         one YAML per run, named after the run
-scripts/               bench_throughput, param_count, train/eval_tokenizer, diagnose, backfill_ckpt_index,
-                       pipeline_after_m2.sh, portal_smoke
-tests/                 model math, data/loader resume, trainer resume equivalence, SFT, RL, GPU telemetry,
-                       portal API + Playwright e2e
+scripts/               bench_throughput, bench_inference, param_count, train/eval_tokenizer, diagnose, backfill_ckpt_index,
+                       mixture_decisions, sft_to_pretrain, prep_*.sh (SFT set builders), pipeline_*.sh / m10_chain.sh,
+                       measure_stage.sh / measure_external.sh, swarm_eval, pass_at_k, arena_eval, prompt_sweep,
+                       chat_sampling_defaults, portal_smoke
+tests/                 model math, data/loader resume, trainer resume equivalence, SFT, RL, tool sandbox, swarm,
+                       arena, external models, GPU telemetry, portal API + Playwright e2e
 runs/<run>/            metrics.jsonl, run.json, report.html, train.log, samples/, checkpoints/ (+ rollouts/ for RL); untracked
 artifacts/bench/       throughput benchmark JSON/logs
 docs/                  see below

@@ -1,6 +1,11 @@
 # Data page refactor: the mixture as the spine
 
-Status: proposal, 2026-09-19. No code changed. Line numbers refer to the tree at commit `d268d5d`.
+Status: **implemented 2026-09-19** (all five phases, commits `a32013b`..`639b917`; log 2026-09-19 12:10), with the
+open questions answered yes: `prepare.py` writes a `shard_NNNNN.src.npy` raw-row sidecar for new shards, the pretraining
+trainer logs per-source `sources` counts in checkpoint/finish records (the chain view and a "consumed" column use them where present), the
+run page flags `plan_differs`, and the catalog hides unused / `*-v1` sets by default. `/api/data/mixture` is still
+served as the alias. The Overview readiness panel this proposal discusses is gone (the Overview became the run lineage
+graph, 2026-10-10). The body below is the original proposal; its line numbers refer to the tree at commit `d268d5d`.
 
 ## (a) Problem
 

@@ -989,3 +989,17 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   tests/test_portal_charts.py and the e2e runs page.
 - Charts: the vertical cursor line showed in every chart at once (uPlot cursor sync, key "runs", on since the first
   run page). Peter wants it only in the hovered chart: the sync is removed. Unit and e2e checks pin it (one line shown).
+
+## 2026-10-10 — docs pass; a tool-chat naming trap found in the M10 mixture
+
+- Peter asked for an accuracy pass over README and every doc. Four parallel audits (README + setup; design.md;
+  command_center + runbook + quality_eval; roadmap + proposal + CLAUDE.md + results.md current-state claims), each
+  checking claims against the code, then a review of every diff. Highlights: portal port 8930 and the new pages
+  everywhere; design.md's val split (5 permille, not 10), RL reward schemes per malformed case, index.json fields, RlConfig's
+  module, z-loss users; the runbook's install extra, Gutenberg commands, needle output name, 336M stage table; the
+  data-tab proposal marked implemented; results.md header and cross-references; `selector_messages` docstring (it
+  shortens rationales before dropping groups, the reverse of what it said).
+- Found while checking design.md §6b: the tool-chat builds are named backwards in time (each rebuild takes `tool-chat`
+  and keeps the previous build numbered), and `m10_base_prose_336m` names `tool-chat-v3`, the build before
+  `hoist_calls`. M8 phase 2 used the right one. Recorded in design.md §6b and the roadmap's known gaps; reported to
+  Peter. Not rerun: 2% of the mixture and M10's tool use measured fine.

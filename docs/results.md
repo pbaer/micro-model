@@ -1,7 +1,7 @@
 # Results and measurements
 
 Numbers that change as runs finish. Update this file when a run completes or an evaluation is run;
-the command center shows the live version of the same data. Last updated 2026-09-16 13:30.
+the command center shows the live version of the same data. Last updated 2026-10-05 (§27).
 
 ## 1. Throughput benchmark (149M, RTX 4080 SUPER, cuDNN attention)
 
@@ -921,7 +921,7 @@ pytool_declared 1, algebra 2, arith2 1, word 1. Seed 12.
 **The only stage C run to complete all 250 steps.** KL stayed at 0.01-0.07 for the whole run, never near the
 0.15 guard that stopped runs 2-4 at 141-150. It also survived a crash: at step 60 the policy wrote a slice with a
 float index and the sandbox let Python's `TypeError` through to the trainer (fixed at the slice site and at the
-`run_tool` boundary, §log 2026-09-26); the run resumed from the step-51 checkpoint with full state.
+`run_tool` boundary, log 2026-09-26); the run resumed from the step-51 checkpoint with full state.
 
 | held-out | pre-RL | step 50 | 100 | 150 | 200 | 250 |
 |---|---|---|---|---|---|---|
@@ -1258,7 +1258,7 @@ tell me" -- the same shape as the tool-misfire lesson (teach the negative case).
 family with one absent case in four, plus `revise` and `sysrule`; these five numbers are its gate, alongside the
 judged suite and the hard suite.
 
-## 23. M10: the prose-sprinkled base and the M9 recipe replayed on it (2026-09-30 → )
+## 23. M10: the prose-sprinkled base and the M9 recipe replayed on it (2026-09-30 → 10-01)
 
 Plan (log, 2026-09-30): continue the M8 base with narrative prose rather than try to teach prose at SFT, then
 replay the M9 post-training recipe stage for stage and compare each stage to its M9 counterpart.
@@ -1548,7 +1548,7 @@ closed.) Tool-call error rate is near zero on key_door and relay (17 and 24 erro
 What this says about goal 5: with scaffolding to the shape it was trained on, the 336M model is a reliable
 *executor* in a multi-agent system -- it makes the right call and moves the right value between robots across 31 hops
 -- and not yet a *planner*: the next rung is to let the question ask for the plan ("what should you do next?") with the
-tool set declared, which today collapses into code soup. The Arena tab (§command_center) shows every hop, trail and
+tool set declared, which today collapses into code soup. The Arena tab (`docs/command_center.md`) shows every hop, trail and
 call; the sweep's episodes open in its viewer.
 
 

@@ -9,7 +9,10 @@ portal never launches training.
 - **Server** (`slm/portal/app.py`, FastAPI + uvicorn) is torch-free: it reads `runs/`, the data root and
   the tokenizer directly. Routers under `slm/portal/api/`, logic under `slm/portal/services/`. Static
   assets are served with `Cache-Control: no-cache`, so a browser reload picks up JS edits; Python edits
-  need a restart. `--runs-root`, `--port`, `--no-browser`, `--reload` flags; settings in `settings.py`.
+  need a restart. `--host`, `--port`, `--runs-root`, `--data-root`, `--gpu-policy auto|cuda|cpu`, `--default-chat`,
+  `--no-browser`, `--reload` flags; settings in `settings.py`. A taken port is refused with the holder's name and a free
+  spare of the range (the portal never moves on its own: chats are stored per browser origin). FastAPI's own API docs
+  are at `/api/docs`.
 - **Frontend** (`slm/portal/static/`): no build step; vendored ESM Preact + htm and uPlot; hash router
   in `app.js`; pages in `pages/`, shared pieces in `components/` (`chart.js`, every chart on the dashboard: an optional
   second y-axis; hover values in a card beside the cursor, highest value on top, for the chart under the pointer only (a
@@ -17,8 +20,10 @@ portal never launches training.
   series colour, never a box: hover highlights the series, click hides it); only the vertical crosshair line, no
   horizontal one, and only in the hovered chart (no cursor sync between charts); Peter, 2026-10-10; `tokens.js` token chips with loss-mask colouring and the shared text view (`TextWithSpecials`, see "Text view
   and reserved tokens" below), `specials.js` its pure splitting helper, `util.js` formatters and `api()`, `info.js` +
-  `cards.js` the explanatory info cards, see below).
-  `index.html` carries boot diagnostics: a failed module import, a boot exception or a 10-second stall
+  `cards.js` the explanatory info cards, see below; `context.js` the context-window meter, `swarm.js` the swarm panel and
+  bracket, `arena_views.js` the Arena's episode model and views).
+  The nav carries a GPU tile on every page (memory, utilization, power, temperature, live training runs; polled every
+  5 s). `index.html` carries boot diagnostics: a failed module import, a boot exception or a 10-second stall
   shows an error panel; an `ErrorBoundary` in `app.js` contains page crashes.
 - **Worker** (`services/worker.py`): all torch work runs in a lazily spawned subprocess. GPU guard:
   loads default to CPU while a training run is live (unless forced); idle auto-stop; explicit
@@ -36,12 +41,12 @@ portal never launches training.
 
 | Page | What it shows |
 |---|---|
-| Overview | Header with GPU memory/utilization/temperature/power/throttle state; live-run cards (progress, loss, ETA); the **run lineage graph** (`pages/home.js`, since 2026-10-10): a node per run, an arrow where a run started from another run's checkpoint (`init_from`), laid out left to right by generation, one tree per base family, newest family on top, siblings oldest first. A node shows the run name, a status dot, its stage (coloured edge), parameter size, tokens or steps, and its headline number (judged quality, else held-out accuracy, else best val loss); a label on an arrow names the starting checkpoint when it was not the parent's final.pt; a dashed node is a parent missing from the runs folder. Hover shows a details card (status and ETA, stage and params, parent checkpoint, tokens this run and along the lineage, loss / val / held-out / judged quality, needle length, time and tok/s, start and git, data sources, RL tasks, children) and lights up the run's ancestors and descendants; a click opens the run page. Zoom: fit (width, never below 75%) / − / +; the graph scrolls inside its panel. Data readiness below. |
-| Run detail (`#/runs/<run>`) | Tiles (progress, ETA, elapsed vs initial estimate, tok/s, losses or RL reward/held-out/KL/length, LR, grad norm, VRAM, GPU °C/W with run max, step timing); charts with x in tokens/updates/time and log-y (loss, validation incl. pretraining-mixture drift, tok/s, LR, grad norm, step time, VRAM, GPU temperature/power, RL charts); milestones table; samples timeline (per 100M tokens, greedy vs sampled); needle chart overlays `needle_sweep.json` (every snapshot re-measured at one n) as heavy lines when present; judged quality (chart of overall / per-rubric / legacy-3 scores and a per-category chart when `quality/summary.json` exists; the `quality` tab lists every prompt's output for a checkpoint with its three scores and the judge's note, plus a category table); checkpoints with exact tokens; events (start/resume/stop/finish/checkpoint/warn); config. Live tail via SSE. |
+| Overview (`#/`, also `#/runs`) | Header with GPU memory/utilization/temperature/power/throttle state; live-run cards (progress, loss, ETA); the **run lineage graph** (`pages/home.js`, since 2026-10-10): a node per run, an arrow where a run started from another run's checkpoint (`init_from`), laid out left to right by generation, one tree per base family, newest family on top, siblings oldest first. A node shows the run name, a status dot, its stage (coloured edge), parameter size, tokens or steps, and its headline number (judged quality, else held-out accuracy, else best val loss); a label on an arrow names the starting checkpoint when it was not the parent's final.pt; a dashed node is a parent missing from the runs folder. Hover shows a details card (status and ETA, stage and params, parent checkpoint, tokens this run and along the lineage, loss / val / held-out / judged quality, needle length, time and tok/s, start and git, data sources, RL tasks, children) and lights up the run's ancestors and descendants; a click opens the run page. Zoom: fit (width, never below 75%) / − / +; the graph scrolls inside its panel. Data readiness below. |
+| Run detail (`#/runs/<run>`) | Header with report.html and data-recipe links (and a note when the yaml no longer matches what the run started with); tiles (progress, ETA, elapsed vs initial estimate, tok/s, losses or RL reward/held-out/KL/length/policy objective, needle effective context when measured, LR, grad norm, VRAM, GPU °C/W with run max, step timing); charts with x in tokens/updates/time and log-y (loss, validation incl. pretraining-mixture drift, tok/s, LR, grad norm, step time, VRAM peak and reserved, GPU temperature/power, RL charts, tool misfire per checkpoint when the quality outputs carry it); milestones table; samples timeline (per 100M tokens, greedy vs sampled); needle chart overlays `needle_sweep.json` (every snapshot re-measured at one n) as heavy lines when present; judged quality (chart of overall / per-rubric / legacy-3 scores and a per-category chart when `quality/summary.json` exists; the `quality` tab lists every prompt's output for a checkpoint with its three scores and the judge's note, plus a category table); checkpoints with exact tokens; events (start/resume/stop/finish/checkpoint/warn); config. Live tail via SSE. |
 | Evals (`#/evals`) | One table: rows = every checkpoint with at least one result file, columns = the public benchmarks (lm-eval) and the homebrew evals (facts, reasoning families, multi-turn, needle, judged, pass@k, swarm) under group headers; cells coloured per column from red (worst) to green (best), grey n/a. Details in "Eval tab" below. |
 | Data (`#/data`) | **Recipes** (default): one row per training config and per run, by stage, with a marker where the yaml no longer matches what the run started with. A recipe (`#/data/recipes/<id>`, id = `run:<name>` or `config:<path>`) is the mixture table with weight, planned and available tokens, epochs (red above 1.5), the loader's own per-source consumption when the checkpoint records carry it, the `extra_val_mixture` drift set, and for RL a prompt/reward panel with the deterministic prompt list (rendered as the exact generation prompt) and, for a run, a rollouts viewer (step selector, prompt + completion chips, reward, parsed answer, malformed flag). Clicking a mixture row opens the inspector (on the shard's first document or example, in the text view): **raw** (a parquet row of the source it was prepared from, with a *trace* that re-runs the preparation filters and reports kept/dropped and the split), **prepared** (the stored document, or the stored SFT example with green loss-mask chips), **row** (a training row of exactly `seq_len + 1` tokens with red document — or SFT example — boundaries and the target count). **Compare** (`#/data/compare/<a>/<b>`, client-side from two recipe payloads): header diff and the union of sources with weight A / B, the delta in percentage points, planned tokens and epochs; a run's default pairing is its `init_from` parent. **Chain** (`#/data/chain/run:<name>`): the `init_from` walk back to the root, one row per stage with tokens used and per-source tokens (the loader's own counters where the run logged them, `tokens x weight` otherwise — the row says which), a totals row and a stacked bar. **Catalog** (`#/data/catalog`) lists every raw, tokenized and chat-formatted set, with unused and `*-v1` sets behind a "show unused" toggle; `#/data/source/<name>` carries raw files, prepared artifacts per tag, provenance both ways, the recipes that use it with their weights, for a source prepared by a selecting preparer (`gutenberg-pg19`) a **selection filter** panel (books in, kept, dialogue cutoff, mean tokens per book, raw and tokenized size, and one row per rule with its threshold, books removed, tokens removed and example titles; the catalog marks such sources "filtered", and the raw trace reports the per-book verdict from `books.jsonl` instead of re-running `keep_doc`), for a curated set (`gutenberg-canon`) a **curated list** panel (books, tokens, how often each rule was relaxed, every book by list entry with year, tokens, split and the rule relaxed for it, and a toggle for the seed titles not in the set with the reason; the catalog marks it "curated"), and a **browse** panel with the old documents browser (tokenizer tag / source / split / shard or parquet file / row group; selecting a source, shard, file or row group opens its first document right away; text (default), tokens or ids; a raw chat row's text view is the SFT chat format with its loss mask; `window`; `stats` with length percentiles and long-doc counts). The list and preview fill the viewport. |
 | Tokenizer | Playground: encode text in raw, document or chat mode; text view (default: decoded, reserved tokens as chips, loss mask in chat mode) or coloured token chips with offsets and ids; vocabulary lookup. |
-| Inference (`#/inference`) | **Chat mode** (default): a plain chat with the best all-round chat checkpoint, loaded on arrival, streamed replies with the think span folded under "reasoning", several conversations kept in the browser, the few settings that matter behind a gear (see "Inference tab: chat mode" below). **Advanced mode** (`#/inference/advanced`): two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, text (default) vs tokens view (reserved tokens are chips in both), prompt scoring, cancel, release GPU. |
+| Inference (`#/inference`) | **Chat mode** (default): a plain chat with the best all-round chat checkpoint, loaded on arrival, streamed replies with the think span folded under "reasoning", several conversations kept in the browser, the few settings that matter behind a gear (see "Inference tab: chat mode" below). **Advanced mode** (`#/inference/advanced`): two checkpoint slots (A/B) loaded in the worker (device auto/cuda/cpu, force flag), each holding one of our checkpoints or a local open-weight comparison model (external slot: see below), completion, chat and swarm modes (swarm: see below), a think toggle, streaming tokens with log-probs and top-k alternatives, A/B side by side with the first diverging token marked, text (default) vs tokens view (reserved tokens are chips in both), prompt scoring, cancel, release GPU. `#/model` is an old alias of the advanced mode. |
 | Arena (`#/arena`) | The robot grid of `slm/arena/world.py` on a loaded slot, or an episode file in viewer mode: controls, a live SVG grid (robots, doors, comm range, path trails, messages as labelled arcs), a turn scrubber, a task panel, an episode summary strip, an interaction timeline (swimlanes), a message log, a compact table of every robot's turn and one selected robot's transcript; JSON episode download. Details in "Arena tab" below. |
 | Architecture | Any model config: interactive expandable module graph with symbolic and numeric shapes (B and T sliders), per-node params and FLOPs, GQA diagram, parameters by family, KV-cache size, memory budget vs the training-throughput benchmarks measured on the selected config's model file (`/arch/configs` lists them as `training_benchmarks`, leaving out other kinds such as `bench_inference.py`'s `infer_*.json`; `/arch/graph` reports the `model_file` a model / train / run selection rests on; none measured says so), LR schedule / RoPE / batch / cadence illustrations computed by the real training functions. |
 
@@ -73,19 +78,26 @@ there is no room below) and rendered only while open, so it never shifts the lay
 `/data/tokenized/{tag}/{source}/{split}/shards|docs|doc|window|stats`,
 `/data/sft/{tag}/{set}/{split}/shards|examples|example|window|stats` (doc / example / window / trace / RL prompts and
 rollouts also carry `runs`, see below) · tokenizer: `GET /tokenizers` (with each tag's `specials`),
-`POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/token/{i}` · model:
+`POST /tokenizers/{tag}/encode`, `GET /tokenizers/{tag}/vocab`, `/tokenizers/{tag}/token/{i}` · model:
 `GET /model/status`, `POST /model/worker/stop`, `GET /model/checkpoints` (ours, then the external models; every entry carries `chat_ok`, one carries `default_chat`), `POST /model/slots/{slot}/load|unload`,
-`POST /model/score`, `POST /model/generate` (SSE), `POST /model/swarm` (SSE), `GET /model/arena/tasks`, `POST /model/arena` (SSE), `POST /model/streams/{sid}/cancel`, `POST /model/diagnostics` ·
+`POST /model/score`, `POST /model/generate` (SSE), `POST /model/sessions/{sid}/reset`, `POST /model/swarm` (SSE), `GET /model/arena/tasks`,
+`/model/arena/episodes`, `/model/arena/episodes/{name}`, `/model/arena/world`, `POST /model/arena` (SSE), `POST /model/streams/{sid}/cancel`,
+`POST /model/diagnostics` (no page uses it yet) ·
 arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
 
 ## Tests and checks
 
-- `tests/test_portal_runs.py`: API on synthetic runs; every JS module must parse (`node --check`).
+- `tests/test_portal_runs.py`: API on synthetic runs; every JS module must parse (`node --check`); the server process
+  never imports torch; data endpoints (replaced shards noticed, manifest normalizer and recipes incl. an RL yaml, SFT
+  window masks, a filtered source and a book's recorded trace verdict, the `init_from` chain, rollouts, RL prompts);
+  the Architecture page's training benchmarks.
 - `tests/test_portal_evals.py`: the eval table on a synthetic runs tree (attribution, file priority, quality rows by token
   count, colour positions, mtime cache), `/api/evals`, an info card for every column, `node --check` of the page; the
   detail pages on synthetic result files of every kind (judged outputs joined with scores and aliases, a reasoning dump
   split by block size, facts / needle / multi-turn / pass@k / swarm rows, lm-eval aggregate-only with two sources and a
-  log tail, verdict filter, search, paging, 404s, the file-size cap, mtime cache) and `/api/evals/detail`.
+  log tail, verdict filter, search, paging, 404s, the file-size cap, mtime cache) and `/api/evals/detail`; external
+  models as their own group after ours (registry fields, n/a where our tool protocol is needed, the shared colour
+  scale); the multi-turn kinds' columns and detail rows.
 - `tests/test_portal_runs.py` also covers the text view: `text_runs` on a real tokenizer (exact specials, a literal
   "<|user|>" stays text, loss flags, multi-byte characters whole), the `runs` field of the doc / window / SFT example /
   RL prompt endpoints and `specials` on `/api/tokenizers`, `splitSpecials` under node against the tokenizer's actual
@@ -99,20 +111,32 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
   with scripted sampling/selection (incl. cancel), the tournament path with a scripted `compare_batch` (round events,
   bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), one real pass
   on a tiny CPU model, and an external slot's swarm (stubbed model: own template, verification n/a, majority fallback).
-- `tests/test_portal_arena.py`: `Harness.arena` with a scripted `arena_generate` (event shape per turn, the messages list, the declared tools read back from the prompts, stop at done, the cancel path, refusals incl. an external slot), `arena_messages` against `deliver()`, one real turn of a tiny CPU model, `/api/model/arena` validation and SSE shape against a stub worker, `/api/model/arena/tasks`, the nav entry, an info card for every `arena_*` key, `node --check` of the changed JS.
+- `tests/test_portal_arena.py`: `Harness.arena` with a scripted `arena_generate` (event shape per turn, the messages list, the declared tools read back from the prompts, stop at done, the cancel path, refusals incl. an external slot), `arena_messages` against `deliver()`, one real turn of a tiny CPU model, `/api/model/arena` validation and SSE shape against a stub worker, `/api/model/arena/tasks`, the nav entry, an info card for every `arena_*` key, `node --check` of the changed JS; the viewer endpoints (episode list and read with path safety, `/api/model/arena/world`) and the grid's messages toggle.
+- `tests/test_portal_tools.py`: the Python tool through the in-process `Harness` with a scripted sampler (tool event,
+  inserted-token flags, REPL state across calls with one session id, the well-formed assistant summary), generated ids
+  reused verbatim by `format_chat`, declared functions in chat mode.
+- `tests/test_portal_charts.py`: the chart rules as source checks on `components/chart.js` (no uPlot live legend, no
+  horizontal crosshair, no cursor sync, the hover card sorted highest first with no "at <x>" qualifiers, line swatches
+  rather than boxes) and that no page builds its own uPlot.
 - `tests/test_portal_worker.py`: `WorkerClient` against stub workers (`tests/_worker_stub.py`) that die at spawn or mid-request:
   the call and the stream must fail with the exit code within seconds, the client resets so the next request starts a
-  fresh worker, and the idle stop never fires while a request holds the lock.
+  fresh worker, and the idle stop never fires while a request holds the lock; `describe_exit` messages; the port range
+  (8930 default, clear of 8765 and common dev ports) and a taken port refused with its holder and a free spare.
 - `tests/test_portal_home.py`: the lineage layout under node (`layoutLineage`, `parentOf`, `relatives` on a realistic
   forest: every path form of `init_from`, a ghost parent, column per generation, parents centred on children, newest family
   first, no overlaps) and the page wiring.
 - `tests/test_portal_chat.py`: `mark_default_chat` (the configured checkpoint, the stand-in order, `chat_ok`), the chat page's
-  wiring (routing, API use, localStorage, a seed per reply, an info card for every `k`) and `node --check` of the page.
+  wiring (routing, API use, localStorage with only changed settings stored, the 1536-token default in both modes, a
+  `ContextMeter` in both modes, no native dialogs, a seed per reply, an info card for every `k`) and `node --check` of
+  the page.
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every
-  button clicked, every select cycled; no JS errors, no hangs, no raw template text.
-- `scripts/portal_smoke.py`: the same click-through against a live portal with real data.
-- Layout rules verified at a 1000 px viewport: no page scrolls horizontally; the Overview table is the
-  one element that may still need its own scroll below ~1100 px.
+  button clicked, every select cycled; no JS errors, no hangs, no raw template text. Also the lineage graph (nodes,
+  the edge label, the hover card and dimming), the chart behaviour in a real browser (static legends, one hover card,
+  the vertical cursor line only in the hovered chart, no horizontal line), and chat mode as the Inference default.
+- `scripts/portal_smoke.py`: the same click-through against a live portal with real data (`--generate` also loads the
+  newest checkpoint into slot A on CPU and generates).
+- Layout rule: no page scrolls horizontally at a 1000 px viewport; wide content (the lineage graph, the eval table, the
+  bracket, the arena timeline) scrolls inside its own panel. Checked by hand, not by a test.
 
 ## Text view and reserved tokens (2026-10-01)
 
@@ -148,8 +172,9 @@ text goes through the same component.
 ## Backlog (from the original plan)
 
 P1: batch replay inspector (exact rows of a given update), run comparison overlays, sampled document
-search, A/B side-by-side with divergence marker, prompt-scoring view. P2: diagnostics viewer in the
-portal, animations on the architecture page, stage "lenses", STOP control for runs, a run scheduler.
+search. P2: diagnostics viewer in the portal (`POST /api/model/diagnostics` exists, no page calls it), animations on
+the architecture page, stage "lenses", STOP control for runs, a run scheduler. Done since the plan: A/B side by side
+with a divergence marker and the prompt-scoring view (both in the Inference advanced mode).
 
 ## Inference tab: chat mode (2026-10-05)
 
@@ -198,11 +223,13 @@ from the page's title).
   The advanced mode shows one under each slot's output (prompt + generated), and the slot card names the context.
 - **Layout.** A two-column panel the height of the viewport: the conversation list (collapses below 900 px) and the
   chat column (header with the model pill and gear, optional settings strip, the scrolling transcript with a welcome
-  card and four suggestions when empty, the composer). Info cards `chat_mode`, `chat_model`, `chat_settings`.
+  card and four suggestions when empty, the composer). Info cards `chat_mode`, `chat_model`, `chat_settings`,
+  `chat_context`.
 
 ## Inference page: chat with the Python tool (2026-09-15)
 
-Chat mode is a multi-turn conversation. When a generated assistant turn is well-formed (ends with `<|end|>`,
+This and the next two sections describe what is now the **advanced mode** (`pages/model.js`, `#/inference/advanced`).
+Its chat mode is a multi-turn conversation. When a generated assistant turn is well-formed (ends with `<|end|>`,
 think span closed, no tool call outside the think span) it is appended to the message list verbatim — the
 exact generated token ids travel with the message so the next prompt reuses them without re-running any tool
 call — followed by an empty user turn to fill in. Editing a generated turn drops its ids and re-encodes it.
@@ -450,7 +477,7 @@ capability's history down one column.
   limit 1000, used only where no lm-eval file has them), `facts*.json`, `reasoning_eval*.json` / `reasoning_s*.json` /
   `reasoning_svamp.json` (per-family accuracy, the file's mean, mean tool-use rate), `multiturn*.json` (recall, not stated
   = `recall_absent`, revise, sysrule, and format / misfire over every kind; a file written before the kinds holds
-  recall only and leaves the three new columns n/a), `needle_v2.json` / `needle_s*.json` (effective context = longest length whose every shorter length also has
+  recall only and leaves the three new columns n/a), `needle_v2.json` / `needle_s*.json` / `needle_step*.json` / `needle_snap*.json` (effective context = longest length whose every shorter length also has
   min-over-depths >= the threshold; real-text haystack only; v1 `needle.json`, the filler control and the depth probes
   are ignored), `quality/summary.json` (judged overall and tool misfire), `pass_at_k.json`, `swarm_eval*.json`.
   MMLU and the dropped benchmark-revision tasks (§13 of results.md) are not shown.
@@ -463,7 +490,10 @@ capability's history down one column.
   `reasoning_svamp.json`; the loser is listed in the hover ("also measured").
 - **Rows** are ordered by model size (largest first), then stage (base, sft, reasoning / tool, rl), run name and tokens.
   Each shows the stage, the checkpoint and its aliases, and cumulative tokens along the `init_from` chain (this run's
-  share in parentheses).
+  share in parentheses). The local open-weight comparison models (`runs/ext_<name>/` with a `model.json` registry entry,
+  result files naming `"checkpoint": "external:<name>"`) follow ours as their own **external models** group (stage
+  `external`, the registry's params and published training tokens, hf id / license / chat or base in the hover; no link to
+  a run page); cells that need our tool protocol are n/a, and the colour scale spans every row.
 - **Colour**: per column, t = (value - min) / (max - min), flipped for `higher_is_better: false` columns (misfire), mapped
   to a hue from red (0) to green (120); a column with one distinct value is amber, n/a is grey. The server computes `t`,
   the page only paints it.

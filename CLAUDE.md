@@ -47,7 +47,7 @@ placeholder and may change, so don't bake it into code.
 ## Engineering rules
 - Loss functions return `(loss_sum, n_valid_tokens)`; the trainer divides by the global token count
   so gradient accumulation is invariant to the accumulation factor.
-- Every numeric hyperparameter is config-driven (`slm/config.py` dataclasses + YAML + `k=v` overrides).
+- Every numeric hyperparameter is config-driven (`slm/config.py` + `slm/train/config.py` dataclasses + YAML + `k=v` overrides).
 - A run that continues another one must inherit **everything** the continuation implies, and each piece is a
   separate switch: weights (`init_from`), optimizer (`init_optimizer`), and **data-stream positions**
   (`init_loader_from`, pointed at the parent's `latest.pt`; `final.pt` is a weights-only snapshot and carries
@@ -94,5 +94,5 @@ placeholder and may change, so don't bake it into code.
 `m<milestone>_<role>_<params>`, e.g. `m2_base_149m`, `m3_base_stable_149m`, `m3_base_8k_149m`, `m4_sft_149m`,
 `m6_rl_arith_149m`, `m7_ctx16k_149m`, `m8_base_stable_336m`, `m8_base_4k_336m`. Roles say what the run produces (`base_stable` = flat-LR continuation with no
 finished model; `base_8k` = 8K phase + decay that yields the base checkpoint). Token counts never go in names:
-exact counts live in `checkpoints/index.json` and the overview shows cumulative tokens along the init_from chain.
+exact counts live in `runs/<run>/checkpoints/index.json` and the overview shows cumulative tokens along the init_from chain.
 Config files are named after the run they define (`configs/train/<run_name>.yaml`).

@@ -158,9 +158,9 @@ def verified_majority(groups: list[Group]) -> str | None:
 
 def selector_messages(task_prompt: str, groups: list[Group], tok=None, budget_tokens: int = 2400, max_groups: int = 12) -> list[dict]:
     """The selection prompt: the task, then each distinct answer with its support and provenance and a short
-    representative rationale. Fits a token budget by first dropping the least-supported groups, then
-    shortening rationales -- the answers themselves are never dropped below `min_groups`, and the budget is
-    measured with the real tokenizer when one is given."""
+    representative rationale. Fits a token budget by first shortening the rationales (240 -> 120 -> 60 characters),
+    then dropping the least-supported groups -- never below 3 answers -- and the budget is measured with the real
+    tokenizer when one is given."""
     gs = groups[:max_groups]
     chars = 240
     while True:

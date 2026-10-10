@@ -55,8 +55,8 @@ All are public Hugging Face parquet datasets.
 
 ```bash
 python -m slm.data.download fineweb-edu --n-files 14    # educational web prose; 14 files ~28.5 GB, ~10B tokens
-python -m slm.data.download cosmopedia  --n-files 2     # synthetic textbooks, ~1.17 GB per file
-python -m slm.data.download finemath    --n-files 3     # math web text with LaTeX
+python -m slm.data.download cosmopedia  --n-files 6     # synthetic textbooks, ~1.17 GB per file
+python -m slm.data.download finemath    --n-files 9     # math web text with LaTeX, ~286 MB per file
 python -m slm.data.download tinystories --all           # tiny, only needed for the M1 toy run
 python -m slm.data.download python-edu  --all           # ids only -- see below
 python -m slm.data.swh      python-edu  --max-files 200000   # fetch contents from Software Heritage S3
@@ -64,6 +64,8 @@ python -m slm.data.swh      python-edu  --max-files 200000   # fetch contents fr
 
 `python-edu` and `stack-edu-shell` ship *file identifiers*, not code, so the contents come from Software
 Heritage in a second pass. That pass is slow (hours for 200K files) and resumable — rerun it if interrupted.
+200K files is the first base's scale; the 336M base's `python-edu` holds ~1.3M files (raise `--max-files`, default
+100000), so that it is not repeated several times over 10B tokens.
 **`stack-edu-shell` is only needed to reproduce the first base and M8 phase 1**; shell was dropped from every
 mixture on 2026-09-19 and no current config uses it.
 
@@ -80,13 +82,17 @@ python -m slm.data.download gutenberg-pg19 --all          # data/{train,validati
 python -m slm.data.gutenberg download --workers 64        # metadata.csv + books -> parquet
 ```
 
-Chat, math and tool data:
+Chat, math and tool data (`slm.data.download` takes one source per call):
 
 ```bash
-python -m slm.data.download smoltalk-smol-magpie-ultra smoltalk-openhermes-100k \
-    smoltalk-systemchats-30k smoltalk-smol-constraints smoltalk-everyday-conversations --all
-python -m slm.data.download smoltalk-metamathqa-50k gsm8k --all
+python -m slm.data.download smoltalk-smol-magpie-ultra --n-files 3   # the test file + the first two train files
+for s in smoltalk-openhermes-100k smoltalk-systemchats-30k smoltalk-smol-constraints \
+         smoltalk-everyday-conversations smoltalk-metamathqa-50k gsm8k svamp; do
+    python -m slm.data.download $s --all
+done
 ```
+
+`svamp` is evaluation-only (`slm.eval.reasoning --svamp`).
 
 **External comparison models** (optional). Seven open-weight models of similar size are scored by our own evals as
 comparison rows (`slm/eval/external.py`, [design.md](design.md) §8). Their weights are downloaded once, like the
@@ -140,18 +146,40 @@ python -m slm.data.gutenberg prepare --tokenizer C:/slm-data/tokenizer/v1 --dry-
 python -m slm.data.gutenberg prepare --tokenizer C:/slm-data/tokenizer/v1          # e.g. target_tokens=4e8
 ```
 
-Two sources in the base mixture are **generated here, not downloaded**:
+The M10 continued pretraining also uses `gutenberg-canon`, a curated supplement of canon books the dialogue ranking
+left out (books already in `gutenberg-pg19` are never repeated):
 
 ```bash
-# retrieval: facts inserted into real text, plus key-value ledgers (context curriculum + 3.5% of the base)
-python -m slm.data.synth_retrieval --tokenizer C:/slm-data/tokenizer/v1 --name synth-retrieval
+python -m slm.data.gutenberg canon --tokenizer C:/slm-data/tokenizer/v1          # --dry-run for the report only
+```
 
-# chat and tool-call conversations, folded into the decay phase as pretraining rows
-python -m slm.rl.synth_python --tokenizer C:/slm-data/tokenizer/v1 --n 170000
+Several sources in the base mixture are **generated here, not downloaded**. `slm.data.synth_retrieval` (its
+`--backdrop`) and `slm.rl.synth_python` (its `--corpus`) read real text from `fineweb-edu-b` by default: the first 7
+fineweb-edu files prepared under that name (`--name fineweb-edu-b` while only those files are downloaded), which is
+what the shipped sets used. Point those flags at `fineweb-edu-10bt` instead if you skip it.
+
+```bash
+# retrieval: facts inserted into real text, plus key-value ledgers (context curriculum + 3.5% of the base).
+# The set under this name since M8 phase 2 (3K-4K-token documents, 80% of facts in the first 15%):
+python -m slm.data.synth_retrieval --tokenizer C:/slm-data/tokenizer/v1 --name synth-retrieval \
+    --tokens 150000000 --min-len 3072 --max-len 4096 --early-frac 0.8 --seed 11
+# M8 phase 1 trained on the earlier set (400M tokens, 512-16K-token documents), now kept as synth-retrieval-16k:
+python -m slm.data.synth_retrieval --tokenizer C:/slm-data/tokenizer/v1 --name synth-retrieval-16k \
+    --tokens 400000000 --min-len 512 --max-len 16384 --seed 7
+
+# chat and tool-call conversations, folded into the decay phase as pretraining rows. These re-lay SFT sets, so run
+# them after §6 (the tool sets) and after building the five plain SmolTalk sets:
+python -m slm.data.sft smoltalk-smol-magpie-ultra smoltalk-openhermes-100k smoltalk-systemchats-30k \
+    smoltalk-smol-constraints smoltalk-everyday-conversations --tokenizer C:/slm-data/tokenizer/v1
 python scripts/sft_to_pretrain.py --out smoltalk-chat smoltalk-smol-magpie-ultra smoltalk-openhermes-100k \
     smoltalk-systemchats-30k smoltalk-smol-constraints smoltalk-everyday-conversations
-python scripts/sft_to_pretrain.py --out tool-chat synthetic-python-tools gsm8k-tools
+python scripts/sft_to_pretrain.py --out tool-chat gsm8k-tools synthetic-reasoning-tools metamathqa-tools \
+    synthetic-multiturn-tools synthetic-python-tools
 ```
+
+`m10_base_prose_336m.yaml` names its tool source `tool-chat-v3`: per [log.md](log.md) (2026-09-19 14:20) that is the
+build of the same five sets kept from just before the `hoist_calls` fix to the GSM8K and MetaMathQA tool traces; the
+command above builds the current `tool-chat`.
 
 ## 6. Build the SFT sets
 
@@ -175,10 +203,10 @@ bash scripts/prep_chat_short.sh        # -> smoltalk-*-short (5 sets; magpie's i
 bash scripts/prep_synth_rebuild.sh
 
 # math with think spans and #### answers, with and without tool calls
-python -m slm.data.sft gsm8k --tokenizer C:/slm-data/tokenizer/v1 --think-required --max-len 1024 --name gsm8k-reasoning
-python -m slm.data.sft gsm8k --tokenizer C:/slm-data/tokenizer/v1 --think-required --tools --max-len 1024 --name gsm8k-tools
-python -m slm.data.sft smoltalk-metamathqa-50k --tokenizer C:/slm-data/tokenizer/v1 --think-required --max-len 1024 --name metamathqa-reasoning
-python -m slm.data.sft smoltalk-metamathqa-50k --tokenizer C:/slm-data/tokenizer/v1 --think-required --tools --max-len 1024 --name metamathqa-tools
+python -m slm.data.sft gsm8k --tokenizer C:/slm-data/tokenizer/v1 --think-required --name gsm8k-reasoning
+python -m slm.data.sft gsm8k --tokenizer C:/slm-data/tokenizer/v1 --think-required --tools --name gsm8k-tools
+python -m slm.data.sft smoltalk-metamathqa-50k --tokenizer C:/slm-data/tokenizer/v1 --think-required --name metamathqa-reasoning
+python -m slm.data.sft smoltalk-metamathqa-50k --tokenizer C:/slm-data/tokenizer/v1 --think-required --tools --name metamathqa-tools
 ```
 
 Why so many chat variants: they differ only in what the think span contains, and that difference decided
@@ -210,23 +238,33 @@ python -m slm.train.pretrain --config configs/train/m1_tinystories_26m.yaml    #
 python -m slm.portal                                          # command center at http://127.0.0.1:8930
 ```
 
+The portal refuses to start when port 8930 is taken and names the program holding it (`--port 8931` … `8939` are this
+project's spares). In the Claude desktop app, start it from the browser preview (`.claude/launch.json`, the `portal`
+entry) rather than by hand; see [runbook.md](runbook.md) §7.
+
 M1 is the intended smoke test: a 26M model on TinyStories that exercises the loop, packing,
 checkpoint/resume, sampling, evaluation and the report, in about an hour.
 
 ## 9. Reproducing a specific model
 
-`configs/train/` is named after the runs. The chain that produced the current model:
+`configs/train/` is named after the runs. The chain that produced the current model (`m10_rl_336m` final.pt, the
+portal chat mode's default checkpoint):
 
 | Stage | Config | Tokens | Wall clock |
 |---|---|---|---|
 | base, phase 1 | `m8_base_stable_336m.yaml` | 7.5B at 2K | ~73 h |
 | base, phase 2 | `m8_base_4k_336m.yaml` | 2.5B at 4K, LR decay | ~27 h |
-| chat SFT | `m9_sft_336m.yaml` | 200M | ~2.5 h |
-| reasoning + tools SFT | `m9_tool4_336m.yaml` | 120M | ~1.7 h |
-| GRPO | `m9_rl2_336m.yaml` | 141 steps | ~1.3 h |
+| prose continuation | `m10_base_prose_336m.yaml` | 2B at 4K, LR re-warm and decay | ~24 h |
+| chat SFT | `m10_sft_336m.yaml` | 200M | ~2.8 h |
+| reasoning + tools SFT | `m10_tool_336m.yaml` | 120M | ~1.8 h |
+| GRPO | `m10_rl_336m.yaml` | 250 steps | ~1.8 h |
+
+The M9 chain on the unmodified base (`m9_sft_336m` → `m9_tool4_336m` → `m9_rl5_336m` → `m9_select_336m` →
+`m9_rl6_336m`) is the comparison point for every M10 stage. `scripts/m10_chain.sh` runs the M10 chain with its gates.
 
 Each stage's `init_from` points at the previous stage's checkpoint. A run that *continues* another (rather
-than initialising from it) must also inherit optimizer state and data-stream cursors — see
+than initialising from it) must also inherit optimizer state and data-stream cursors (`m10_base_prose_336m` does,
+from `m8_base_4k_336m`'s `latest.pt`) — see
 [runbook.md](runbook.md) §5, which exists because getting this wrong silently re-trained 94% of a phase on
 data the parent had already seen.
 
