@@ -91,7 +91,7 @@ export function ModelPage() {
   const [mode, setMode] = useState("completion");
   const [text, setText] = useState("Once upon a time, there was a little girl named Lily. She loved to");
   const [messages, setMessages] = useState([{ role: "user", content: "What is 17 + 26?" }]);
-  const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 300, seed: 1234, logprobs_topk: 5 });
+  const [sampling, setSampling] = useState({ temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 1536, seed: 1234, logprobs_topk: 5 });
   const [useBoth, setUseBoth] = useState(false);
   const [thinkReq, setThinkReq] = useState(true);
   const [tools, setTools] = useState(true);

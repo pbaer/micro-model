@@ -12,8 +12,11 @@ import { Info } from "../components/info.js";
 const html = htm.bind(h);
 
 // measured on m10_rl final.pt (scripts/chat_sampling_defaults.py, docs/results.md §27): see the "chat_settings" card
-export const DEFAULTS = { model: null, temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 512, tools: true };
-const CHATS_KEY = "slm.chat.v1", SETTINGS_KEY = "slm.chat.settings.v1";
+export const DEFAULTS = { model: null, temperature: 0.8, top_p: 0.95, top_k: 0, max_new_tokens: 1536, tools: true };
+// v2 stores only the settings the user changed, so a new default reaches every browser (v1 stored a full snapshot on
+// first visit, which froze whatever the defaults were then: max_new_tokens 512 for everyone who had opened the page)
+const CHATS_KEY = "slm.chat.v1", SETTINGS_KEY = "slm.chat.settings.v2", OLD_SETTINGS_KEYS = ["slm.chat.settings.v1"];
+const overrides = (s) => Object.fromEntries(Object.entries(s).filter(([k, v]) => k in DEFAULTS && DEFAULTS[k] !== v));
 const SUGGESTIONS = [
   "Tell me a short story about a lighthouse keeper.",
   "Explain how rain forms, for a ten-year-old.",
@@ -140,7 +143,10 @@ export function ChatPage() {
   const [ckpts, setCkpts] = useState([]);
   const [chats, setChats] = useState(() => { const c = load(CHATS_KEY, []); return Array.isArray(c) && c.length ? c : [newChat()]; });
   const [cur, setCur] = useState(() => load(CHATS_KEY + ".cur", null));
-  const [settings, setSettings] = useState(() => ({ ...DEFAULTS, ...load(SETTINGS_KEY, {}) }));
+  const [settings, setSettings] = useState(() => {
+    OLD_SETTINGS_KEYS.forEach((k) => { try { localStorage.removeItem(k); } catch { /* blocked storage */ } });
+    return { ...DEFAULTS, ...load(SETTINGS_KEY, {}) };
+  });
   const [showOpts, setShowOpts] = useState(false);
   const [draft, setDraft] = useState("");
   const [live, setLive] = useState(null);  // the reply being streamed: {think, content, phase, calls}
@@ -157,7 +163,7 @@ export function ChatPage() {
   const chat = chats.find((c) => c.id === cur) || chats[0];
   useEffect(() => { save(CHATS_KEY, chats); }, [chats]);
   useEffect(() => { if (chat && chat.id !== cur) setCur(chat.id); save(CHATS_KEY + ".cur", chat ? chat.id : null); }, [chat && chat.id]);
-  useEffect(() => { save(SETTINGS_KEY, settings); }, [settings]);
+  useEffect(() => { save(SETTINGS_KEY, overrides(settings)); }, [settings]);
   const refresh = () => { api("/api/model/status").then(setStatus).catch(() => {}); api("/api/model/checkpoints").then(setCkpts).catch(() => {}); };
   useEffect(() => { refresh(); const id = setInterval(() => api("/api/model/status").then(setStatus).catch(() => {}), 10000); return () => clearInterval(id); }, []);
 

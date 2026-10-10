@@ -1073,7 +1073,7 @@ export const CARDS = {
     <p class="see">The default is the checkpoint the portal settings name, or, when that is not on disk, the newest RL /
       reasoning / SFT final.pt (GET /api/model/checkpoints marks it <code>default_chat</code>).</p>` },
   chat_settings: { t: "Sampling defaults", b: html`
-    <p>Temperature 0.8, top-p 0.95, top-k off, up to 512 new tokens, Python tool on. Measured on the suite's chat
+    <p>Temperature 0.8, top-p 0.95, top-k off, up to 1536 new tokens, Python tool on. Measured on the suite's chat
       prompts plus conversational ones with three seeds each (docs/results.md §27): this setting closed the most replies
       (95%) with the least word-for-word repetition (13%, against 24% for greedy) and a different reply on nearly every
       seed; anything from 0.6 to 0.8 is within noise of it, and at 1.0 the small model starts losing the thread and the

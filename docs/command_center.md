@@ -159,11 +159,13 @@ from the page's title).
   default on arrival (device auto, so CPU while a training run is live); a slot already holding a chat-capable
   checkpoint is used as is (the advanced mode's choice is respected); the gear's model picker loads what it names.
   The header pill shows the model and device, "loading …" while the worker loads, "training live" when a run is.
-- **Sampling.** Defaults temperature 0.8, top-p 0.95, top-k off, 512 new tokens, Python tool on, measured on the model
+- **Sampling.** Defaults temperature 0.8, top-p 0.95, top-k off, 1536 new tokens (Peter, 2026-10-09; the advanced mode's
+  default is 1536 too), Python tool on, measured on the model
   (`scripts/chat_sampling_defaults.py`, results §27); a fresh random seed per reply, shown under the reply (the
   advanced mode's fixed seed stays there). `think_required` follows slot A's stage as in the advanced mode; an
   external chat model takes neither the think span nor the tool. Settings persist in `localStorage`
-  (`slm.chat.settings.v1`); "reset to defaults" restores the measured ones.
+  (`slm.chat.settings.v2`, only the values that differ from the defaults, so a changed default reaches every browser;
+  v1 stored a full snapshot and is removed on load); "reset to defaults" restores the measured ones.
 - **Conversations.** `localStorage` `slm.chat.v1`: id, title (the first user line unless renamed), timestamps, one
   Python `session` id each (variables persist across turns; deleting a conversation resets its session), and the
   messages. An assistant message keeps the generated turn's `ids` when it closed properly, so re-encoding never
