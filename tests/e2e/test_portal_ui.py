@@ -214,6 +214,10 @@ def test_home_and_runs(server, browser):
     p.page.mouse.move(box["x"] + box["width"] * 0.5, box["y"] + box["height"] * 0.5)
     p.settle(300)
     assert p.page.locator(".chart-card:visible").count() == 1, "one card, for the chart under the pointer"
+    shown = p.page.evaluate("""[...document.querySelectorAll('.u-cursor-x')].filter((e) => {
+        const m = /translate\\(([-\\d.]+)px/.exec(e.style.transform || ''); const x = m ? parseFloat(m[1]) : (parseFloat(e.style.left) || -10);
+        return getComputedStyle(e).display !== 'none' && x >= 0; }).length""")
+    assert shown == 1, f"the vertical cursor line shows only in the hovered chart, not in all of them ({shown})"
     assert p.page.evaluate("[...document.querySelectorAll('.u-cursor-y')].every(e => getComputedStyle(e).display === 'none' || e.offsetWidth === 0)")
     p.page.mouse.move(2, 2)
     p.settle(200)

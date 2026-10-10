@@ -31,7 +31,7 @@ export function valueNear(u, si, idx) {
 }
 
 /** The hover card: one fixed element per chart, filled and moved by the uPlot cursor hook (no re-render per mouse
- *  move), shown only for the chart under the pointer (the synced charts move their cursor line but stay quiet). */
+ *  move), shown only while the pointer is over this chart. */
 function hoverCardPlugin(xfmt, xlabel, colorOf, dashOf) {
   let card = null, over = null, inside = false;
   const hide = () => { if (card) card.style.display = "none"; };
@@ -80,7 +80,7 @@ const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", 
  *  A series with scale:"y2" is drawn against a second axis on the right (e.g. temperature vs power).
  *  The title is rendered here rather than by uPlot so the info icon can sit inline after it. Hover values appear in a
  *  card beside the cursor, highest value on top; the legend below is static (name + line in the series' colour): hovering a name highlights
- *  that series, clicking it hides or shows it. The cursor draws only its vertical line. */
+ *  that series, clicking it hides or shows it. The cursor draws only its vertical line, and only in this chart. */
 export function Chart({ title, info, series, xmode = "tokens", logy = false, height = 240, ymin, ymin2 }) {
   const ref = useRef(null);
   const plot = useRef(null);
@@ -100,8 +100,9 @@ export function Chart({ title, info, series, xmode = "tokens", logy = false, hei
       height,
       legend: { show: false },  // replaced by the static legend below and the hover card
       // y:false drops the horizontal crosshair line; the vertical one marks the position the hover card describes.
-      // setSeries:false keeps a legend focus from propagating to the other synced charts (they share only the cursor).
-      cursor: { y: false, sync: { key: "runs", setSeries: false }, focus: { prox: 0 } },
+      // No cursor sync: the line shows only in the chart under the pointer (Peter, 2026-10-10; the charts used to share
+      // one cursor, so every chart on the page drew it at once).
+      cursor: { y: false, focus: { prox: 0 } },
       focus: { alpha: 0.12 },
       plugins: [hoverCardPlugin(xfmt, xlabel, (si) => colorOf(si - 1), (si) => !!series[si - 1].dash)],
       scales: {

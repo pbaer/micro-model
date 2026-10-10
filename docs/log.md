@@ -987,3 +987,5 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   a static legend (line swatches, hover highlights, click hides) and a per-chart hover card replace it; the card shows only
   for the chart under the pointer, a sparse series (val loss) its nearest point within 24 px; cursor y off. Tested in
   tests/test_portal_charts.py and the e2e runs page.
+- Charts: the vertical cursor line showed in every chart at once (uPlot cursor sync, key "runs", on since the first
+  run page). Peter wants it only in the hovered chart: the sync is removed. Unit and e2e checks pin it (one line shown).
