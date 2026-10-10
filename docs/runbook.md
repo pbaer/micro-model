@@ -147,7 +147,9 @@ the GPU while a training run is live unless forced. Static assets are served wit
 a browser reload picks up JS changes; Python changes need a server restart. A tab loaded while the
 server was restarting shows a failure panel with a Reload button.
 
-**Running the portal in the background (Windows).** The worker is a spawned child process, and a child spawned into
+**In the Claude desktop app** the portal is owned by the browser preview: `.claude/launch.json`'s `portal` entry starts it on 127.0.0.1:8930 (`autoPort: false`; the preview opens the same origin, so chats saved in the browser stay visible) and the preview stops and restarts it. Start it there, not by hand: a hand-started copy holds the port and makes the preview's start fail. `portal-attach` previews a portal started some other way (a terminal).
+
+**Running the portal in the background (Windows), outside the app.** The worker is a spawned child process, and a child spawned into
 a console that no longer exists dies during DLL initialisation (exit code 0xC0000142) before Python can print
 anything. So a background portal needs a console of its own, not the one of the shell that launched it:
 

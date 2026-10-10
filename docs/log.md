@@ -966,3 +966,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   (`slm.portal.settings.PORT_RANGE`; clear of 87xx, the common dev ports and this machine's Windows-reserved ranges).
   A taken port now stops the portal with the holder's command line and a free spare instead of uvicorn's bare bind
   error; it never switches ports by itself (per-origin chat storage). The test chats made on :8765 / :8766 stay there.
+
+- 2026-10-10: the preview kept failing to start `portal` because my hand-started copy (Start-Process, own console) held
+  8930. The preview now owns the portal: launch.json's `portal` entry pins 127.0.0.1:8930 (`autoPort: false`, `url`
+  set, so the preview origin matches the one chats were saved under); the hand-started copy was stopped. Worker spawn
+  verified under the preview-started process (model loads on cuda, a tool call answers). Runbook §7 says so.

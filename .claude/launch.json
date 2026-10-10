@@ -1,7 +1,7 @@
 {
   "version": "0.0.1",
   "configurations": [
-    {"name": "portal", "runtimeExecutable": ".venv/Scripts/python.exe", "runtimeArgs": ["-m", "slm.portal", "--no-browser"], "port": 8930},
+    {"name": "portal", "runtimeExecutable": ".venv/Scripts/python.exe", "runtimeArgs": ["-u", "-m", "slm.portal", "--no-browser"], "port": 8930, "autoPort": false, "url": "http://127.0.0.1:8930"},
     {"name": "portal-attach", "url": "http://127.0.0.1:8930", "port": 8930}
   ]
 }
