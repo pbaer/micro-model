@@ -13,7 +13,7 @@ portal never launches training.
 - **Frontend** (`slm/portal/static/`): no build step; vendored ESM Preact + htm and uPlot; hash router
   in `app.js`; pages in `pages/`, shared pieces in `components/` (`chart.js`, every chart on the dashboard: an optional
   second y-axis; hover values in a card beside the cursor, highest value on top, for the chart under the pointer only (a
-  sparse series shows its nearest point within 24 px, labelled with its x); a static legend below (name + a line in the
+  sparse series shows its nearest point within 24 px, unlabelled; values in one right-aligned column); a static legend below (name + a line in the
   series colour, never a box: hover highlights the series, click hides it); only the vertical crosshair line, no
   horizontal one, and only in the hovered chart (no cursor sync between charts); Peter, 2026-10-10; `tokens.js` token chips with loss-mask colouring and the shared text view (`TextWithSpecials`, see "Text view
   and reserved tokens" below), `specials.js` its pure splitting helper, `util.js` formatters and `api()`, `info.js` +

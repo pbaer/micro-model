@@ -6,7 +6,7 @@ import { Info } from "./info.js";
 
 const html = htm.bind(h);
 const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#9333ea", "#ea580c", "#0891b2"];
-const NEAR_PX = 24;  // a series with no point exactly under the cursor shows its nearest point within this many pixels
+const NEAR_PX = 24;  // a series with no point exactly under the cursor shows its nearest point within this many pixels (unlabelled)
 
 const fmtVal = (v) => (v == null || !isFinite(v) ? "–" : Math.abs(v) >= 1e5 ? v.toPrecision(5) : Math.abs(v) < 0.001 && v !== 0 ? v.toExponential(3) : String(+Number(v).toPrecision(5)));
 
@@ -55,11 +55,11 @@ function hoverCardPlugin(xfmt, xlabel, colorOf, dashOf) {
           if (!s.show) continue;
           const hit = valueNear(u, si, idx);
           if (!hit) continue;
-          rows.push({ v: hit.v, html: `<div class="cc-row"><i class="cc-sw" style="border-top:2px ${dashOf(si) ? "dashed" : "solid"} ${colorOf(si)}"></i><span class="cc-l">${escapeHtml(s.label)}</span><b>${fmtVal(hit.v)}</b>${hit.exact ? "" : `<span class="cc-at">at ${escapeHtml(xfmt(hit.x))}</span>`}</div>` });
+          rows.push({ v: hit.v, html: `<div class="cc-row"><i class="cc-sw" style="border-top:2px ${dashOf(si) ? "dashed" : "solid"} ${colorOf(si)}"></i><span class="cc-l">${escapeHtml(s.label)}</span><b>${fmtVal(hit.v)}</b></div>` });
         }
         if (!rows.length) return hide();
         rows.sort((a, b) => (isFinite(b.v) ? b.v : -Infinity) - (isFinite(a.v) ? a.v : -Infinity));  // highest value on top
-        card.innerHTML = `<div class="cc-x">${escapeHtml(xlabel)} ${escapeHtml(xfmt(u.data[0][idx]))}</div>${rows.map((r) => r.html).join("")}`;
+        card.innerHTML = `<div class="cc-x">${escapeHtml(xlabel)} ${escapeHtml(xfmt(u.data[0][idx]))}</div><div class="cc-rows">${rows.map((r) => r.html).join("")}</div>`;
         card.style.display = "block";
         const b = over.getBoundingClientRect(), w = card.offsetWidth, hh = card.offsetHeight, m = 8;
         let x = b.left + left + 14, y = b.top + top + 14;

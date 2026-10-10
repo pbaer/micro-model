@@ -416,7 +416,7 @@ a.lg-node:hover,a.lg-node:focus-visible,.lg-node.hot{text-decoration:none;box-sh
 .chart-card{position:fixed;z-index:70;pointer-events:none;background:#fff;border:1px solid #cbd5e1;border-radius:8px;box-shadow:0 6px 20px rgba(15,23,42,.18);
   padding:6px 9px;font-size:12px;line-height:1.45;min-width:140px;max-width:min(360px,calc(100vw - 16px))}
 .chart-card .cc-x{color:var(--muted);font-size:11px;margin-bottom:2px}
-.chart-card .cc-row{display:flex;align-items:center;gap:6px;white-space:nowrap}
-.chart-card .cc-l{color:#374151;overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
-.chart-card b{font-variant-numeric:tabular-nums;margin-left:8px}
-.chart-card .cc-at{color:var(--muted);font-size:10.5px}
+.chart-card .cc-rows{display:grid;grid-template-columns:auto minmax(0,1fr) auto;column-gap:6px;row-gap:1px;align-items:center}
+.chart-card .cc-row{display:contents}  /* swatch | label | value: values line up in one right-aligned column */
+.chart-card .cc-l{color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.chart-card b{font-variant-numeric:tabular-nums;text-align:right;padding-left:12px;white-space:nowrap}
