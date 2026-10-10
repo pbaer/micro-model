@@ -5,6 +5,7 @@ import { api, fmtTok, fmtInt, fmtNum, readSSE } from "../components/util.js";
 import { segmentLabels, SpecialChip, TextWithSpecials, useSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 import { SwarmPanel } from "../components/swarm.js";
+import { ContextMeter } from "../components/context.js";
 
 const html = htm.bind(h);
 
@@ -31,7 +32,7 @@ export function SlotCard({ slot, info, ckpts, onLoad, onUnload, busy }) {
     <div class="row"><b>slot ${slot}<${Info} k="slots" /></b>
       ${loaded && info.external ? html`<span class="muted"><span class="stage-badge external">external</span><${Info} k="external_slot" /> <b>${info.name}</b> · ${extLine(info)} · ${info.device}/${info.dtype} · own tokenizer and chat template</span>
         <button onClick=${() => onUnload(slot)} disabled=${busy}>unload</button>`
-      : loaded ? html`<span class="muted"><span class=${"stage-badge " + (info.stage || "base")}>${info.stage || "base"}</span> ${info.name} (${info.run || ""}) · ${info.device}/${info.dtype} · ${fmtInt(info.params)} params · trained ${fmtTok(info.tokens)} · val ${fmtNum(info.val_loss, 3)} · tokenizer ${info.tokenizer}${info.tokenizer_matched ? "" : " ⚠ sha mismatch"}</span>
+      : loaded ? html`<span class="muted"><span class=${"stage-badge " + (info.stage || "base")}>${info.stage || "base"}</span> ${info.name} (${info.run || ""}) · ${info.device}/${info.dtype} · ${fmtInt(info.params)} params · trained ${fmtTok(info.tokens)} · val ${fmtNum(info.val_loss, 3)} · context ${ctxLabel(info.context)} · tokenizer ${info.tokenizer}${info.tokenizer_matched ? "" : " ⚠ sha mismatch"}</span>
         <button onClick=${() => onUnload(slot)} disabled=${busy}>unload</button>` : html`<span class="muted">empty</span>`}
     </div>
     ${loaded && info.external && html`<div class="legend" style="margin-top:4px">${info.is_chat ? "completion, chat (its own template) and swarm" : "completion only: a base model gets no chat template"} · no Python tool, declared functions or forced think span · no teacher-forced scoring · swarm verification n/a</div>`}
@@ -145,7 +146,8 @@ export function ModelPage() {
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       await readSSE(r, (ev, data) => {
         if (ev === "start") setStreamId(data.stream_id);
-        else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, promptSpecial: data.special, segments: data.segments } }));
+        else if (ev === "prompt") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], prompt: data.pieces, promptSpecial: data.special, segments: data.segments,
+          nPrompt: data.n != null ? data.n : data.pieces.length, context: data.context } }));
         else if (ev === "token") setOut((o) => ({ ...o, [data.slot]: { ...o[data.slot], tokens: [...o[data.slot].tokens, data] } }));
         else if (ev === "tool") setCalls((c) => [...c, data]);
         else if (ev === "done") {
@@ -237,6 +239,8 @@ export function ModelPage() {
     <div class=${useBoth ? "two" : ""}>
       ${(useBoth ? ["A", "B"] : ["A"]).map((s) => html`<div key=${s}>
         <div class="muted" style="margin-bottom:4px"><b>${s}</b> ${stat(s)}${useBoth && divergence >= 0 && s === "A" ? ` · diverges at token ${divergence + 1}` : ""}</div>
+        ${out[s].prompt && html`<${ContextMeter} used=${(out[s].nPrompt || 0) + out[s].tokens.length} total=${out[s].context || (slots[s] && slots[s].context)}
+          live=${!out[s].done && !!streamId} note=${`prompt ${(out[s].nPrompt || 0).toLocaleString()} + generated ${out[s].tokens.length.toLocaleString()}`} />`}
         <${Stream} tokens=${out[s].tokens} prompt=${out[s].prompt} promptSpecial=${out[s].promptSpecial} segments=${out[s].segments} mode=${view} setHover=${setHover} />
       </div>`)}
     </div>

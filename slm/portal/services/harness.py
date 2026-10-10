@@ -254,7 +254,7 @@ class Harness:
         s.info = {
             "slot": slot, "checkpoint": str(checkpoint), "name": Path(checkpoint).name, "device": device, "dtype": str(model.output_weight.dtype).replace("torch.", ""),
             "params": model.num_params(), "tokens": meta.get("tokens") or ck.get("counters", {}).get("tokens"), "val_loss": meta.get("val_loss"),
-            "tokenizer": tag, "tokenizer_matched": matched, "model_config": mcfg_d, "load_s": time.time() - t0,
+            "tokenizer": tag, "tokenizer_matched": matched, "model_config": mcfg_d, "context": mcfg.max_seq_len, "load_s": time.time() - t0,
             "vram_gib": torch.cuda.memory_allocated() / 2**30 if device == "cuda" else 0.0,
         }
         del ck, sd
@@ -348,7 +348,7 @@ class Harness:
         if tools:
             stop = stop | {t["call_close"]}
         yield {"event": "prompt", "ids": ids, "pieces": [tok.token_str(i) for i in ids], "special": [i >= tok.base_vocab for i in ids],
-               "n": len(ids), "segments": segments}
+               "n": len(ids), "segments": segments, "context": model.cfg.max_seq_len}
         gen = torch.Generator(device=device)
         gen.manual_seed(seed if seed is not None else int(time.time() * 1000) % 2**31)
         capacity = min(model.cfg.max_seq_len, len(ids) + max_new_tokens + (max_tool_calls * TOOL_RESULT_ROOM if tools else 0))
@@ -413,7 +413,9 @@ class Harness:
                     break
                 cur = nxt[:, None]
         dt = time.time() - t0
-        done = {"event": "done", "n": n, "n_total": len(gen_ids), "seconds": dt, "tok_s": n / dt if dt > 0 else 0.0, "reason": reason, "calls": calls}
+        # context usage: prompt + everything after it (sampled and tool-inserted) = the tokens in the KV cache
+        done = {"event": "done", "n": n, "n_total": len(gen_ids), "seconds": dt, "tok_s": n / dt if dt > 0 else 0.0, "reason": reason, "calls": calls,
+                "n_prompt": len(ids), "used": len(ids) + len(gen_ids), "context": model.cfg.max_seq_len}
         if mode == "chat":
             parsed = parse_assistant(tok, gen_ids, think_expected=think_required)
             malformed = bool(parsed["malformed"]) or reason not in ("stop",)
@@ -455,7 +457,7 @@ class Harness:
         special = _special_ids(m)
         pp = _Pieces(m.tokenizer)
         yield {"event": "prompt", "ids": ids, "pieces": [pp.push(i) for i in ids], "special": [i in special for i in ids], "n": len(ids),
-               "segments": [], "external": True}
+               "segments": [], "external": True, "context": m.max_positions}
         dec = _Pieces(m.tokenizer)
         seed = seed if seed is not None else int(time.time() * 1000) % 2**31
         stream = m.stream_ids(ids, max_new_tokens, temperature, top_p, top_k, seed, stop_ids=m.eos_ids, logprobs_topk=logprobs_topk)
@@ -480,7 +482,7 @@ class Harness:
         dt = time.time() - t0
         n = len(gen_ids)
         done = {"event": "done", "n": n, "n_total": n, "seconds": dt, "tok_s": n / dt if dt > 0 else 0.0, "reason": reason, "calls": [],
-                "external": True}
+                "external": True, "n_prompt": len(ids), "used": len(ids) + n, "context": m.max_positions}
         if mode == "chat":
             body = gen_ids[:-1] if gen_ids and gen_ids[-1] in m.eos_ids else gen_ids
             ok = reason == "stop"

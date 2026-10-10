@@ -183,6 +183,13 @@ from the page's title).
   blocks. The reasoning row is folded by default (word count, number of calls; "thinking…" while the model is still in
   the span) and expands on click. Answers go through a small markdown renderer (fenced code, headings, bullet and
   numbered lists, inline code / bold / italic) that builds nodes, never HTML strings.
+- **Context window.** `components/context.js` `ContextMeter`: a slim bar and "42% of 4096" (green, amber past 75%, red
+  past 90%), the exact count and what is left on hover. The worker reports the window with every loaded slot
+  (`context`: our `max_seq_len`, an external model's max positions) and on each generation (`prompt.context`;
+  `done.n_prompt`, `done.used` = prompt + everything generated incl. tool results = the tokens in the KV cache,
+  `done.context`). Chat mode shows it above the composer: live during a reply (prompt + tokens so far), otherwise
+  what the last reply left (stored on the message as `ctx`), with a note when the next reply would be cut short.
+  The advanced mode shows one under each slot's output (prompt + generated), and the slot card names the context.
 - **Layout.** A two-column panel the height of the viewport: the conversation list (collapses below 900 px) and the
   chat column (header with the model pill and gear, optional settings strip, the scrolling transcript with a welcome
   card and four suggestions when empty, the composer). Info cards `chat_mode`, `chat_model`, `chat_settings`.

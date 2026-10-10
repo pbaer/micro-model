@@ -55,6 +55,10 @@ def test_worker_load_generate_score_cancel(tmp_path):
         assert all(len(t["topk"]) == 5 and t["topk"][0]["logprob"] >= t["topk"][-1]["logprob"] for t in toks)
         done = [e for e in events if e.get("event") == "done"]
         assert done and done[0]["n"] == len(toks)
+        # context use for the UI's meter: the window and the tokens in the cache (prompt + everything generated)
+        prompt_ev = next(e for e in events if e.get("event") == "prompt")
+        assert info["context"] == prompt_ev["context"] == done[0]["context"] > 0
+        assert done[0]["n_prompt"] == prompt_ev["n"] and done[0]["used"] == prompt_ev["n"] + done[0]["n_total"]
         # same seed -> same tokens
         events2 = []
         with c.stream("POST", "/api/model/generate", json={"slots": ["A"], "mode": "completion", "text": "hello", "max_new_tokens": 6, "seed": 7, "temperature": 0.9}) as r:

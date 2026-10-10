@@ -38,6 +38,10 @@ def test_chat_page_is_the_inference_default_and_parses():
     assert "localStorage" in chat, "conversations persist per browser"
     assert "max_new_tokens: 1536" in chat and "max_new_tokens: 1536" in (static / "pages" / "model.js").read_text(encoding="utf-8")
     assert "save(SETTINGS_KEY, overrides(settings))" in chat, "only changed settings are stored, so new defaults reach every browser"
+    model = (static / "pages" / "model.js").read_text(encoding="utf-8")
+    assert "ContextMeter" in chat and "ContextMeter" in model, "both Inference modes show the context window"
+    meter = (static / "components" / "context.js").read_text(encoding="utf-8")
+    assert "of ${total.toLocaleString()}" in meter and "export function ContextMeter" in meter
     # embedded browsers (the Claude desktop pane) block native dialogs: prompt() throws, confirm() returns false
     assert not re.search(r"\b(?:window\.)?(?:prompt|confirm|alert)\s*\(", chat), "no native dialogs: rename and delete are inline"
     assert "seed: null" in chat or "seed: undefined" in chat or "seed: randomSeed" in chat or "newSeed" in chat, "a fresh random seed per reply"
@@ -52,7 +56,7 @@ def test_chat_page_is_the_inference_default_and_parses():
     node = shutil.which("node")
     if not node:
         return
-    for f in (static / "pages" / "chat.js", static / "pages" / "model.js", static / "app.js"):
+    for f in (static / "pages" / "chat.js", static / "pages" / "model.js", static / "app.js", static / "components" / "context.js"):
         tmp = Path(tempfile.gettempdir()) / "slm_chat_check.mjs"
         shutil.copy(f, tmp)
         r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)

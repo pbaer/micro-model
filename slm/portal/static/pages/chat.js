@@ -8,6 +8,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "preact/ho
 import htm from "htm";
 import { api, readSSE } from "../components/util.js";
 import { Info } from "../components/info.js";
+import { ContextMeter } from "../components/context.js";
 
 const html = htm.bind(h);
 
@@ -177,6 +178,13 @@ export function ChatPage() {
   const proto = ready && !slotA.external;  // our protocol (think span, Python tool); an external chat model takes neither
   const thinkRequired = proto && (slotA.stage === "rl" || slotA.stage === "reasoning");
   const busy = !!live || !!loading;
+  // context use: live while a reply streams (prompt + tokens so far), else what the last reply left in the window
+  const lastCtx = chat ? [...chat.messages].reverse().find((m) => m.role === "assistant" && m.ctx) : null;
+  const ctxTotal = (live && live.context) || (ready && slotA.context) || (lastCtx && lastCtx.ctx.total) || null;
+  const ctxUsed = live && live.n_prompt ? live.n_prompt + live.n_gen : lastCtx ? lastCtx.ctx.used : 0;
+  const ctxLeft = ctxTotal ? ctxTotal - ctxUsed : null;
+  const ctxNote = live ? "while replying" : !lastCtx ? "empty conversation" : ctxLeft != null && ctxLeft < settings.max_new_tokens
+    ? `the next reply has room for about ${Math.max(0, ctxLeft)} tokens: start a new chat for long answers` : "after the last reply";
 
   const ensureModel = async () => {
     if (ready) return true;
@@ -200,7 +208,7 @@ export function ChatPage() {
     const msgs = c.messages.map((m) => (m.role === "user" ? { role: "user", content: m.content } : { role: "assistant", content: m.content, think: m.think, ids: m.ids, n_calls: m.n_calls }));
     const body = { slots: ["A"], mode: "chat", messages: msgs, temperature: settings.temperature, top_p: settings.top_p, top_k: settings.top_k, max_new_tokens: settings.max_new_tokens, seed,
                    logprobs_topk: 1, think_required: thinkRequired, tools: proto && settings.tools, session_id: c.session, max_tool_calls: 8, functions: null };
-    const st = { think: "", content: "", phase: thinkRequired ? "think" : "answer", calls: [], code: null };
+    const st = { think: "", content: "", phase: thinkRequired ? "think" : "answer", calls: [], code: null, n_prompt: 0, n_gen: 0, context: slotA ? slotA.context : null };
     liveRef.current = st; setLive({ ...st }); setErr(null);
     const ctrl = new AbortController(); abortRef.current = ctrl;
     let done = null;
@@ -208,8 +216,10 @@ export function ChatPage() {
       const r = await fetch("/api/model/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: ctrl.signal });
       await readSSE(r, (ev, d) => {
         if (ev === "start") setStreamId(d.stream_id);
+        else if (ev === "prompt" && d.slot === "A") { const s = liveRef.current; s.n_prompt = d.n != null ? d.n : (d.ids || []).length; s.context = d.context || s.context; setLive({ ...s }); }
         else if (ev === "token") {
           const s = liveRef.current;
+          s.n_gen += 1;  // every token in the cache counts, tool-inserted results included
           if (d.special) {
             if (d.piece === "<|think|>") s.phase = "think";
             else if (d.piece === "<|/think|>") s.phase = "answer";
@@ -229,7 +239,8 @@ export function ChatPage() {
     const a = done && done.assistant;
     const content = (a && a.answer != null ? a.answer : s.content).trim();
     const reply = { role: "assistant", content, think: a ? a.think : s.think, ids: a && a.well_formed ? a.ids : undefined, n_calls: a ? a.n_calls : s.calls.length,
-                    truncated: !(a && a.well_formed), reason: done ? done.reason : "cancelled", seed, tok_s: done ? done.tok_s : null, model: wanted ? modelLabel(wanted) : null, at: Date.now() };
+                    truncated: !(a && a.well_formed), reason: done ? done.reason : "cancelled", seed, tok_s: done ? done.tok_s : null, model: wanted ? modelLabel(wanted) : null, at: Date.now(),
+                    ctx: done && done.used != null ? { used: done.used, total: done.context } : s.n_prompt ? { used: s.n_prompt + s.n_gen, total: s.context } : null };
     if (content || reply.think || s.calls.length) update(c.id, (x) => ({ ...x, messages: [...x.messages, reply] }));
     liveRef.current = null; setLive(null); setStreamId(null); abortRef.current = null;
   };
@@ -350,6 +361,7 @@ export function ChatPage() {
         ${chat && chat.messages.map((m, i) => html`<${Bubble} key=${(m.at || i) + ":" + i} m=${m} last=${i === chat.messages.length - 1 && m.role === "assistant"} onRegenerate=${!busy ? regenerate : null} />`)}
         ${live && html`<${Bubble} m=${{ role: "assistant", ...live }} live=${true} />`}
       </div>
+      ${ctxTotal && html`<div class="chat-ctx"><${ContextMeter} used=${ctxUsed} total=${ctxTotal} live=${!!live} note=${ctxNote} /><${Info} k="chat_context" /></div>`}
       <footer class="chat-compose">
         <textarea ref=${taRef} rows="1" placeholder=${ready || wanted ? "Message… (Enter to send, Shift+Enter for a new line)" : "no chat model available"} value=${draft}
           onInput=${(e) => { setDraft(e.target.value); grow(e); }} onKeyDown=${onKey} disabled=${!wanted && !ready}></textarea>

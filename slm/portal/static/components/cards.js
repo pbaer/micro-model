@@ -1066,6 +1066,13 @@ export const CARDS = {
     <p class="see">Everything else the worker can do — slots A and B side by side, completion and swarm modes, the token
       view with log-probs, teacher-forced scoring, declared functions — is the advanced mode (link at the bottom of
       the conversation list).</p>` },
+  chat_context: { t: "Context window", b: html`
+    <p>Everything the model reads and writes in a conversation has to fit in its context window: 4096 tokens for the
+      336M checkpoints (the length they were trained at), an external model's own limit for those. Each turn the whole
+      conversation so far is fed in again, plus the reply as it is written (its reasoning and Python results count too).</p>
+    <p>The bar shows how full the window was after the last reply, and counts up live while a reply streams. Green is
+      fine; amber past 75%; red past 90%, where the worker cuts the reply down to what still fits and an answer can stop
+      mid-sentence. A new chat starts empty.</p>` },
   chat_model: { t: "Which model answers", b: html`
     <p>Any of our SFT, reasoning or RL checkpoints, or a downloaded external chat model (its own template; no think
       span or Python tool). A base checkpoint is never offered: it has not seen the chat tokens. Choosing a model here

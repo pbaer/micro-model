@@ -351,3 +351,17 @@ pre.arena-obs{margin:0 0 4px;font-size:12px;max-height:220px}
 .chat-item-confirm span{color:#991b1b;margin-right:auto}
 .chat-item-confirm button{padding:1px 8px;font-size:12px;border-radius:5px}
 .chat-item-confirm button.danger{background:#dc2626;border-color:#dc2626;color:#fff}.chat-item-confirm button.danger:hover{background:#b91c1c}
+
+/* context-window meter (components/context.js): chat mode above the composer, advanced mode under each slot's output */
+.ctx-meter{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted);min-width:0}
+.ctx-bar{flex:1;min-width:60px;max-width:420px;height:6px;border-radius:3px;background:#e5e7eb;overflow:hidden}
+.ctx-fill{height:100%;border-radius:3px;background:#22c55e;transition:width .25s ease}
+.ctx-meter.high .ctx-fill{background:#f59e0b}.ctx-meter.full .ctx-fill{background:#dc2626}
+.ctx-meter.live .ctx-fill{transition:width .1s linear}
+.ctx-label{white-space:nowrap;font-variant-numeric:tabular-nums}.ctx-label b{color:var(--text);font-weight:600}
+.ctx-meter.high .ctx-label b{color:#b45309}.ctx-meter.full .ctx-label b{color:#b91c1c}
+.ctx-sub{white-space:normal}
+.ctx-meter.compact .ctx-bar{max-width:160px}
+.chat-ctx{display:flex;align-items:center;gap:4px;padding:6px 18px 0;border-top:1px solid var(--border)}
+.chat-ctx+.chat-compose{border-top:0;padding-top:6px}
+main .ctx-meter{margin:0 0 6px}
