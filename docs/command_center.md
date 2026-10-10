@@ -372,8 +372,9 @@ arena of `slm/arena/world.py` on one slot: an N×N grid of robots, each one a co
 generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives the same views from an episode file.
 
 - **Controls**: the two slot cards (the Inference page's `SlotCard`, so a checkpoint can be loaded here, CPU or cuda),
-  slot, task (`key_door`, `relay`, `triangulate`, each with its description from `GET /api/model/arena/tasks`), grid 4-16,
-  robots 1-32 (key_door needs an even count, relay at least 2), seed, turns 1-50, max new tokens (128), max tool calls (4),
+  slot, task (`key_door`, `relay`, `triangulate`, and the competitive `team_relay`, `tag`, `gold_rush`, each with its
+  description from `GET /api/model/arena/tasks`), grid 4-16, robots 1-32 (each task's own rule, `Task.check`: key_door an
+  even count, team_relay an even count of at least 4 on a grid at least robots - 1 cells across), seed, turns 1-50, max new tokens (128), max tool calls (4),
   history (1, the World default: earlier exchanges kept per robot), stop when done; run / stop; download episode log.
   External slots are refused (the robots act through our tool protocol).
 - **Grid** (SVG): cells with coordinates, doors (amber, green ✓ when opened), the triangulate target hidden until dug (a
@@ -463,7 +464,22 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   this). Cancel is honoured between turns (a turn is one batch); `torch.cuda.empty_cache()` at the end on cuda.
 - **Cost**: one batch of n_agents rows per turn; on the GPU decode is launch-bound, so up to ~32 rows cost about one row
   per step (docs/results.md §24). On CPU, keep to a few robots: the 336M model does 4 robots × 64 tokens in ~3-4 s a turn.
-- Info cards: `arena`, `arena_key_door`, `arena_relay`, `arena_triangulate`, `arena_range`, `arena_cost`, `arena_scaffold`,
+- **Model against model** (2026-10-10): for a competitive task the controls offer an *opponent (side B)*: the other
+  slot's model, ours or an external one (any slot may now hold an external model in the arena: it answers in plain text
+  and the call it writes is run, `slm.arena.world.text_action`). The form names what each side plays (from the tasks
+  endpoint's `sides`). *Batch size* (1-32, empty = all) caps the robots per generation call; the line under the run
+  button shows the last turn's peak / reserved VRAM and turns red above 14.5 GiB reserved. The task panel names each
+  side's model, what it plays and the winner side. Request fields `opponent` (the other slot) and `batch_size`; the turn
+  events carry `vram`, the start event `meta.players`, the result `vram_peak_gib`. Info card `arena_versus`.
+- **Competitive tasks** (2026-10-10): robots are coloured by side when the state carries a `team` (team red / team blue,
+  chaser red / runner green), else by their unique tool (gold rush: all prospectors). Coins are gold circles and vanish
+  when grabbed; a robot's coin count sits beside it; a tagged runner fades with a dashed outline. The task panel's badge and
+  the result line show the score's `verdict` ("team red wins", "the chasers win: every runner tagged", "R3 wins with 4
+  coins"), or the game's state when there is none ("runners survive: 1 of 4 still free", "R2 leads with 1 of 12 coins")
+  instead of "not solved". The viewer rebuilds these from the events for CLI files (tagged runners, coins taken, coin
+  counts), and its event filter uses the events' 1-based turns (it read them as 0-based until 2026-10-10, so every event
+  showed a turn late).
+- Info cards: `arena`, `arena_key_door`, `arena_relay`, `arena_triangulate`, `arena_team_relay`, `arena_tag`, `arena_gold_rush`, `arena_range`, `arena_cost`, `arena_scaffold`,
   `arena_turn`, `arena_grid`, `arena_timeline`, `arena_messages`, `arena_summary`, `arena_viewer`.
 
 ## Eval tab (2026-09-26)

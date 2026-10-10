@@ -970,6 +970,38 @@ export const CARDS = {
       <code>say</code> per hop. A pure communication task: nobody needs to move.</p>
     <p>The minimum is one turn per hop plus the submit. Read it as a chain: the first turn where a robot repeats a
       <i>different</i> number than it heard is where the message was corrupted.</p>` },
+  arena_team_relay: { t: "Task: team relay race", b: html`
+    <p>Two teams race to pass their own secret code down their own line: red on one row, blue on the row below. Each robot
+      hears the teammate behind it and, in the same turn, the rival robot diagonally behind it, so it has two codes in front
+      of it. The question lists both, labelled by team, and asks it to pass on its own team's code without saying which
+      number that is: choosing is the model's job. The first team whose last robot submits its own code wins.</p>
+    <p>Scored: the winner (or a tie when both finish in the same turn) and <i>rival_code_rate</i>, the share of passes that
+      carried the other team's code. A perfect pair of teams always ties.</p>` },
+  arena_tag: { t: "Task: tag", b: html`
+    <p>Chasers (red, the first third of the robots) against runners (green). Each turn a robot is given its own position and
+      the nearest opponent's and asked which way to step: closer for a chaser, further for a runner. The direction is
+      never named and the four options are listed in a random order, so the model has to work it out from the
+      coordinates (x grows east, y grows south). A chaser one step away calls tag(name); a tagged runner fades and is out.</p>
+    <p>Chasers win when every runner is tagged; runners win by lasting the turn budget. <i>chaser_good_moves</i> /
+      <i>runner_good_moves</i> are the share of moves that closed or opened the distance to the opponent named in the
+      question.</p>` },
+  arena_gold_rush: { t: "Task: gold rush", b: html`
+    <p>Every robot for itself. Gold circles are coins; a robot standing on one calls grab() and the first to grab gets it.
+      Each turn a robot is shown its three nearest coins in a random order and asked which is nearest and which way to step
+      towards it, so it must compare the distances itself. The number beside a robot is its coins so far.</p>
+    <p>The most coins when all are gone wins. <i>nearest_coin_moves</i>: the share of moves that closed in on a truly
+      nearest coin; <i>any_coin_moves</i>: towards any of the three listed.</p>` },
+  arena_versus: { t: "Model against model", b: html`
+    <p>In the competitive tasks (team relay, tag, gold rush) the robots are on two sides. Choose an <i>opponent</i> and the
+      model in the other slot plays side B (team blue, the runners, the even robots) while this slot plays side A; with
+      none, one model plays both sides. Either slot may hold one of our checkpoints or a local open-weight model.</p>
+    <p>Our checkpoints act the way they were trained, by calling the declared tool inside the think span. An external model
+      has never seen that protocol, so it answers in plain text and the call it writes is executed: the one on its final
+      "####" line, else the last offered call it names. The questions list the complete calls to pick from, so both kinds of
+      model face the same decision.</p>
+    <p><i>Batch size</i> caps the robots in one generation call. Two resident models and their KV caches can pass the
+      card's 16 GiB; on Windows that does not fail, it spills into host memory and runs about 60 times slower. Lower the
+      batch size if the VRAM line under the controls goes red (reserved above 14.5 GiB).</p>` },
   arena_triangulate: { t: "Task: triangulate", b: html`
     <p>Something is buried at a secret cell. Every robot's <code>distance_to_target()</code> returns its own Manhattan distance to it;
       only R1 has <code>dig()</code>, which works only on the target cell. The others report position and distance to R1,

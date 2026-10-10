@@ -174,6 +174,10 @@ Done since this list was written (details in `log.md` / `results.md`):
 - ~~Portal port~~ moved to 8930 (spares 8931-8939, `slm.portal.settings.PORT_RANGE`) 2026-10-09; the launch.json
   preview owns it since 2026-10-10.
 - ~~Overview as the run lineage graph~~ done 2026-10-10.
+- ~~Competitive arena games (team_relay, tag, gold_rush) and model against model, incl. open-weight opponents~~ done
+  2026-10-10 (§28). Open from it: M10 chooses directions from coordinates below chance; a small synthetic "which call
+  moves (x, y) towards (x', y')" set in the tool SFT mix is the next rung, gated on tag / gold-rush good-move rates
+  against their chance columns.
 
 ## Future projects (parked 2026-09-30, Peter's call: hone the current 336M first)
 

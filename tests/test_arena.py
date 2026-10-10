@@ -143,8 +143,9 @@ def test_every_task_asks_a_tool_question_each_turn(task):
 
 @pytest.mark.parametrize("task", sorted(TASKS))
 def test_every_task_builds_for_up_to_32_agents(task):
-    w = World(task, n=12, n_agents=32, seed=11)
-    assert len(w.agents) == 32 and all(0 <= a.x < 12 and 0 <= a.y < 12 for a in w.agents)
+    n = 31 if task == "team_relay" else 12  # two lines of 16 robots two cells apart need 31 cells across
+    w = World(task, n=n, n_agents=32, seed=11)
+    assert len(w.agents) == 32 and all(0 <= a.x < n and 0 <= a.y < n for a in w.agents)
     assert all(w.decls[a.id] for a in w.agents)
     s = w.state(); json.dumps(s)
     assert s["score"]["success"] is False

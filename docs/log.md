@@ -1003,3 +1003,20 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   and keeps the previous build numbered), and `m10_base_prose_336m` names `tool-chat-v3`, the build before
   `hoist_calls`. M8 phase 2 used the right one. Recorded in design.md §6b and the roadmap's known gaps; reported to
   Peter. Not rerun: 2% of the mixture and M10's tool use measured fine.
+
+## 2026-10-10 — three competitive arena games; model against model
+
+- Peter: three more arena challenges, some competitive. Built team_relay (team race), tag (chasers vs runners) and
+  gold_rush (free for all), each with one scored decision against its chance rate; then (Peter, mid-task) model against
+  model including open-weight ones, with a batch-size control for memory. `Player` / `Runner(players=, batch_size=)`;
+  external models act in plain text (`text_action`); portal opponent slot, batch size, per-turn VRAM; CLI and eval
+  `--opponent`; `scripts/arena_versus.sh`. Results §28.
+- Five prompt-shape fixes, each found in a transcript, never by guessing (§28): the decision offered as calls, the
+  sink's call in its own sentence, the relay task's exact source wording twice, comm range 3. Plus two harness fixes found
+  by watching: an external model passing an argument to a no-argument tool (`read_code('secret_code')`), and the prose
+  form `Move "south"`; and a fairness rule: an answer that names several options and settles on none is no action.
+- The viewer's event filter had read the 1-based event turns as 0-based since 2026-10-02 (every event one turn late in
+  CLI files); fixed with the competitive tasks' derived state (tagged runners, coins taken).
+- Finding: M10 picks its team's code well (0.17-0.32 rival against 0.5) but chooses directions from coordinates below
+  chance (a west habit); it wins every decided team relay against M9, SmolLM2-360M and Qwen2.5-0.5B, and is the worst
+  chaser in the field.

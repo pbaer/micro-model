@@ -1641,3 +1641,69 @@ arithmetic nor code, "diversity" = distinct answers across the seeds (1.0 = all 
 - The one cost of sampling is tool routing: unnecessary Python calls on everyday prompts go from 3% (greedy) to 8% at
   0.5 and 12% from 0.6 up, flat thereafter. The call usually returns something harmless and the answer still comes.
 - The advanced mode's own default for RL checkpoints stays greedy (its purpose is inspection, where determinism helps).
+
+
+## 28. Competitive arena games, and model against model (2026-10-10)
+
+Three new arena tasks where robots compete (`slm/arena/world.py`, design.md §8): **team_relay** (two teams race their own
+code down parallel lines; every robot also hears the rival team's code in the same turn and must pass on its own),
+**tag** (the first third of the robots chase with `tag(name)`, the rest run) and **gold_rush** (free for all over twice as
+many coins as robots, `grab()`). Each leaves the model one real decision, offered as complete calls in a random order,
+and scores it against chance. Greedy decoding, M10 (`m10_rl` final) unless stated.
+
+**What it took to get a decision the model could make.** First smoke run: offered `move(...)` and the four words, the
+model never chose -- `move("binder")`, `move("marker")`, a copied `say("the code is ...")`; 48 of 48 moves invalid. With
+the decision offered as calls to copy (`call one of move("west"), move("north"), ...`) invalid moves went to 0. Three
+more fixes came from the transcripts, each a prompt-shape failure of the kind §25 found: the team sink's "Submit your own
+team's code: call submit(...)" came back as `print(submit("call submit("7890"))` on every turn (now "Call submit("A") or
+submit("B"), whichever is your own team's code", the call opening its own sentence); "What is team red's secret code?"
+got an empty answer (red) or `read_code(team_brown)` (blue) where the relay task's "What is the secret code?" works; and
+the source's "Your team's secret code is ... say("team red: ...")" made both sources call `read_code(secret_code)`
+instead of speaking. A comm range of 2 let a robot hear its own code a turn before the rival's, so a perfect sink and
+a confused one could not be told apart (caught by the scripted test); range 3 puts both codes in front of it at once.
+
+**M10 playing every robot** (`scripts/arena_eval.py`, 5 seeds, 12 turns):
+
+| task | robots | outcome | the decision | M10 | chance |
+|---|---|---|---|---|---|
+| team_relay | 6 | a winner in 4 of 5 (mean turn 4.2, the minimum 4) | picks the rival's code (lower is better) | 0.17 (6 choices) | 0.50 |
+| team_relay | 12 | a winner in 1 of 5 | picks the rival's code | 0.32 (22 choices) | 0.50 |
+| tag | 6 / 12 | 1.2 of 4 / 5.4 of 8 runners tagged, never all | chaser step closes the distance | 0.29 / 0.28 | 0.40 / 0.39 |
+| | | | runner step opens it | 0.18 / 0.26 | 0.35 / 0.41 |
+| gold_rush | 6 / 12 | 0.6 of 12 / 1.8 of 24 coins taken | step heads for a nearest coin | 0.28 / 0.38 | 0.38 / 0.44 |
+
+- **Choosing its own team's code works** (0.17-0.32 wrong against 0.50 chance): a value matched by a label in the
+  question, the copy-the-right-value skill the arena has shown since §25.
+- **Choosing a direction from coordinates does not -- it is below chance.** A random pick would match the chance column;
+  M10 is 0.06-0.17 under it for every side and size. In the smoke transcripts it picked `move("west")` in 21 of 37 tag
+  moves and the first-listed option more often than the others: a habit, not a reading of the positions. The decision
+  is "which of four calls moves (x, y) towards (x', y')" -- arithmetic on two numbers the model does not do here.
+- Nothing in tag or gold rush finishes inside 12 turns; the games are long because most steps go the wrong way.
+
+**Model against model** (`scripts/arena_versus.sh`: each pairing plays both ways because tag is asymmetric; 3 seeds per
+game per order, 8 robots on 8x8, 12 turns; external models act in plain text, `text_action`):
+
+| M10 against | team_relay wins (M10 : other, both orders) | tag runners tagged (M10 chasing / other chasing) | gold_rush coins (M10 : other) | other acted on its turns (tag, gold) |
+|---|---|---|---|---|
+| itself (mirror) | 2 : 1 (one order) | 8 of 18 | 2 : 4 | 1.00, 1.00 |
+| M9 (`m9_rl6` final) | 3 : 0 | 1 of 18 / 0 of 18 | 6 : 0 | 0.05 / 0.00, 0.78 / 0.77 |
+| SmolLM2-360M-Instruct | 4 : 0 | 1 of 18 / 6 of 18 | 6 : 8 | 0.15 / 0.76, 0.33 / 0.42 |
+| Qwen2.5-0.5B-Instruct | 4 : 0 | 1 of 18 / 2 of 18 | 6 : 0 | 0.03 / 0.11, 0.00 / 0.00 |
+
+- **M10 wins every team relay that has a winner, against every opponent** (11 of 11; the rest of the seeds end with no
+  team finished). The relay is the protocol M10 was shaped for: read a value, copy it into the named call.
+- **In tag M10 is the worst chaser in the field.** Chasing runners that mostly stand still (the opponents rarely act as
+  runners), M10's chasers made 1 tag in 18 runner-games against each opponent, with 0.04 of their steps closing the
+  distance (chance 0.46). SmolLM2's chasers, acting on three quarters of their turns, tagged 6 of 18 M10 runners with
+  0.37 good steps (chance 0.42): closer to chance, and that is enough to beat a below-chance mover.
+- **The external models often do not act at all.** Qwen2.5 wrote a parseable call on 0-11% of its tag and gold-rush turns
+  (its answers discuss the options and stop, or pass the step budget first); SmolLM2 on 15-76%; M9 barely ever answers
+  a tag question with a move (0.00-0.05) though it plays the relay (0.59-0.93). Where they act, they are near chance.
+- **Memory is not the limit at this size**: peak allocated VRAM 1.3-1.7 GiB per turn with both models resident (8 robots,
+  128 new tokens). The batch-size control exists for large grids and bigger opponents; the portal shows the per-turn
+  peak and warns above 14.5 GiB reserved.
+
+What this says: the arena now measures something the cooperative tasks did not -- a decision with a right answer that
+depends on reading numbers -- and every model here fails it, M10 worst. Training the direction decision (a few hundred
+synthetic "which call moves (x, y) towards (x', y')" examples in the tool SFT mix) is the obvious next rung, and the
+tag / gold-rush good-move rates against their chance columns are the gate.

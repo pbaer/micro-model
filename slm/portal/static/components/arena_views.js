@@ -16,13 +16,22 @@ const html = htm.bind(h);
 // which unique tool makes a robot what it is (the common move / say / look say nothing about its role)
 export const ROLES = [
   ["read_key", "key holder", "#f59e0b"], ["open_door", "door opener", "#3b82f6"], ["read_code", "source", "#f59e0b"],
-  ["submit", "sink", "#16a34a"], ["dig", "digger", "#dc2626"], ["distance_to_target", "sensor", "#0d9488"],
+  ["submit", "sink", "#16a34a"], ["dig", "digger", "#dc2626"], ["distance_to_target", "sensor", "#0d9488"], ["grab", "prospector", "#ca8a04"],
 ];
-export const roleOf = (tools) => {
+// competitive tasks put robots on sides: the side is what the colour shows (World.state / robots carry `team`)
+export const TEAMS = { red: ["team red", "#dc2626"], blue: ["team blue", "#2563eb"], chaser: ["chaser", "#dc2626"], runner: ["runner", "#16a34a"] };
+export const roleOf = (tools, team) => {
+  if (team && TEAMS[team]) return { tool: null, label: TEAMS[team][0], color: TEAMS[team][1], team };
   for (const [t, label, color] of ROLES) if ((tools || []).includes(t)) return { tool: t, label, color };
   return { tool: null, label: "relay", color: "#9ca3af" };
 };
 export const COMMON = new Set(["move", "say", "look"]);
+/** Tasks that are a game between sides rather than a puzzle: their end is a verdict, not "solved". */
+export const TEAM_TASKS = new Set(["team_relay", "tag", "gold_rush"]);
+/** The end-of-episode line for a game's score when it has no verdict (yet): who is ahead or what held. */
+export const gameStatus = (task, sc) => task === "tag" ? (sc.tagged === sc.runners ? null : `runners survive: ${sc.runners - sc.tagged} of ${sc.runners} still free`)
+  : task === "gold_rush" ? (sc.leader ? `${sc.leader} leads with ${sc.leader_coins} of ${sc.coins} coins` : "no coin taken yet")
+  : task === "team_relay" ? "neither team has submitted its code" : null;
 export const xy = (p) => (p ? `(${p[0]}, ${p[1]})` : "-");
 export const clip = (s, n) => (s == null ? "" : s.length > n ? s.slice(0, n - 1) + "…" : s);
 export const fmtVal = (v) => (Array.isArray(v) ? xy(v) : v === true ? "yes" : v === false ? "no" : v == null ? "-" : String(v));
@@ -32,10 +41,10 @@ export const robotColor = (id) => `hsl(${Math.round((id * 137.508) % 360)}, 70%,
 const SUFFIX_RE = /\n?Think step by step, then give the final answer on its own line as '#### <answer>'\.\s*$/;
 export const question = (obs) => (obs || "").replace(SUFFIX_RE, "").trim();
 
-const TOOLS = ["move", "say", "look", "read_key", "read_code", "open_door", "submit", "dig", "distance_to_target"];
+const TOOLS = ["move", "say", "look", "read_key", "read_code", "open_door", "submit", "dig", "distance_to_target", "tag", "grab"];
 const TOOL_RE = new RegExp(`\\b(${TOOLS.join("|")})\\s*\\(`, "g");
-const ERR_RE = /^\s*error\b|Traceback|Wrong code|is not the code/;      // the call failed (sandbox error, wrong code)
-const FAIL_RE = /^\s*Blocked:|Unknown direction|Move there first|^\s*Nothing here/;  // the call ran but did nothing
+const ERR_RE = /^\s*error\b|Traceback|Wrong code|is not the code|is not your team's code|code, not yours|is not a runner/;      // the call failed (sandbox error, wrong code)
+const FAIL_RE = /^\s*Blocked:|Unknown direction|Move there first|^\s*Nothing here|too far to tag|already tagged|There is no coin/;  // the call ran but did nothing
 const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
 const ARROW = { north: "↑", south: "↓", east: "→", west: "←" };
 
@@ -45,12 +54,12 @@ export const KINDS = {
   say: { glyph: "»", color: "#dbeafe", ink: "#1d4ed8", label: "say" },
   look: { glyph: "◉", color: "#f3f4f6", ink: "#4b5563", label: "look" },
   read: { glyph: "R", color: "#fef3c7", ink: "#92400e", label: "read_key / read_code" },
-  goal: { glyph: "★", color: "#dcfce7", ink: "#166534", label: "open_door / submit / dig" },
+  goal: { glyph: "★", color: "#dcfce7", ink: "#166534", label: "open_door / submit / dig / tag / grab" },
   sense: { glyph: "◎", color: "#ccfbf1", ink: "#115e59", label: "distance_to_target" },
   code: { glyph: "{}", color: "#f5f5f4", ink: "#57534e", label: "code without a tool call" },
   none: { glyph: "·", color: "transparent", ink: "#d1d5db", label: "no call" },
 };
-const kindOf = (tool) => (tool === "read_key" || tool === "read_code" ? "read" : tool === "open_door" || tool === "submit" || tool === "dig" ? "goal"
+const kindOf = (tool) => (tool === "read_key" || tool === "read_code" ? "read" : ["open_door", "submit", "dig", "tag", "grab"].includes(tool) ? "goal"
   : tool === "distance_to_target" ? "sense" : tool);
 
 /** Python repr of a str back to the str ('...' or "..." with backslash escapes). */
@@ -140,9 +149,19 @@ export function normalizeEpisode(raw, world, name) {
       const near = robots.filter((b) => b.id !== m.speaker_id && d1(p, pos[t][b.id]) <= cr);
       return { speaker: robots[m.speaker_id].name, speaker_id: m.speaker_id, pos: p, text: m.text, heard_by: near.map((b) => b.name), heard_by_ids: near.map((b) => b.id) };
     });
-    // an event's "turn k" is World.turn while step k+1 runs (0-based), so it is in the state after record turn k+1
-    const events = (raw.events || []).filter((e) => { const m = /^turn (\d+):/.exec(e); return !m || Number(m[1]) + 1 <= t; });
-    const state = { turn: t, n: start.n, task: start.task, agents: start.agents.map((a, id) => ({ ...a, x: pos[t][id][0], y: pos[t][id][1] })), objects: start.objects, events, derived: true };
+    // events carry the 1-based turn of the records since 2026-10-02 ("turn k:" happened during record turn k); the filter
+    // still treated them as 0-based until 2026-10-10, so every event showed one turn late in CLI files
+    const events = (raw.events || []).filter((e) => { const m = /^turn (\d+):/.exec(e); return !m || Number(m[1]) <= t; });
+    // the competitive tasks' state changes, rebuilt from the events: tagged runners, coins taken (and by whom)
+    const tagged = new Set(events.map((e) => / tagged (R\d+)/.exec(e)).filter(Boolean).map((m) => m[1]));
+    const grabs = events.map((e) => /(R\d+) grabbed the coin at \((\d+), (\d+)\)/.exec(e)).filter(Boolean);
+    const taken = new Set(grabs.map((m) => `${m[2]},${m[3]}`));
+    const coins = {};
+    grabs.forEach((m) => { coins[m[1]] = (coins[m[1]] || 0) + 1; });
+    const agents = start.agents.map((a, id) => ({ ...a, x: pos[t][id][0], y: pos[t][id][1],
+      ...(raw.task === "tag" && a.team === "runner" ? { tagged: tagged.has(a.name) } : {}), ...(raw.task === "gold_rush" ? { coins: coins[a.name] || 0 } : {}) }));
+    const objects = raw.task === "gold_rush" ? start.objects.filter((o) => !(o.what === "coin" && taken.has(`${o.x},${o.y}`))) : start.objects;
+    const state = { turn: t, n: start.n, task: start.task, agents, objects, events, derived: true };
     turns.push({ turn: t, seconds: null, records: byTurn[t], state, messages });
   }
   // scores, derived per task as Task.score computes them (the final turn keeps the file's own score fields)
@@ -161,6 +180,17 @@ export function normalizeEpisode(raw, world, name) {
       for (const r of tu.records) for (const [code, res] of r.calls) { const m = /\bsubmit\s*\(\s*['"]?([^'")]*)/.exec(code || ""); if (m && /submit|not the code|Correct/.test(res || "")) submitted = (/\d{4}/.exec(m[1]) || [m[1]])[0]; }
       const ok = ev.some((e) => /submitted the right code/.test(e));
       sc = { submitted, success: ok, done_turn: ok ? (raw.score || {}).done_turn ?? t : null, hops: n - 1, hops_reached: reached, progress: +(reached / Math.max(1, n - 1)).toFixed(2) };
+    } else if (raw.task === "team_relay") {  // CLI files: what the events say (the file's own score fields land on the last turn)
+      const fin = ev.filter((e) => /team (red|blue) submitted/.test(e)).map((e) => /team (red|blue)/.exec(e)[1]);
+      sc = { finished: fin.join(", ") || "-", success: fin.length > 0, done_turn: fin.length ? (raw.score || {}).done_turn ?? t : null };
+    } else if (raw.task === "tag") {
+      const tagged = ev.filter((e) => /tagged R\d+/.test(e)).length, total = (raw.score || {}).runners || null;
+      sc = { tagged, runners: total, success: total != null && tagged === total, done_turn: total != null && tagged === total ? (raw.score || {}).done_turn ?? t : null,
+        progress: total ? +(tagged / total).toFixed(2) : null };
+    } else if (raw.task === "gold_rush") {
+      const collected = ev.filter((e) => /grabbed the coin/.test(e)).length, total = (raw.score || {}).coins || null;
+      sc = { collected, coins: total, success: total != null && collected === total, done_turn: total != null && collected === total ? (raw.score || {}).done_turn ?? t : null,
+        progress: total ? +(collected / total).toFixed(2) : null };
     } else {
       for (const r of tu.records) if (r.agent_id === 0 && r.calls.some((c) => /\bdig\s*\(/.test(c[0] || ""))) dug.at = r.pos;
       const cur = target ? d1(pos[t][0], target) : null, ok = ev.some((e) => /dug up the target/.test(e));
@@ -323,7 +353,7 @@ export function Timeline({ ep, ix, view, sel, focus, onPick, setHover }) {
   }
   return html`<div class="tl-wrap">
     <div class="tl-names" style=${`padding-top:${HEAD}px`}>
-      ${ep.robots.map((r) => { const role = roleOf(r.tools.map((x) => x.name)); return html`<div key=${r.id} class=${"tl-name" + (r.id === sel ? " sel" : "")} style=${`height:${RH}px;line-height:${RH}px;font-size:${Math.min(12, RH - 3)}px`}
+      ${ep.robots.map((r) => { const role = roleOf(r.tools.map((x) => x.name), r.team); return html`<div key=${r.id} class=${"tl-name" + (r.id === sel ? " sel" : "")} style=${`height:${RH}px;line-height:${RH}px;font-size:${Math.min(12, RH - 3)}px`}
           onClick=${() => onPick(r.id, null)} title=${`${r.name} · ${role.label} · moved ${ix.steps[Math.min(view, T)][r.id]} cells by turn ${Math.min(view, T)}`}>
         <span class="arena-dot" style=${`background:${role.color};width:${Math.min(9, RH - 6)}px;height:${Math.min(9, RH - 6)}px`}></span><span style=${`color:${robotColor(r.id)}`}>${r.name}</span></div>`; })}
     </div>
@@ -399,7 +429,8 @@ function Spark({ title, info, values, view, onPick, kind = "bar", color = "#2563
 export function SummaryStrip({ ep, ix, view, onPick }) {
   if (!ix.T) return null;
   const s = ix.series, res = ep.result, sc = res ? res.score : (ix.states[ix.T] || {}).score || {};
-  const progLabel = ep.meta && ep.meta.task === "relay" ? "hops reached" : ep.meta && ep.meta.task === "triangulate" ? "digger closer (1 - dist / start)" : "doors opened";
+  const PROG = { relay: "hops reached", triangulate: "digger closer (1 - dist / start)", team_relay: "furthest team's reach", tag: "runners tagged", gold_rush: "coins collected" };
+  const progLabel = (ep.meta && PROG[ep.meta.task]) || "doors opened";
   return html`<div class="panel arena-summary">
     <div class="arena-sparks">
       <${Spark} title=${`task progress (${progLabel})`} info="arena_summary" values=${s.progress} view=${view} onPick=${onPick} kind="line" color="#16a34a" max=${1} fmt=${(v) => `${Math.round(v * 100)}%`} marks=${ix.eventTurns} />
@@ -408,7 +439,7 @@ export function SummaryStrip({ ep, ix, view, onPick }) {
       <${Spark} title="call errors per turn" values=${s.errors} view=${view} onPick=${onPick} color="#dc2626" max=${Math.max(1, ...s.errors, ...s.fails)} />
     </div>
     <div class="arena-verdict">
-      <span class=${"stage-badge " + (sc.success ? "rl" : "base")}>${sc.success ? `solved in ${sc.done_turn ?? ix.T} turn${(sc.done_turn ?? ix.T) === 1 ? "" : "s"}` : res ? (res.cancelled ? "stopped" : "not solved") : "in progress"}</span>
+      <span class=${"stage-badge " + (sc.success ? "rl" : "base")}>${sc.verdict ? sc.verdict : sc.success ? `solved in ${sc.done_turn ?? ix.T} turn${(sc.done_turn ?? ix.T) === 1 ? "" : "s"}` : res ? (res.cancelled ? "stopped" : TEAM_TASKS.has(ep.meta && ep.meta.task) ? "no winner yet" : "not solved") : "in progress"}</span>
       <span class="muted">${ix.T} turn${ix.T === 1 ? "" : "s"} · ${ix.messages.length} messages · ${s.calls.reduce((a, b) => a + b, 0)} tool calls · ${s.errors.reduce((a, b) => a + b, 0)} with errors · ${s.fails.reduce((a, b) => a + b, 0)} did nothing</span>
       ${(res ? res.events : (ix.states[ix.T] || {}).events || []).map((e, i) => {
         const at = Object.keys(ix.eventTurns).find((t) => ix.eventTurns[t].includes(e));

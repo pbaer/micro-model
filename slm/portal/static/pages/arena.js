@@ -5,10 +5,7 @@ import { api, readSSE, fmtTime } from "../components/util.js";
 import { TextWithSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 import { SlotCard } from "./model.js";
-import {
-  ArrowDefs, COMMON, GlyphLegend, KINDS, MessageLog, SummaryStrip, Timeline, analyze, clip, doorsOpened, episodeKind, fmtVal, heardOf,
-  normalizeEpisode, robotColor, roleOf, xy,
-} from "../components/arena_views.js";
+import { ArrowDefs, COMMON, GlyphLegend, KINDS, MessageLog, SummaryStrip, Timeline, analyze, clip, doorsOpened, episodeKind, fmtVal, heardOf, normalizeEpisode, robotColor, roleOf, xy, TEAM_TASKS, gameStatus } from "../components/arena_views.js";
 
 const html = htm.bind(h);
 
@@ -18,7 +15,9 @@ const html = htm.bind(h);
  *  an episode summary, an interaction timeline (swimlanes) and a message log, and keeps every turn so the scrubber can
  *  step back. With 32 robots only the selected robot's transcript is rendered; the rest is one compact table. */
 
-const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: 12, max_new_tokens: 128, max_calls: 4, max_history: 1, stop_when_done: true };
+const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: 12, max_new_tokens: 128, max_calls: 4, max_history: 1, stop_when_done: true,
+  opponent: null, batch_size: null };
+const SPILL_GIB = 14.5;  // reserved VRAM above this spills into host memory on Windows (CLAUDE.md): 60x slower, no error
 const LIMITS = { n: [4, 16], n_agents: [1, 32], turns: [1, 50], max_new_tokens: [16, 1024], max_calls: [0, 16], max_history: [0, 10] };
 
 // ---------------------------------------------------------------------------------------------------- the grid
@@ -51,11 +50,11 @@ function arcGeom(x1, y1, x2, y2) {
 
 /** A robot's grid tooltip: where it is, its role and tools, what it did this turn and what it heard. */
 function robotTitle(a, ix, view) {
-  const role = roleOf(a.tools);
+  const role = roleOf(a.tools, a.team);
   const act = view > 0 && ix.act[view] ? ix.act[view][a.id] : null, r = view > 0 && ix.rec[view] ? ix.rec[view][a.id] : null;
   const heard = view > 0 && ix.heard[view] ? ix.heard[view][a.id] : [];
   const last = !r ? "-" : r.calls.length ? r.calls.map((c) => `${clip(c[0].replace(/\s+/g, " "), 60)} -> ${clip(c[1], 70)}`).join("\n  ") : "no call";
-  return `${a.name} at ${xy([a.x, a.y])} · ${role.label}\ntools: ${a.tools.join(", ")}\nmoved ${ix.steps[view] ? ix.steps[view][a.id] : 0} cells so far`
+  return `${a.name} at ${xy([a.x, a.y])} · ${role.label}${a.player && a.player !== "A" ? " · side B" : ""}${a.tagged ? " (tagged: out)" : ""}${a.coins ? ` · ${a.coins} coin${a.coins === 1 ? "" : "s"}` : ""}\ntools: ${a.tools.join(", ")}\nmoved ${ix.steps[view] ? ix.steps[view][a.id] : 0} cells so far`
     + (view > 0 ? `\nturn ${view}: ${act ? KINDS[act.kind].label.split(" (")[0] : "-"}${act && act.err ? " (error)" : ""}\n  ${last}\nheard: ${heard.length ? heard.map((l) => l.line).join("\n  ") : "nothing"}` : "");
 }
 
@@ -91,6 +90,8 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
       return html`<polygon key=${"rg" + a.id} class="arena-range" style=${`stroke:${robotColor(a.id)}`} points=${`${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}`} />`;
     })}</g>`}
     ${state.objects.map((o) => {
+      if (o.what === "coin") return html`<g key=${"o" + o.x + "," + o.y} class="arena-coin"><title>coin at ${xy([o.x, o.y])}</title>
+        <circle cx=${PAD + o.x * C + C / 2} cy=${PAD + o.y * C + C / 2} r=${C * 0.22} /></g>`;
       const num = (/(\d+)/.exec(o.what) || [])[1];
       const open = /door/.test(o.what) && opened.has(Number(num));
       return html`<g key=${"o" + o.what} class=${"arena-obj" + (open ? " open" : "")}><title>${o.what} at ${xy([o.x, o.y])}${open ? " (open)" : ""}</title>
@@ -114,11 +115,12 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
       return segs.length ? html`<g key=${"tr" + id} class=${"arena-trail" + (id === sel ? " sel" : "")}><rect x=${sx - 3} y=${sy - 3} width="6" height="6" style=${`stroke:${col}`} class="arena-trail-start"><title>${(agents[id] || {}).name} started here</title></rect>${segs}</g>` : null;
     })}</g>
     ${agents.map((a) => {
-      const c = spots[a.id], role = roleOf(a.tools);
-      return html`<g key=${"r" + a.id} class=${"arena-robot" + (a.id === sel ? " sel" : "") + (a.id === focus ? " focus" : "")} style=${`transform:translate(${c.cx}px,${c.cy}px)`}
+      const c = spots[a.id], role = roleOf(a.tools, a.team);
+      return html`<g key=${"r" + a.id} class=${"arena-robot" + (a.id === sel ? " sel" : "") + (a.id === focus ? " focus" : "") + (a.tagged ? " tagged" : "")} style=${`transform:translate(${c.cx}px,${c.cy}px)`}
           onClick=${() => setSel(a.id)} onMouseEnter=${() => setHover(a.id)} onMouseLeave=${() => setHover(null)}>
         <title>${robotTitle(a, ix, view)}</title>
-        <circle r=${c.r} fill=${role.color} /><text y=${c.r * 0.36} style=${`font-size:${Math.max(7, c.r * 0.9)}px`}>${a.name}</text></g>`;
+        <circle r=${c.r} fill=${role.color} /><text y=${c.r * 0.36} style=${`font-size:${Math.max(7, c.r * 0.9)}px`}>${a.name}</text>
+        ${a.coins > 0 && html`<text class="arena-coins" x=${c.r * 0.8} y=${-c.r * 0.7}>${a.coins}</text>`}</g>`;
     })}
     ${msgs.map((m, i) => {
       const s = agents.find((a) => a.id === m.speaker_id), sp = s && spots[s.id];
@@ -151,15 +153,19 @@ function TaskPanel({ task, meta, state, result, showTarget }) {
   const hide = (k) => k === "target" && state && state.task === "triangulate" && !sc.success && !showTarget;
   return html`<div class="panel arena-task">
     <div class="row"><b>${task ? task.title : meta ? meta.task : "task"}</b><${Info} k=${"arena_" + (meta ? meta.task : task ? task.key : "key_door")} />
-      ${state && html`<span class=${"stage-badge " + (sc.success ? "rl" : "base")}>${sc.success ? "success" : result ? "not solved" : "in progress"}</span>`}</div>
+      ${state && html`<span class=${"stage-badge " + (sc.success ? "rl" : "base")}>${sc.verdict || (sc.success ? "success" : result ? (TEAM_TASKS.has(state.task) ? gameStatus(state.task, sc) || "game over" : "not solved") : "in progress")}</span>`}</div>
     ${task && html`<p class="arena-desc">${task.description}</p><div class="legend">roles: ${task.roles}</div>`}
+    ${meta && meta.players && Object.keys(meta.players).length > 1 && html`<div class="arena-players">${Object.entries(meta.players).map(([k, pl]) => html`<span key=${k}>
+      <b>side ${k}</b> ${pl.label}${pl.external ? " (external, plain-text calls)" : ""} plays ${pl.plays}${sc.winner_side === k ? html` <span class="stage-badge rl">winner</span>` : ""}</span>`)}</div>`}
     ${meta && html`<div class="legend">grid ${meta.n}×${meta.n} · ${meta.n_agents} robot${meta.n_agents === 1 ? "" : "s"} · comm range ${meta.comm_range} · sight ${meta.sight}<${Info} k="arena_range" /> · seed ${meta.seed} · ${meta.device === "file" ? `${meta.checkpoint} (episode file)` : `${meta.checkpoint || ""} on ${meta.device}`}</div>`}
     ${state && html`<h3 style="margin-top:8px">score at turn ${state.turn}${state.derived ? html` <span class="muted" title="CLI files carry only the final score; the earlier ones are derived from the transcript">(derived)</span>` : ""}</h3>
       <div class="evd-kv">${Object.entries(sc).map(([k, v]) => html`<span key=${k}><i>${k}</i>${hide(k) ? "hidden" : fmtVal(v)}</span>`)}</div>
       <h3 style="margin-top:8px">events</h3>
       ${events.length ? html`<ul class="arena-events">${events.map((e, i) => html`<li key=${i}>${e}</li>`)}</ul>` : html`<div class="muted">none yet</div>`}`}
     ${result && html`<div class=${"arena-result " + (result.score.success ? "ok" : "no")}>
-      <b>${result.score.success ? `Solved in ${result.score.done_turn ?? result.turns} turn${(result.score.done_turn ?? result.turns) === 1 ? "" : "s"}` : result.cancelled ? "Cancelled" : "Not solved"}</b>
+      <b>${result.score.verdict ? `${result.score.verdict[0].toUpperCase()}${result.score.verdict.slice(1)}${result.score.done_turn ? ` (turn ${result.score.done_turn})` : ""}`
+        : result.score.success ? `Solved in ${result.score.done_turn ?? result.turns} turn${(result.score.done_turn ?? result.turns) === 1 ? "" : "s"}` : result.cancelled ? "Cancelled"
+        : TEAM_TASKS.has(result.task || (meta && meta.task)) ? (gameStatus(result.task || meta.task, result.score) || "Game over") : "Not solved"}</b>
       · ${result.turns} turn${result.turns === 1 ? "" : "s"} played${result.cancelled ? " (stopped by you)" : ""}${result.seconds ? ` · ${Number(result.seconds).toFixed(1)} s` : ""}
       · ${(result.transcript || []).length} robot turns · ${(result.transcript || []).reduce((a, r) => a + r.n_calls, 0)} tool calls · ${(result.messages || []).reduce((a, m) => a + m.length, 0)} messages
     </div>`}
@@ -174,7 +180,7 @@ function RobotTable({ state, turn, ix, view, sel, setSel }) {
   return html`<table class="arena-table">
     <tr><th>robot</th><th>pos</th><th title="cells moved from the start to this turn">moved</th><th class="l">unique tool</th><th class="l">declared this turn</th><th class="l">calls</th><th class="l">heard (inbox this turn)</th><th class="l">said → heard by</th><th class="l">answer (status line)</th></tr>
     ${state.agents.map((a) => {
-      const r = recs[a.id], role = roleOf(a.tools), act = view > 0 && ix.act[view] ? ix.act[view][a.id] : null;
+      const r = recs[a.id], role = roleOf(a.tools, a.team), act = view > 0 && ix.act[view] ? ix.act[view][a.id] : null;
       const heard = view > 0 && ix.heard[view] ? ix.heard[view][a.id] : [];
       return html`<tr key=${a.id} class=${a.id === sel ? "sel" : ""} onClick=${() => setSel(a.id)}>
         <td><span class="arena-dot" style=${`background:${role.color}`}></span><span style=${`color:${robotColor(a.id)};font-weight:600`}>${a.name}</span></td><td>${xy([a.x, a.y])}</td>
@@ -212,7 +218,7 @@ function RobotTurn({ r, open }) {
 function RobotPanel({ robot, ep, view, state, ix }) {
   if (!robot) return null;
   const a = state && state.agents.find((x) => x.id === robot.id);
-  const role = roleOf(robot.tools.map((t) => t.name));
+  const role = roleOf(robot.tools.map((t) => t.name), robot.team);
   const recs = ep.turns.slice(0, view).map((t) => t.records.find((r) => r.agent_id === robot.id)).filter(Boolean).reverse();
   return html`<div class="panel arena-robot-panel">
     <div class="row"><span class="arena-dot big" style=${`background:${role.color}`}></span><b style=${`color:${robotColor(robot.id)}`}>${robot.name}</b><span class="muted">${role.label}${a ? ` · at ${xy([a.x, a.y])} after turn ${state.turn} · moved ${ix.steps[view] ? ix.steps[view][robot.id] : 0} cells` : ""}</span></div>
@@ -283,7 +289,13 @@ export function ArenaPage() {
   const slotInfo = slots[p.slot] || {};
   const loaded = !!slotInfo.checkpoint, ext = !!slotInfo.external;
   const task = tasks.find((t) => t.key === p.task);
-  const bad = p.task === "key_door" && p.n_agents % 2 ? "key_door pairs robots: use an even number" : p.task === "relay" && p.n_agents < 2 ? "relay needs at least 2 robots" : null;
+  const other = p.slot === "A" ? "B" : "A", otherInfo = slots[other] || {};
+  const versus = TEAM_TASKS.has(p.task) && p.opponent === other;
+  // each task's own robot-count rule (slm.arena.world Task.check; the API refuses the same)
+  const bad = p.n_agents < 2 ? "at least 2 robots" : p.task === "key_door" && p.n_agents % 2 ? "key_door pairs robots: use an even number"
+    : p.task === "team_relay" && (p.n_agents < 4 || p.n_agents % 2) ? "team_relay needs an even number of robots, at least 4"
+    : p.task === "team_relay" && p.n < p.n_agents - 1 ? `team_relay with ${p.n_agents} robots needs a grid of at least ${p.n_agents - 1}`
+    : versus && !otherInfo.checkpoint ? `load the opponent's model into slot ${other} first` : null;
   const set = (k, v) => setP((q) => ({ ...q, [k]: v }));
   const num = (k, attrs = {}) => html`<input type="number" value=${p[k]} min=${LIMITS[k] && LIMITS[k][0]} max=${LIMITS[k] && LIMITS[k][1]} onChange=${(e) => {
     const lim = LIMITS[k], v = Number(e.target.value);
@@ -299,7 +311,7 @@ export function ArenaPage() {
 
   const run = async () => {
     setErr(null); setPlaying(false); setFollow(true); setView(0); setSel(0); setFocusMsg(null);
-    const req = { ...p, seed: Number(p.seed) || 0 };
+    const req = { ...p, seed: Number(p.seed) || 0, opponent: versus ? other : null, batch_size: p.batch_size ? Number(p.batch_size) : null };
     setNow(Date.now()); setEp({ request: req, meta: null, robots: [], start: null, turns: [], result: null, t0: Date.now(), source: "live", notes: [] });
     setBusy(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
@@ -360,7 +372,7 @@ export function ArenaPage() {
   const robot = ep && ep.robots.find((r) => r.id === sel);
   const focus = hover != null ? hover : sel;
   const running = busy && ep && ep.source === "live" && !ep.result;
-  const roles = state ? [...new Map(state.agents.map((a) => roleOf(a.tools)).map((r) => [r.label, r])).values()] : [];
+  const roles = state ? [...new Map(state.agents.map((a) => roleOf(a.tools, a.team)).map((r) => [r.label, r])).values()] : [];
   const genSec = ep ? ep.turns.reduce((s, t) => s + (t.seconds || 0), 0) : 0;
 
   return html`<div>
@@ -390,17 +402,28 @@ export function ArenaPage() {
         <span class="grp"><span class="muted">max tool calls</span>${num("max_calls")}</span>
         <span class="grp"><span class="muted">history</span>${num("max_history")}<${Info} k="arena_turn" /></span>
         <label class="muted"><input type="checkbox" checked=${p.stop_when_done} onChange=${(e) => set("stop_when_done", e.target.checked)} /> stop when done</label>
-        <span class="legend">cost: ${p.n_agents} rows × up to ${p.max_new_tokens} tokens per turn, one batch<${Info} k="arena_cost" /></span>
+        <span class="grp"><span class="muted">batch size</span><input type="number" min="1" max="32" placeholder="all" value=${p.batch_size || ""}
+          onChange=${(e) => set("batch_size", e.target.value ? Math.max(1, Math.min(32, Math.round(Number(e.target.value)) || 1)) : null)} style="width:56px" /><${Info} k="arena_versus" /></span>
+        <span class="legend">cost: ${p.n_agents} rows × up to ${p.max_new_tokens} tokens per turn, ${p.batch_size && p.batch_size < p.n_agents ? `in batches of ${p.batch_size}` : "one batch"}${versus ? " per model" : ""}<${Info} k="arena_cost" /></span>
       </div>
+      ${TEAM_TASKS.has(p.task) && html`<div class="row" style="margin-bottom:6px">
+        <span class="grp"><span class="muted">opponent (side B)</span><select value=${p.opponent || ""} onChange=${(e) => set("opponent", e.target.value || null)}>
+          <option value="">none: slot ${p.slot} plays both sides</option>
+          <option value=${other} disabled=${!otherInfo.checkpoint}>slot ${other}: ${otherInfo.checkpoint ? `${otherInfo.name}${otherInfo.external ? " (external)" : ""}` : "empty"}</option>
+        </select><${Info} k="arena_versus" /></span>
+        ${task && task.sides && html`<span class="legend">side A plays ${task.sides.A}; side B plays ${task.sides.B}</span>`}
+      </div>`}
       ${task && html`<div class="legend" style="margin-bottom:6px">${task.description}</div>`}
       <div class="row">
-        <button class="active" onClick=${run} disabled=${busy || !loaded || ext || !!bad}>run</button>
+        <button class="active" onClick=${run} disabled=${busy || !loaded || !!bad}>run</button>
         <button onClick=${stop} disabled=${!streamId}>stop</button>
         <button onClick=${download} disabled=${!ep || !ep.start || running} title="the whole episode: settings, briefings, every turn's records, messages and states, and the result">download episode log (JSON)</button>
         ${!loaded && html`<span class="muted">load a checkpoint into slot ${p.slot} first (CPU works for a small grid; the 336M RL model on cuda is the real test)</span>`}
-        ${ext && html`<span class="muted">the arena is n/a for an external slot: the robots act through our tool protocol (declared functions, <code>${"<|python_call|>"}</code> inside the think span), which ${slotInfo.name} does not have</span>`}
+        ${ext && html`<span class="legend">slot ${p.slot} holds an external model (${slotInfo.name}): it has never seen our tool protocol, so it answers in plain text and the call it writes is run<${Info} k="arena_versus" /></span>`}
         ${bad && html`<span class="muted">${bad}</span>`}
         ${loaded && !ext && !bad && slotInfo.device === "cpu" && html`<span class="legend">slot ${p.slot} is on CPU: keep it small (2-4 robots, 64 new tokens)</span>`}
+        ${(() => { const last = ep && ep.turns.length ? ep.turns[ep.turns.length - 1].vram : null; return last && html`<span class=${"legend" + (last.reserved_gib > SPILL_GIB ? " arena-spill" : "")}
+          title="peak allocated during the last turn's generation / reserved by the worker">VRAM last turn: peak ${last.peak_gib} GiB, reserved ${last.reserved_gib} GiB${last.reserved_gib > SPILL_GIB ? " — above the spill line: lower the batch size" : ""}</span>`; })()}
       </div>
       <${ViewerBar} episodes=${episodes} onOpen=${openFile} onFile=${openLocal} busy=${running} refresh=${refreshEpisodes} />
       ${ep && ep.source === "live" && html`<div class="stage-steps">

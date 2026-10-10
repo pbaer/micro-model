@@ -420,3 +420,10 @@ a.lg-node:hover,a.lg-node:focus-visible,.lg-node.hot{text-decoration:none;box-sh
 .chart-card .cc-row{display:contents}  /* swatch | label | value: values line up in one right-aligned column */
 .chart-card .cc-l{color:#374151;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
 .chart-card b{font-variant-numeric:tabular-nums;text-align:right;padding-left:12px;white-space:nowrap}
+
+/* arena: competitive tasks */
+.arena-coin circle{fill:#facc15;stroke:#a16207;stroke-width:1.2}
+.arena-robot.tagged{opacity:.35}.arena-robot.tagged circle{stroke:#111827;stroke-dasharray:2 2}
+.arena-coins{font-size:8px;font-weight:700;fill:#a16207;paint-order:stroke;stroke:#fff;stroke-width:2.5px}
+.arena-players{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:12.5px;margin:4px 0}
+.arena-spill{color:#b91c1c;font-weight:600}

@@ -25,7 +25,7 @@ _peek_cache: dict[str, tuple[float, int, dict]] = {}
 
 def robots(world) -> list[dict]:
     """Every robot's id, name, briefing and declared tools as the Arena tab shows them (the harness's `start` event)."""
-    return [{"id": a.id, "name": a.name, "system_prompt": world.system_prompt(a),
+    return [{"id": a.id, "name": a.name, "system_prompt": world.system_prompt(a), "team": world.task.agent_info(a).get("team"),
              "tools": [{"name": d.name, "signature": d.signature, "comment": d.comment} for d in world.decls[a.id]]} for a in world.agents]
 
 

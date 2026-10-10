@@ -80,6 +80,25 @@ class Task:
         self.done_at: int | None = None
         self.events: list[str] = []
 
+    @classmethod
+    def check(cls, n: int, n_agents: int) -> None:
+        """Raise ValueError when the task cannot be built for this grid and robot count."""
+        if n_agents < 2:
+            raise ValueError(f"{cls.name} needs at least 2 robots")
+
+    def agent_info(self, agent: Agent) -> dict:
+        """Extra per-robot fields for the state and the portal (a team, a status); none by default."""
+        return {}
+
+    # Which player ("A" or "B") a robot belongs to when two models play against each other (Runner(players=...)).
+    # Cooperative tasks have one side; the competitive ones split their robots (sides() says how).
+    def side_of(self, agent: Agent) -> str:
+        return "A"
+
+    def sides(self) -> dict:
+        """What each player plays, for the record and the portal: {"A": "team red", "B": "team blue"}."""
+        return {"A": "every robot"}
+
     def goal(self, agent: Agent) -> str:
         raise NotImplementedError
 
@@ -115,6 +134,11 @@ class KeyDoor(Task):
     With more than two robots there are several doors, each with its own key holder and door opener."""
 
     name = "key_door"
+
+    @classmethod
+    def check(cls, n, n_agents):
+        if n_agents < 2 or n_agents % 2:
+            raise ValueError("key_door needs an even number of robots (key holder + door opener per door)")
 
     def __init__(self, n, n_agents, rng):
         super().__init__(n, n_agents, rng)
@@ -352,7 +376,434 @@ class Triangulate(Task):
                 agent.memory["sensed"] = True
 
 
-TASKS = {"key_door": KeyDoor, "relay": Relay, "triangulate": Triangulate}
+# ------------------------------------------------------------------------------------------------ competitive tasks
+# The scaffold rule above holds (one named tool per turn, the facts restated in the question), but each of these
+# leaves one real decision to the model and scores it against chance: which of two heard codes is its team's
+# (team_relay), which step brings it closer to or further from another robot given two positions (tag), which step
+# heads for the nearest of three listed coins (gold_rush). The decision is offered as complete calls to pick from
+# ('call one of move("west"), move("north"), ...'), in a random order. Measured on the first smoke runs (2026-10-10):
+# offered `move(...)` and a list of words, the model never chose -- it wrote move("binder") / move("marker") or copied
+# say("the code is ...") verbatim, every one of 48 moves invalid. Given the calls themselves it copies one, and which
+# one is the decision. Each score carries the chance rate of its decision (the share of offered calls that are right).
+
+def _move_calls(rng: random.Random) -> tuple[str, list[str]]:
+    """The four moves as complete calls in a random order, and that order."""
+    d = list(DIRS)
+    rng.shuffle(d)
+    calls = [f'move("{x}")' for x in d]
+    return ", ".join(calls[:-1]) + " or " + calls[-1], d
+
+
+def _step(pos: tuple[int, int], d: str, n: int) -> tuple[int, int]:
+    nx, ny = pos[0] + DIRS[d][0], pos[1] + DIRS[d][1]
+    return (nx, ny) if 0 <= nx < n and 0 <= ny < n else pos
+
+
+def _moved(record: dict) -> str | None:
+    """The direction of this turn's move call ('east'), 'invalid' for a move with no valid direction, None if no move."""
+    for code_txt, result in record.get("calls", []):
+        if re.match(r"\s*move\s*\(", code_txt or ""):
+            m = re.search(r"\b(north|south|east|west)\b", code_txt.lower())
+            return m.group(1) if m and not str(result).startswith("Unknown direction") else "invalid"
+    return None
+
+
+def _name_in(x, names: list[str]) -> str | None:
+    """The robot name inside whatever the model passed ("R5", "robot R5", 'R5')."""
+    m = re.search(r"\bR(\d+)\b", str(x))
+    return f"R{m.group(1)}" if m and f"R{m.group(1)}" in names else None
+
+
+class TeamRelay(Task):
+    """Two teams race to relay their own secret code down their own line. Team red stands on one row, team blue on the
+    row below, both two cells apart. With a comm range of 3 a robot hears the teammate behind it AND the rival robot
+    diagonally behind it, and those two speak in the same turn (they are at the same depth of their chains), so every
+    first pass faces both codes at once. With range 2 the rival's code arrived a turn after the robot's own, and a
+    sink that never mixed them up could not be told from one that did (caught by the scripted test). Chains cannot
+    skip a robot: the teammate two places back is 4 cells away. The question lists what it heard, labelled by team, in a random order, and
+    asks it to pass on its own team's code without saying which number that is. The first team whose last robot
+    submits its own code wins (both in the same turn: a tie). Scored: wins, and how often a robot passed on or
+    submitted the rival's code instead of its own."""
+
+    name = "team_relay"
+    comm_range = 3
+    sight = 2
+    TEAMS = ("red", "blue")
+
+    @classmethod
+    def check(cls, n, n_agents):
+        if n_agents < 4 or n_agents % 2:
+            raise ValueError("team_relay needs an even number of robots, at least 4 (two teams of a source, relays and a sink)")
+        per = n_agents // 2
+        if 2 * (per - 1) > n - 1:
+            raise ValueError(f"team_relay with {per} robots per team needs a grid of at least {2 * per - 1} cells across (got {n})")
+
+    def __init__(self, n, n_agents, rng):
+        super().__init__(n, n_agents, rng)
+        a, b = rng.sample(range(1000, 10000), 2)
+        self.codes = {"red": str(a), "blue": str(b)}
+        self.finished: dict[str, int] = {}  # team -> 1-based turn its sink submitted the right code
+        self.right = {"red": 0, "blue": 0}  # relays / sinks that passed on or submitted their own team's code
+        self.wrong = {"red": 0, "blue": 0}  # ... the rival team's code
+
+    def team(self, agent):
+        return self.TEAMS[agent.id % 2]
+
+    def members(self, team):
+        return [a for a in self.world.agents if self.team(a) == team]
+
+    def rival(self, team):
+        return "blue" if team == "red" else "red"
+
+    def agent_info(self, agent):
+        return {"team": self.team(agent)}
+
+    def side_of(self, agent):
+        return "A" if self.team(agent) == "red" else "B"
+
+    def sides(self):
+        return {"A": "team red", "B": "team blue"}
+
+    def place_agents(self, world):
+        self.world = world
+        y = max(0, self.n // 2 - 1)
+        for a in world.agents:  # red on row y, blue on row y+1, robot i of a team at x = 2i
+            a.x, a.y = 2 * (a.id // 2), y + (a.id % 2)
+
+    def _role(self, agent):
+        team = self.members(self.team(agent))
+        i = team.index(agent)
+        return "source" if i == 0 else "sink" if i == len(team) - 1 else "relay"
+
+    def goal(self, agent):
+        t, role = self.team(agent), self._role(agent)
+        sink = self.members(t)[-1].name
+        rival = f"Team {self.rival(t)} is racing you with its own code on the row beside yours, and you will hear its robots too."
+        if role == "source":
+            return f"You are on team {t}. read_code() tells you your team's secret code. Pass it to your teammate next to you with say(...). {rival}"
+        if role == "sink":
+            return f"You are on team {t}, at the end of your team's line. When you hear your team's code, call submit(code) with it: the first team to submit wins. {rival}"
+        return f"You are on team {t}. Pass your team's code along your team's line with say(...); robot {sink} at the end submits it. {rival}"
+
+    def tools(self, world, agent):
+        from slm.tools.functions import FunctionDecl
+
+        self.world = world
+        t, role = self.team(agent), self._role(agent)
+        if role == "source":
+            return [FunctionDecl("read_code", "def read_code() -> str", f"Returns team {t}'s secret code. Only you can read it.",
+                                 lambda _t=t: f"Team {_t}'s secret code is {self.codes[_t]}.")]
+        if role == "sink":
+            def submit(code: str, _a=agent, _t=t):
+                c = _code_in(code)
+                if c == self.codes[_t]:
+                    if _t not in self.finished:
+                        self.finished[_t] = world.turn + 1
+                        self.events.append(f"turn {world.turn + 1}: team {_t} submitted its code ({_a.name})")
+                        if self.done_at is None:
+                            self.done_at = world.turn + 1
+                    return f"Correct! Team {_t} finished."
+                if c == self.codes[self.rival(_t)]:
+                    return f"{c} is team {self.rival(_t)}'s code, not yours. Keep listening for your own team's code."
+                return f"{code!r} is not your team's code. Keep listening."
+            return [FunctionDecl("submit", "def submit(code: str) -> str", f"Submits team {t}'s 4-digit code. Only you have this tool on your team.", submit)]
+        return []
+
+    def winner(self):
+        if not self.finished:
+            return None
+        first = min(self.finished.values())
+        best = [t for t, turn in self.finished.items() if turn == first]
+        return best[0] if len(best) == 1 else "tie"
+
+    def score(self, world):
+        def reach(t):
+            team = self.members(t)
+            got = [i for i, a in enumerate(team) if a.memory.get("code") or a.memory.get("own_msg")]
+            return round(max(got or [0]) / max(1, len(team) - 1), 2)
+        w = self.winner()
+        verdict = None if w is None else "tie: both teams finished in the same turn" if w == "tie" else f"team {w} wins"
+        passes = sum(self.right.values()) + sum(self.wrong.values())
+        return {"winner": w, "winner_side": {"red": "A", "blue": "B", "tie": "tie"}.get(w), "verdict": verdict,
+                "red_finished": self.finished.get("red"), "blue_finished": self.finished.get("blue"),
+                "red_reach": reach("red"), "blue_reach": reach("blue"),
+                "own_code_passes": sum(self.right.values()), "rival_code_passes": sum(self.wrong.values()),
+                "rival_code_rate": round(sum(self.wrong.values()) / passes, 2) if passes else None,
+                "success": w is not None, "done_turn": self.done_at, "progress": max(reach("red"), reach("blue"))}
+
+    def question(self, world, agent):
+        t, role = self.team(agent), self._role(agent)
+        names = {a.name: a for a in world.agents}
+        for m in agent.inbox:
+            if not re.search(r"\d{4}", m):
+                continue
+            speaker = names.get(m.split(" ", 1)[0])
+            if speaker is None:
+                continue
+            key = "own_msg" if self.team(speaker) == t else "rival_msg"
+            agent.memory[key] = f"{speaker.name} (team {self.team(speaker)}) said {m.split(' said: ', 1)[-1]}"
+        if role == "source":
+            if not agent.memory.get("code"):  # the relay task's exact words: with "team red's" in it the model answered nothing
+                return "What is the secret code? Use read_code() to find out.", ["read_code"]  # (red) or read_code(team_brown) (blue)
+            code = agent.memory["code"]  # the relay task's exact words (the heard lines carry the speaker's team anyway); with
+            # "Your team's secret code ... say(\"team red: ...\")" both sources kept calling read_code(secret_code) instead
+            return f"The secret code is {code}. Tell the next robot: call say(\"the code is {code}\"). What does say() return?", ["say"]
+        own, rival = agent.memory.get("own_msg"), agent.memory.get("rival_msg")
+        if not own:  # nothing of its own team yet: wait (the one decision this task scores needs two candidates)
+            return "You have not heard your team's code yet. Use look() to see who is near. What does look() return?", ["look"]
+        heard = [own] + ([rival] if rival else [])
+        self.rng.shuffle(heard)
+        lines = " ".join(f"Earlier {h}." for h in heard)
+        codes = list(dict.fromkeys(re.search(r"\d{4}", h).group(0) for h in heard))  # both codes (one when they agree)
+        agent.memory["q_codes"] = len(codes) > 1  # a decision only when two different codes are on offer (chance 0.5)
+        tool = "submit" if role == "sink" else "say"
+        calls = [f'submit("{c}")' if tool == "submit" else f'say("the code is {c}")' for c in codes]
+        # "Call X(...)" opening its own sentence, as in the relay task: "Submit your own team's code: call submit(...)"
+        # came back as print(submit("call submit("7890")) on every turn of the first smoke run
+        if len(calls) == 1:
+            return f"You are on team {t}. {lines} Call {calls[0]} to pass on your team's code. What does {tool}() return?", [tool]
+        return f"You are on team {t}. {lines} Call {' or '.join(calls)}, whichever is your own team's code. What does {tool}() return?", [tool]
+
+    def after_turn(self, world, agent, record):
+        t = self.team(agent)
+        for code_txt, result in record.get("calls", []):
+            if "read_code" in code_txt and re.search(r"\d{4}", str(result)):
+                agent.memory["code"] = re.search(r"\d{4}", str(result)).group(0)
+            elif ("say" in code_txt or "submit" in code_txt) and agent.memory.pop("q_codes", None):
+                c = _code_in(code_txt)
+                if c == self.codes[t]:
+                    self.right[t] += 1
+                elif c == self.codes[self.rival(t)]:
+                    self.wrong[t] += 1
+
+
+class Tag(Task):
+    """Chasers against runners. The first third of the robots (at least one) chase; the rest run. A chaser's question
+    gives its position and the nearest live runner's and asks which way is closer; a runner's gives the nearest
+    chaser's and asks which way is further. Neither names the direction. A chaser next to a runner (one step away or
+    on its cell) calls tag(name); a tagged runner is out. The chasers win when every runner is tagged; the runners win
+    by surviving the turn budget. Scored per side: the share of moves that actually closed or opened the distance."""
+
+    name = "tag"
+    comm_range = 3
+    sight = 3
+
+    def __init__(self, n, n_agents, rng):
+        super().__init__(n, n_agents, rng)
+        self.n_chasers = max(1, n_agents // 3)
+        self.tagged: dict[str, int] = {}  # runner name -> 1-based turn
+        self.moves = {side: {"good": 0, "made": 0, "invalid": 0, "chance": 0.0} for side in ("chaser", "runner")}
+
+    def side(self, agent):
+        return "chaser" if agent.id < self.n_chasers else "runner"
+
+    def agent_info(self, agent):
+        return {"team": self.side(agent), "tagged": agent.name in self.tagged}
+
+    def side_of(self, agent):
+        return "A" if self.side(agent) == "chaser" else "B"
+
+    def sides(self):
+        return {"A": "the chasers", "B": "the runners"}
+
+    def runners(self, live=True):
+        return [a for a in self.world.agents if self.side(a) == "runner" and not (live and a.name in self.tagged)]
+
+    def place_agents(self, world):
+        self.world = world
+        cells = [(x, y) for x in range(self.n) for y in range(self.n)]
+        chasers = [a for a in world.agents if self.side(a) == "chaser"]
+        for a in chasers:
+            a.x, a.y = self.rng.choice(cells)
+        for a in world.agents:
+            if self.side(a) == "runner":  # start at least 3 steps from every chaser when the grid allows it
+                far = [c for c in cells if all(dist(c, ch.pos) >= 3 for ch in chasers)] or cells
+                a.x, a.y = self.rng.choice(far)
+
+    def goal(self, agent):
+        if self.side(agent) == "chaser":
+            return "You are a chaser. Catch the runners: step towards the nearest one, and when it is next to you call tag(name) with its name."
+        return "You are a runner. Stay away from the chasers: each turn step away from the nearest one. A chaser next to you can tag you, and then you are out."
+
+    def tools(self, world, agent):
+        from slm.tools.functions import FunctionDecl
+
+        self.world = world
+        if self.side(agent) != "chaser":
+            return []
+
+        def tag(name: str, _a=agent):
+            who = _name_in(name, [r.name for r in self.runners(live=False)])
+            if who is None:
+                return f"{name!r} is not a runner."
+            if who in self.tagged:
+                return f"{who} is already tagged."
+            r = next(x for x in world.agents if x.name == who)
+            if dist(_a.pos, r.pos) > 1:
+                return f"{who} is at {r.pos}, {dist(_a.pos, r.pos)} steps away: too far to tag. Get next to it first."
+            self.tagged[who] = world.turn + 1
+            self.events.append(f"turn {world.turn + 1}: {_a.name} tagged {who}")
+            if not self.runners() and self.done_at is None:
+                self.done_at = world.turn + 1
+            return f"You tagged {who}! It is out."
+        return [FunctionDecl("tag", "def tag(name: str) -> str", "Tags a runner that is next to you (one step away or on your cell). Only chasers have this tool.", tag)]
+
+    def score(self, world):
+        total = len(self.runners(live=False))
+        out = len(self.tagged)
+        m = self.moves
+        rate = lambda side, k: round(m[side][k] / m[side]["made"], 2) if m[side]["made"] else None  # noqa: E731
+        verdict = "the chasers win: every runner tagged" if out == total else None
+        return {"tagged": out, "runners": total, "chasers": self.n_chasers, "verdict": verdict, "winner_side": "A" if out == total else None,
+                "chaser_good_moves": rate("chaser", "good"), "chaser_chance": rate("chaser", "chance"),
+                "runner_good_moves": rate("runner", "good"), "runner_chance": rate("runner", "chance"),
+                "chaser_moves": m["chaser"]["made"], "runner_moves": m["runner"]["made"],
+                "invalid_moves": m["chaser"]["invalid"] + m["runner"]["invalid"],
+                "success": out == total, "done_turn": self.done_at, "progress": round(out / total, 2) if total else 0.0}
+
+    def question(self, world, agent):
+        opts, _ = _move_calls(self.rng)
+        if self.side(agent) == "chaser":
+            live = self.runners()
+            if not live:
+                return "Every runner has been tagged. Use look() to see the grid. What does look() return?", ["look"]
+            r = min(live, key=lambda x: (dist(agent.pos, x.pos), x.id))
+            if dist(agent.pos, r.pos) <= 1:
+                return f"Runner {r.name} is right next to you at {r.pos}. Call tag(\"{r.name}\") to tag it. What does tag() return?", ["tag"]
+            agent.memory["q_move"] = (agent.pos, r.pos)
+            return (f"You are at {agent.pos}. The nearest runner, {r.name}, is at {r.pos}. Which step gets you closer to it? "
+                    f"Call one of {opts}. What does move() return?"), ["move"]
+        if agent.name in self.tagged:
+            return "You have been tagged and are out of the game. Use look() to watch. What does look() return?", ["look"]
+        chasers = [a for a in world.agents if self.side(a) == "chaser"]
+        c = min(chasers, key=lambda x: (dist(agent.pos, x.pos), x.id))
+        agent.memory["q_move"] = (agent.pos, c.pos)
+        return (f"You are at {agent.pos}. The nearest chaser, {c.name}, is at {c.pos}. Which step gets you further away from it? "
+                f"Call one of {opts}. What does move() return?"), ["move"]
+
+    def after_turn(self, world, agent, record):
+        q = agent.memory.pop("q_move", None)
+        d = _moved(record)
+        if q is None or d is None:
+            return
+        start, other = q
+        side = self.side(agent)
+        helps = (lambda p: dist(p, other) < dist(start, other)) if side == "chaser" else (lambda p: dist(p, other) > dist(start, other))
+        st = self.moves[side]
+        st["made"] += 1
+        st["chance"] += sum(helps(_step(start, x, self.n)) for x in DIRS) / 4
+        if d == "invalid":
+            st["invalid"] += 1
+        else:
+            st["good"] += int(helps(_step(start, d, self.n)))
+
+
+class GoldRush(Task):
+    """Free for all: coins lie on the grid and every robot has grab(), which takes the coin on its cell; the first
+    robot to grab a coin gets it. Each turn a robot is shown its three nearest coins in a random order and asked which
+    way to step towards the nearest one, so it has to compare the distances itself. Scored: coins per robot (the most
+    wins), and the share of moves that closed in on a truly nearest coin."""
+
+    name = "gold_rush"
+    comm_range = 3
+    sight = 3
+
+    def __init__(self, n, n_agents, rng):
+        super().__init__(n, n_agents, rng)
+        k = min(max(6, 2 * n_agents), (n * n) // 3)
+        for c in rng.sample([(x, y) for x in range(n) for y in range(n)], k):
+            self.objects[c] = "coin"
+        self.total = k
+        self.got: dict[str, int] = {}
+        self.moves = {"nearest": 0, "any": 0, "made": 0, "invalid": 0, "chance": 0.0}
+
+    def coins(self):
+        return [c for c, w in self.objects.items() if w == "coin"]
+
+    def agent_info(self, agent):
+        return {"coins": self.got.get(agent.name, 0)}
+
+    def side_of(self, agent):  # alternate robots, so neither player gets the better starting cells by construction
+        return "A" if agent.id % 2 == 0 else "B"
+
+    def sides(self):
+        return {"A": "R1, R3, ... (odd robots)", "B": "R2, R4, ... (even robots)"}
+
+    def goal(self, agent):
+        return "Coins lie on the grid. Walk to them and pick them up with grab() on their cell: the first robot to grab a coin gets it, and the robot with the most coins wins."
+
+    def tools(self, world, agent):
+        from slm.tools.functions import FunctionDecl
+
+        self.world = world
+
+        def grab(_a=agent):
+            if self.objects.get(_a.pos) != "coin":
+                return f"There is no coin at {_a.pos} (someone may have taken it)."
+            del self.objects[_a.pos]
+            self.got[_a.name] = self.got.get(_a.name, 0) + 1
+            self.events.append(f"turn {world.turn + 1}: {_a.name} grabbed the coin at {_a.pos}")
+            if not self.coins() and self.done_at is None:
+                self.done_at = world.turn + 1
+            return f"You picked up the coin at {_a.pos}! You have {self.got[_a.name]} coin{'s' if self.got[_a.name] != 1 else ''}."
+        return [FunctionDecl("grab", "def grab() -> str", "Picks up the coin on your cell, if one is still there.", grab)]
+
+    def score(self, world):
+        collected = sum(self.got.values())
+        ranked = sorted(self.got.items(), key=lambda kv: (-kv[1], kv[0]))
+        top = ranked[0][1] if ranked else 0
+        leaders = [n for n, c in ranked if c == top] if top else []
+        lead = None if not leaders else leaders[0] if len(leaders) == 1 else "tie: " + ", ".join(leaders)
+        done = collected == self.total
+        verdict = None if not done else f"{lead} wins with {top} coins" if lead and not lead.startswith("tie") else f"{lead} with {top} coins each"
+        by_side = {"A": 0, "B": 0}
+        for a in world.agents:
+            by_side[self.side_of(a)] += self.got.get(a.name, 0)
+        winner_side = None if not done else "A" if by_side["A"] > by_side["B"] else "B" if by_side["B"] > by_side["A"] else "tie"
+        return {"collected": collected, "coins": self.total, "leader": lead, "leader_coins": top, "verdict": verdict,
+                "coins_A": by_side["A"], "coins_B": by_side["B"], "winner_side": winner_side,
+                "standings": ", ".join(f"{n} {c}" for n, c in ranked[:6]) or "-",
+                "nearest_coin_moves": self._rate("nearest"), "nearest_chance": self._rate("chance"), "any_coin_moves": self._rate("any"),
+                "moves": self.moves["made"], "invalid_moves": self.moves["invalid"],
+                "success": done, "done_turn": self.done_at, "progress": round(collected / self.total, 2)}
+
+    def _rate(self, k):
+        return round(self.moves[k] / self.moves["made"], 2) if self.moves["made"] else None
+
+    def question(self, world, agent):
+        coins = self.coins()
+        if agent.pos in coins:  # no coordinates here: with them the model wrote get(3, 2) instead of grab() (smoke run)
+            return "You are standing on a coin. Call grab() to pick it up. What does grab() return?", ["grab"]
+        if not coins:
+            return "Every coin has been picked up. Use look() to see the grid. What does look() return?", ["look"]
+        near = sorted(coins, key=lambda c: (dist(agent.pos, c), c))[:3]
+        best = dist(agent.pos, near[0])
+        shown = near[:]
+        self.rng.shuffle(shown)
+        agent.memory["q_move"] = (agent.pos, [c for c in near if dist(agent.pos, c) == best], near)
+        listed = ", ".join(str(c) for c in shown[:-1]) + (" and " if len(shown) > 1 else "") + str(shown[-1])
+        return (f"You are at {agent.pos}. Coins lie at {listed}. Which coin is nearest to you? Step towards it: call one of "
+                f"{_move_calls(self.rng)[0]}. What does move() return?"), ["move"]
+
+    def after_turn(self, world, agent, record):
+        q = agent.memory.pop("q_move", None)
+        d = _moved(record)
+        if q is None or d is None:
+            return
+        start, nearest, listed = q
+        closer = lambda p, cs: any(dist(p, c) < dist(start, c) for c in cs)  # noqa: E731
+        m = self.moves
+        m["made"] += 1
+        m["chance"] += sum(closer(_step(start, x, self.n), nearest) for x in DIRS) / 4
+        if d == "invalid":
+            m["invalid"] += 1
+            return
+        p = _step(start, d, self.n)
+        m["nearest"] += int(closer(p, nearest))
+        m["any"] += int(closer(p, listed))
+
+
+TASKS = {"key_door": KeyDoor, "relay": Relay, "triangulate": Triangulate, "team_relay": TeamRelay, "tag": Tag, "gold_rush": GoldRush}
 
 
 # ------------------------------------------------------------------------------------------------ the world
@@ -360,18 +811,18 @@ class World:
     def __init__(self, task: str, n: int = 8, n_agents: int = 4, seed: int = 0, max_history: int = 1) -> None:
         self.rng = random.Random(seed)
         self.n, self.seed, self.max_history = n, seed, max_history
-        if task == "key_door" and (n_agents < 2 or n_agents % 2):
-            raise ValueError("key_door needs an even number of robots (key holder + door opener per door)")
-        if n_agents < 2:
-            raise ValueError(f"{task} needs at least 2 robots")
+        if task not in TASKS:
+            raise ValueError(f"unknown arena task {task!r}; known: {', '.join(sorted(TASKS))}")
         if n_agents > 32:
             raise ValueError("at most 32 robots")
+        TASKS[task].check(n, n_agents)
         self.agents = [Agent(i, f"R{i + 1}", 0, 0, []) for i in range(n_agents)]
         self.task: Task = TASKS[task](n, n_agents, self.rng)
         self.task.place_agents(self)
         self.turn = 0
         self.decls: dict[int, list] = {}
         self.pending: list[tuple[Agent, str]] = []  # (speaker, text) said this turn, delivered at the next observation
+        self.player_of: dict[int, str] = {}  # robot id -> player key ("A"/"B"), set by the Runner
         for a in self.agents:
             self.decls[a.id] = self._common_tools(a) + self.task.tools(self, a)
             a.tools = [d.name for d in self.decls[a.id]]
@@ -458,32 +909,128 @@ class World:
         self.pending = []
 
     def state(self) -> dict:
-        return {"turn": self.turn, "n": self.n, "task": self.task.name, "agents": [{"id": a.id, "name": a.name, "x": a.x, "y": a.y, "tools": a.tools} for a in self.agents],
+        return {"turn": self.turn, "n": self.n, "task": self.task.name,
+                "agents": [{"id": a.id, "name": a.name, "x": a.x, "y": a.y, "tools": a.tools, "player": self.player_of.get(a.id, "A"),
+                            **self.task.agent_info(a)} for a in self.agents],
                 "objects": [{"x": c[0], "y": c[1], "what": w} for c, w in self.task.objects.items()], "score": self.task.score(self), "events": list(self.task.events)}
 
 
-# ------------------------------------------------------------------------------------------------ the runner
-class Runner:
-    """Runs a world against a model: every turn, one batched generation over all robots (their conversations are
-    different lengths; `sample_with_tools` takes a list of prompts). `generate` can be injected for tests."""
+# ------------------------------------------------------------------------------------------------ players
+_ARG = r"""\(\s*(?:"([^"]*)"|'([^']*)'|([^()"']*?))\s*\)"""
 
-    def __init__(self, world: World, model=None, tok=None, max_new_tokens: int = 128, max_calls: int = 4, generate=None) -> None:
+
+def text_action(text: str, tool_names: list[str]) -> tuple[str, list[str]] | None:
+    """The call a plain-text player wrote, as `(name, args)`, or None. The questions offer complete calls ('call one of
+    move("west"), ...'), so a model that has never seen our tool protocol can still act by writing one.
+
+    Forms: `move("west")` (any quotes, or none) and the prose form `Move "west"` (the name, case-insensitive, then a
+    quoted value: SmolLM2 answers "The final answer is: 4. Move "south""). Where: the last call on its final answer line
+    (a line starting with '####' or containing "final answer"); with no such line, the call it names, if it names exactly
+    one. An answer that names several different calls and settles on none is restating the options, not choosing
+    (taking the last one would credit whichever option the list happened to end on): no action."""
+    if not tool_names or not text:
+        return None
+    names = "|".join(map(re.escape, tool_names))
+    rx = re.compile(r"(?i)\b(" + names + r")\s*" + _ARG + r"|(?i:\b(" + names + r"))\s+(?:\"([^\"]+)\"|'([^']+)')")
+
+    def calls(chunk):
+        out = []
+        for m in rx.finditer(chunk):
+            if m.group(1):
+                arg = next((g for g in m.groups()[1:4] if g is not None), "").strip()
+                out.append((m.group(1).lower(), [arg] if arg else []))
+            else:
+                out.append((m.group(5).lower(), [(m.group(6) or m.group(7)).strip()]))
+        return [(n, a) for n, a in out if n in tool_names]
+
+    finals = [ln for ln in text.splitlines() if ln.strip().startswith("####") or "final answer" in ln.lower()]
+    if finals:
+        found = calls(finals[-1])
+        if found:
+            return found[-1]
+    found = calls(text)
+    distinct = {(n, tuple(a)) for n, a in found}
+    return found[-1] if len(distinct) == 1 else None
+
+
+@dataclass
+class Player:
+    """One model playing some of the robots. `native`: our checkpoint, acting through declared functions and
+    <|python_call|> inside the think span (`sample_with_tools`); otherwise a chat model that has never seen that protocol
+    (an external open-weight model, `slm.eval.external.HfChatModel`), which answers in plain text and whose written call
+    is executed (`text_action`). `generate` overrides the model call (tests, the portal's device-aware sampler)."""
+
+    label: str
+    model: object = None
+    tok: object = None
+    native: bool = True
+    generate: object = None
+
+
+class Runner:
+    """Runs a world: every turn, each player generates for its robots in batches of at most `batch_size` (their
+    conversations are different lengths; `sample_with_tools` takes a list of prompts). With one player every robot is
+    that model; with `players={"A": ..., "B": ...}` a competitive task's sides (`Task.side_of`) are played by different
+    models -- ours against ours, or against an external chat model. `batch_size` bounds the rows of one generation call:
+    smaller costs time, saves peak VRAM (two resident models and their KV caches can spill past the 16 GiB card on WDDM,
+    which shows as a 60x slowdown, not an error). `generate` (one player) can be injected for tests."""
+
+    def __init__(self, world: World, model=None, tok=None, max_new_tokens: int = 128, max_calls: int = 4, generate=None,
+                 players: dict | None = None, batch_size: int | None = None) -> None:
         from slm.tools.pysandbox import PySession
 
         self.world, self.model, self.tok = world, model, tok
         self.max_new_tokens, self.max_calls = max_new_tokens, max_calls
         self.sessions = {a.id: PySession() for a in world.agents}
-        self.generate = generate or self._generate
+        self.players = players or {"A": Player("model", model, tok, native=True, generate=generate)}
+        self.batch_size = batch_size if batch_size and batch_size > 0 else None
+        two = "B" in self.players
+        for a in world.agents:
+            world.player_of[a.id] = world.task.side_of(a) if two else "A"
+        self.vram_peak_gib = 0.0
 
-    def _generate(self, prompts: list[list[int]], sessions: list) -> list:
+    @property
+    def generate(self):  # the single player's generator (the portal and older callers set it)
+        return self.players["A"].generate
+
+    @generate.setter
+    def generate(self, fn):
+        self.players["A"].generate = fn
+
+    def _native(self, player: Player, prompts: list, sessions: list) -> list:
+        if player.generate is not None:
+            return player.generate(prompts, sessions)
         import torch
 
         from slm.tools.loop import sample_with_tools
         from slm.utils.sdpa import sdpa_context
 
-        gen = torch.Generator(device=next(self.model.parameters()).device); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
+        gen = torch.Generator(device=next(player.model.parameters()).device); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
         with torch.no_grad(), sdpa_context("decode"):
-            return sample_with_tools(self.model, self.tok, prompts, self.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=self.max_calls, sessions=sessions)
+            return sample_with_tools(player.model, player.tok, prompts, self.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=self.max_calls, sessions=sessions)
+
+    def _text(self, player: Player, prompts: list, sessions: list, tool_names: list, no_args: list | None = None) -> list:
+        """A plain-text player: generate (greedy, like ours), then execute the call each answer wrote."""
+        if player.generate is not None:
+            texts = player.generate(prompts, sessions)
+        else:
+            gens = player.model.batch_generate_chat(prompts, self.max_new_tokens, temperature=0.0, batch_size=max(1, len(prompts)))
+            texts = [g.text for g in gens]
+        out = []
+        for i, (text, sess, names) in enumerate(zip(texts, sessions, tool_names)):
+            act = text_action(text, names)
+            calls = []
+            if act:
+                name, args = act
+                if no_args and name in no_args[i]:  # read_code('secret_code'): the tool takes nothing; the argument is noise
+                    args = []
+                code = f"{name}({', '.join(repr(x) for x in args)})"
+                try:
+                    calls.append([code, str(sess.functions[name](*args))])
+                except Exception as e:  # noqa: BLE001 - a wrong argument count is the player's error, recorded as one
+                    calls.append([code, f"error: {type(e).__name__}: {e}"])
+            out.append({"think": None, "answer": text, "calls": calls})
+        return out
 
     def step(self) -> dict:
         from slm.data.chat import format_chat, parse_assistant
@@ -492,30 +1039,65 @@ class Runner:
 
         w = self.world
         w.deliver()
-        prompts, sessions, obs, declared = [], [], [], []
+        prompts, sessions, obs, declared, no_args = {}, {}, {}, {}, {}
         for a in w.agents:
+            player = self.players[w.player_of.get(a.id, "A")]
             msgs = w.messages(a)
             tools = w.turn_tools(a)
             self.sessions[a.id] = PySession()  # fresh each turn, with only this turn's tool: a tool declared earlier stays callable otherwise
             self.sessions[a.id].register(functions_env(tools))
-            prompts.append(format_chat(self.tok, msgs, add_generation_prompt=True, think_required=True, functions=tools).ids if self.tok else msgs)
-            sessions.append(self.sessions[a.id]); obs.append(msgs[-1]["content"]); declared.append([d.name for d in tools])
+            if player.native and player.tok is not None:
+                prompts[a.id] = format_chat(player.tok, msgs, add_generation_prompt=True, think_required=True, functions=tools).ids
+            else:
+                prompts[a.id] = [{k: v for k, v in m.items() if k != "ids"} for m in msgs] if not player.native else msgs
+            sessions[a.id] = self.sessions[a.id]; obs[a.id] = msgs[-1]["content"]; declared[a.id] = [d.name for d in tools]
+            no_args[a.id] = {d.name for d in tools if re.search(r"\(\s*\)", d.signature)}
         t0 = time.time()
-        tcs = self.generate(prompts, sessions)
+        tcs: dict[int, object] = {}
+        cuda = _cuda_ready()
+        if cuda:
+            import torch
+
+            torch.cuda.reset_peak_memory_stats()
+        for key, player in self.players.items():
+            ids = [a.id for a in w.agents if w.player_of.get(a.id, "A") == key]
+            step = self.batch_size or max(1, len(ids))
+            for i in range(0, len(ids), step):
+                chunk = ids[i:i + step]
+                if player.native:
+                    outs = self._native(player, [prompts[j] for j in chunk], [sessions[j] for j in chunk])
+                else:
+                    outs = self._text(player, [prompts[j] for j in chunk], [sessions[j] for j in chunk], [declared[j] for j in chunk],
+                                      [no_args[j] for j in chunk])
+                tcs.update(zip(chunk, outs))
+        vram = None
+        if cuda:
+            import torch
+
+            vram = {"peak_gib": round(torch.cuda.max_memory_allocated() / 2**30, 2), "reserved_gib": round(torch.cuda.memory_reserved() / 2**30, 2)}
+            self.vram_peak_gib = max(self.vram_peak_gib, vram["peak_gib"])
         records = []
-        for a, tc, o, tools in zip(w.agents, tcs, obs, declared):
-            p = parse_assistant(self.tok, tc.ids) if self.tok else tc
-            think, answer = (p["think"], p["answer"]) if isinstance(p, dict) else (tc.get("think"), tc.get("answer"))
+        for a in w.agents:
+            key = w.player_of.get(a.id, "A")
+            player, tc, o, tools = self.players[key], tcs[a.id], obs[a.id], declared[a.id]
+            native_ids = player.native and player.tok is not None and not isinstance(tc, dict)
+            if native_ids:  # our checkpoint's generated turn: parse the think span and the answer out of the ids
+                p = parse_assistant(player.tok, tc.ids)
+                think, answer = p["think"], p["answer"]
+            elif isinstance(tc, dict):  # a plain-text player, or a scripted one in tests
+                think, answer = tc.get("think"), tc.get("answer")
+            else:
+                think, answer = getattr(tc, "think", None), getattr(tc, "answer", None)
             calls = [list(c) for c in getattr(tc, "calls", [])] if not isinstance(tc, dict) else tc.get("calls", [])
-            a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if hasattr(tc, "ids") else None}]
+            a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
             if a.history[-1]["ids"] is None:
                 a.history[-1].pop("ids")
             rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "status": w.status(a), "think": think, "calls": calls, "answer": answer,
-                   "n_calls": len(calls), "tools": tools}
+                   "n_calls": len(calls), "tools": tools, "player": key}
             w.task.after_turn(w, a, rec)
             a.log.append(rec); records.append(rec)
         w.turn += 1
-        return {"turn": w.turn, "seconds": round(time.time() - t0, 2), "records": records, "state": w.state()}
+        return {"turn": w.turn, "seconds": round(time.time() - t0, 2), "records": records, "state": w.state(), "vram": vram}
 
     def run(self, turns: int, stop_when_done: bool = True, on_turn=None) -> dict:
         t0 = time.time()
@@ -528,6 +1110,32 @@ class Runner:
         return {"task": self.world.task.name, "n": self.world.n, "agents": len(self.world.agents), "seed": self.world.seed, "turns": self.world.turn,
                 "score": self.world.task.score(self.world), "events": self.world.task.events, "seconds": round(time.time() - t0, 1),
                 "transcript": [r for a in self.world.agents for r in a.log]}
+
+
+def _cuda_ready() -> bool:
+    try:
+        import torch
+
+        return torch.cuda.is_available() and torch.cuda.is_initialized()
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def load_player(spec: str, tokenizer: str, device: str = "cuda") -> Player:
+    """A player from a checkpoint path (ours: native tool protocol) or `external:<name>` (a local open-weight chat
+    model from slm.eval.external: plain-text calls)."""
+    from pathlib import Path as _P
+
+    if spec.startswith("external:"):
+        from slm.eval import external as E
+
+        name = spec.split(":", 1)[1]
+        return Player(name, E.load_external(name, device=device), None, native=False)
+    from slm.data.tokenizer import SlmTokenizer
+    from slm.eval.quality import load_model
+
+    model, _ = load_model(_P(spec), device)
+    return Player(_P(spec).parent.parent.name + "/" + _P(spec).name, model, SlmTokenizer.load(tokenizer), native=True)
 
 
 def main() -> None:
@@ -543,23 +1151,24 @@ def main() -> None:
     ap.add_argument("--turns", type=int, default=12)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--max-new", type=int, default=128)
+    ap.add_argument("--opponent", default=None, help="side B of a competitive task: a checkpoint path or external:<name>")
+    ap.add_argument("--batch-size", type=int, default=None, help="max robots per generation call (lower = less peak VRAM)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
-    from pathlib import Path as _P
 
-    from slm.data.tokenizer import SlmTokenizer
-    from slm.eval.quality import load_model
-
-    model, _ = load_model(_P(a.checkpoint), "cuda")
-    tok = SlmTokenizer.load(a.tokenizer)
+    players = {"A": load_player(a.checkpoint, a.tokenizer)}
+    if a.opponent:
+        players["B"] = load_player(a.opponent, a.tokenizer)
     world = World(a.task, a.n, a.agents, a.seed)
-    runner = Runner(world, model, tok, a.max_new)
+    runner = Runner(world, max_new_tokens=a.max_new, players=players, batch_size=a.batch_size)
 
     def show(out):
         print(f"--- turn {out['turn']} ({out['seconds']}s)")
         for r in out["records"]:
             print(f"  {r['agent']} @{r['pos']}  calls={[c[0][:60] for c in r['calls']]}  -> {(r['answer'] or '').strip()[:80]!r}")
     res = runner.run(a.turns, on_turn=show)
+    res["players"] = {k: {"label": p.label, "native": p.native, "plays": world.task.sides().get(k)} for k, p in players.items()}
+    res["vram_peak_gib"] = runner.vram_peak_gib
     print(json.dumps({k: v for k, v in res.items() if k != "transcript"}, indent=1))
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)

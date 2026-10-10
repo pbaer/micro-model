@@ -69,7 +69,7 @@ class ArenaRequest(BaseModel):
     """The arena (slm.arena.world): an n x n grid of robots, each a conversation with the model, one batched generation
     per turn. The ranges are the harness's (`ARENA_LIMITS`); key_door pairs robots, a relay needs a source and a sink."""
     slot: Literal["A", "B"] = "A"
-    task: Literal["key_door", "relay", "triangulate"] = "key_door"
+    task: Literal["key_door", "relay", "triangulate", "team_relay", "tag", "gold_rush"] = "key_door"
     n: int = Field(8, ge=4, le=16)  # grid side
     n_agents: int = Field(4, ge=1, le=32)
     seed: int = Field(0, ge=0, le=2**31 - 1)
@@ -78,13 +78,20 @@ class ArenaRequest(BaseModel):
     max_calls: int = Field(4, ge=0, le=16)  # tool calls per robot per turn
     max_history: int = Field(1, ge=0, le=10)  # prior (observation, action) exchanges kept in each robot's conversation (World default)
     stop_when_done: bool = True
+    # side B of a competitive task played by the other slot's model (ours or an external one); None = one model plays all
+    opponent: Literal["A", "B"] | None = None
+    batch_size: int | None = Field(None, ge=1, le=32)  # max robots per generation call (lower = less peak VRAM); None = all
 
     @model_validator(mode="after")
     def _robots_fit_task(self):
-        if self.task == "key_door" and self.n_agents % 2:
-            raise ValueError("key_door needs an even number of robots (pairs of key holder and door opener)")
-        if self.task == "relay" and self.n_agents < 2:
-            raise ValueError("relay needs at least 2 robots (a source and a sink)")
+        from slm.arena.world import TASKS  # torch-free
+
+        try:
+            TASKS[self.task].check(self.n, self.n_agents)
+        except ValueError as e:
+            raise ValueError(str(e)) from None
+        if self.opponent is not None and self.opponent == self.slot:
+            raise ValueError("the opponent must be the other slot")
         return self
 
 
@@ -112,6 +119,33 @@ ARENA_TASKS = {
                        "say(...), and R1 must work out the cell from the distances, walk there and dig. The target is hidden on the grid "
                        "until it is dug up. Hard: it needs arithmetic over several messages.",
         "roles": "everyone: distance_to_target(); R1: dig()", "min_agents": 1, "even_agents": False, "movement": True},
+    "team_relay": {
+        "title": "Team relay race",
+        "description": "Two teams race. Team red (R1, R3, ...) stands on one row and team blue (R2, R4, ...) on the row below, each a line "
+                       "two cells apart. Each team's first robot reads its own secret code (read_code()), the code has to hop down the "
+                       "team's line with say(...), and the team's last robot must submit(code) it: the first team to submit its own code "
+                       "wins. Comm range 3 means every robot also hears the rival robot diagonally behind it, in the same turn as its "
+                       "own teammate, so it must pick its own team's code out of two: the question lists both, labelled by team, and "
+                       "does not say which number to pass on. Scored: the winner, and how often a robot passed on the rival's code. "
+                       "Needs an even number of robots, at least 4, and a grid at least (robots - 1) cells across.",
+        "roles": "per team: first robot read_code(); last robot submit(code); the rest relay", "min_agents": 4, "even_agents": True, "movement": False},
+    "tag": {
+        "title": "Tag",
+        "description": "Chasers against runners. The first third of the robots (at least one) are chasers with tag(name); the rest run. "
+                       "Each turn a chaser is told its position and the nearest live runner's and asked which way is closer; a runner is "
+                       "told the nearest chaser's position and asked which way is further. The direction is never named and the four "
+                       "options come in a random order, so the model has to work it out. A chaser one step from a runner (or on its cell) "
+                       "tags it and the runner is out. Chasers win when every runner is tagged; runners win by lasting the turn budget. "
+                       "Scored per side: the share of moves that closed (chasers) or opened (runners) the distance.",
+        "roles": "first third: chasers with tag(name); the rest: runners", "min_agents": 2, "even_agents": False, "movement": True},
+    "gold_rush": {
+        "title": "Gold rush",
+        "description": "Free for all. Coins lie on the grid (twice as many as robots, at least 6) and every robot has grab(), which takes "
+                       "the coin on its cell; the first robot to grab a coin gets it. Each turn a robot is shown its three nearest coins in "
+                       "a random order and asked which is nearest and which way to step towards it, so it must compare the distances "
+                       "itself. The robot with the most coins when they are all gone wins. Scored: coins per robot, and the share of moves "
+                       "that closed in on a truly nearest coin.",
+        "roles": "everyone: grab()", "min_agents": 2, "even_agents": False, "movement": True},
 }
 
 
@@ -334,7 +368,10 @@ def arena_tasks() -> list[dict]:
     """The arena's tasks: key, title, a one-paragraph description, roles, comm range and sight (from the task classes)."""
     from slm.arena.world import TASKS  # torch-free at import
 
-    return [{"key": k, **ARENA_TASKS[k], "comm_range": TASKS[k].comm_range, "sight": TASKS[k].sight} for k in sorted(TASKS) if k in ARENA_TASKS]
+    sides = {"team_relay": {"A": "team red", "B": "team blue"}, "tag": {"A": "the chasers", "B": "the runners"},
+             "gold_rush": {"A": "the odd robots (R1, R3, ...)", "B": "the even robots (R2, R4, ...)"}}  # = Task.sides()
+    return [{"key": k, **ARENA_TASKS[k], "comm_range": TASKS[k].comm_range, "sight": TASKS[k].sight, "sides": sides.get(k)}
+            for k in sorted(TASKS) if k in ARENA_TASKS]
 
 
 @router.get("/arena/episodes")
@@ -363,7 +400,7 @@ def arena_episode(request: Request, name: str) -> dict:
 
 
 @router.get("/arena/world")
-def arena_world(task: Literal["key_door", "relay", "triangulate"], n: int = Query(8, ge=4, le=16), n_agents: int = Query(4, ge=1, le=32),
+def arena_world(task: Literal["key_door", "relay", "triangulate", "team_relay", "tag", "gold_rush"], n: int = Query(8, ge=4, le=16), n_agents: int = Query(4, ge=1, le=32),
                 seed: int = Query(0, ge=0, le=2**31 - 1), max_history: int = Query(1, ge=0, le=10)) -> dict:
     """The world an episode was played in, rebuilt without a model (World(task, n, n_agents, seed) is deterministic):
     the start state, every robot's briefing and tools, comm range and sight. The viewer uses it for CLI episode files,
@@ -379,8 +416,9 @@ def arena_world(task: Literal["key_door", "relay", "triangulate"], n: int = Quer
 @router.post("/arena")
 async def arena(request: Request, body: ArenaRequest):
     """The arena on one slot (slm.arena.world via Harness.arena), as SSE: `start` (once with the stream id, then once
-    with the initial state, the robots' system prompts and tools), one `turn` per turn (records, state, messages),
-    `done` with the result and transcript. Cancel (POST /streams/{id}/cancel) takes effect between turns."""
+    with the initial state, the robots' system prompts and tools, and `meta.players`), one `turn` per turn (records,
+    state, messages, `vram`), `done` with the result and transcript. With `opponent` the other slot's model plays side B
+    of a competitive task. Cancel (POST /streams/{id}/cancel) takes effect between turns."""
     w = request.app.state.worker
 
     def produce(q: queue.Queue, cancel: threading.Event) -> None:

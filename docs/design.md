@@ -485,6 +485,29 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   `sample_with_tools` over all robots, each with a fresh `PySession` per turn holding only that turn's declared tools
   (a tool declared earlier would otherwise stay callable), so a turn is simultaneous. `python -m slm.arena` runs an episode, `scripts/arena_eval.py`
   sweeps seeds, and the portal's Arena tab streams it with a live grid (`docs/command_center.md`).
+  **Competitive tasks** (2026-10-10): `team_relay` (two teams race their own code down parallel lines; comm range 3 so
+  each robot hears its teammate and the rival robot diagonally behind it in the same turn), `tag` (the first third chase
+  with `tag(name)`, the rest run) and `gold_rush` (free for all over twice as many coins as robots, `grab()`). Each keeps
+  the one-tool scaffold but leaves the model one real decision, offered as complete calls in a random order: which heard
+  code is its team's (`say("the code is A")` or `say("the code is B")`), which of the four `move("...")` calls closes on or
+  escapes from the robot named with both positions, which heads for the nearest of three listed coins. Offered `move(...)`
+  and a list of words instead, the model never chose (`move("binder")`, a copied `"..."`; 48 of 48 invalid on the first
+  smoke run). Every score carries its decision's chance rate (the share of offered calls that are right:
+  `chaser_chance`, `runner_chance`, `nearest_chance`; 0.5 for the team code), and a `verdict` string the portal shows in
+  place of solved / not solved. `Task.check(n, n_agents)` holds each task's robot-count rule and `Task.agent_info` the
+  per-robot extras (`team`, `tagged`, `coins`) that `World.state` and the portal's robot list carry. Results: `docs/results.md` §28.
+  **Model against model**: `Runner(players={"A": Player, "B": Player}, batch_size=...)`. A competitive task's sides
+  (`Task.side_of`: red / blue, chasers / runners, odd / even robots; `Task.sides()` names them) are played by different
+  models; with one player every robot is that model (a mirror match). A `Player` is native (our checkpoint:
+  `format_chat` with the declared functions, `sample_with_tools`, greedy) or plain-text (an external chat model,
+  `slm.eval.external.HfChatModel.batch_generate_chat`, greedy): `text_action` executes the call its answer writes -- the
+  last one on a final line ('####' or "final answer"), else the only one it names; several different calls with no final
+  choice count as no action; the prose form `Move "south"` counts; a tool that declares no parameters is called with
+  none. Each player generates for its robots in chunks of at most `batch_size` rows; `World.player_of` records who plays
+  which robot (state `player`, record `player`), and every turn reports `vram` (peak allocated, reserved) since two
+  resident models and their caches can pass the card and spill (CLAUDE.md). Competitive scores carry `winner_side`
+  (gold rush also `coins_A` / `coins_B`). `load_player(spec)` builds a player from a checkpoint path or
+  `external:<name>`; the CLI and `scripts/arena_eval.py` take `--opponent` and `--batch-size`.
 
 ## 9. SDPA backends and GPU telemetry (`slm/utils/sdpa.py`, `slm/utils/gpu.py`)
 

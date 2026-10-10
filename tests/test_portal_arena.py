@@ -50,7 +50,7 @@ def _tc(tok, think: str, answer: str, calls: list) -> ToolCompletion:
 def _key_door_script(tok, seen: dict):
     """Robot R1 reads the key and says it; R2 walks to the door and opens it with the code it heard."""
 
-    def generate(runner, prompts, sessions):
+    def generate(runner, prompts, sessions, *_, **__):  # (model, tok) of the player's slot: unused by the script
         w = runner.world
         seen.setdefault("prompts", []).append(prompts)
         door = next(iter(w.task.doors))
@@ -183,14 +183,39 @@ def test_harness_arena_refusals(harness):
     with pytest.raises(RuntimeError, match="slot B is empty"):
         list(h.arena("B"))
 
+
+
+
+def test_harness_arena_external_slot_plays_through_plain_text(harness):
+    """Since 2026-10-10 an external chat model is not refused: it answers in plain text and the call it writes is run."""
+    h, _ = harness
+
+    class Gen:
+        def __init__(self, text):
+            self.text = text
+
     class FakeExt:
         name = "smollm2-135m-instruct"
+        calls = []
+
+        def batch_generate_chat(self, prompts, max_new_tokens, temperature=0.0, batch_size=32):
+            FakeExt.calls.append(len(prompts))
+            return [Gen("I will read it.\n#### read_code()") if "read_code()" in m[-1]["content"] else Gen("#### look()") for m in prompts]
+
     h.slots["B"].ext = FakeExt()
+    h.slots["B"].info = {"slot": "B", "name": "smollm2-135m-instruct", "external": True}
     try:
-        with pytest.raises(RuntimeError, match="n/a for an external slot"):
-            list(h.arena("B", task="relay", n_agents=2))
+        evs = list(h.arena("B", task="relay", n_agents=3, n=8, turns=1, batch_size=2))
+        turn = next(e for e in evs if e["event"] == "turn")
+        r1 = next(r for r in turn["records"] if r["agent"] == "R1")
+        assert r1["calls"] and r1["calls"][0][0] == "read_code()" and "secret code is" in r1["calls"][0][1], r1
+        assert r1["think"] is None and "read it" in r1["answer"] and r1["player"] == "A"
+        start = next(e for e in evs if e["event"] == "start")
+        assert start["meta"]["players"]["A"]["external"] is True and start["meta"]["batch_size"] == 2
+        assert max(FakeExt.calls) <= 2, "batch_size bounds the external model's generation calls too"
     finally:
         h.slots["B"].ext = None
+        h.slots["B"].info = {}
 
 
 def test_arena_messages_follow_delivery():
@@ -276,10 +301,18 @@ def test_arena_endpoint_validates_and_streams(tmp_path):
     assert body[1][1]["messages"][0]["heard_by"] == ["R2"] and body[2][1]["result"]["score"]["success"]
     method, kw = app.state.worker.calls[0]
     assert method == "arena" and kw == {"slot": "A", "task": "relay", "n": 10, "n_agents": 4, "seed": 0, "turns": 6, "max_new_tokens": 128,
-                                        "max_calls": 4, "max_history": 1, "stop_when_done": True}
-    _sse(c, {"task": "triangulate", "n_agents": 1, "n": 16, "turns": 50, "slot": "B", "stop_when_done": False, "max_new_tokens": 1024})
+                                        "max_calls": 4, "max_history": 1, "stop_when_done": True, "opponent": None, "batch_size": None}
+    # (one robot was accepted here and could only fail in the worker: World needs at least 2; the task's check now says so up front)
+    assert c.post("/api/model/arena", json={"task": "triangulate", "n_agents": 1}).status_code == 422
+    _sse(c, {"task": "triangulate", "n_agents": 2, "n": 16, "turns": 50, "slot": "B", "stop_when_done": False, "max_new_tokens": 1024})
     kw = app.state.worker.calls[-1][1]
-    assert kw["slot"] == "B" and kw["n_agents"] == 1 and kw["stop_when_done"] is False and kw["n"] == 16
+    assert kw["slot"] == "B" and kw["n_agents"] == 2 and kw["stop_when_done"] is False and kw["n"] == 16
+    # model against model: the opponent is the other slot; the batch size is forwarded
+    for bad in ({"task": "tag", "opponent": "A"}, {"task": "team_relay", "n_agents": 12, "n": 8}, {"batch_size": 0}, {"batch_size": 33}):
+        assert c.post("/api/model/arena", json=bad).status_code == 422, bad
+    _sse(c, {"task": "gold_rush", "n_agents": 6, "opponent": "B", "batch_size": 3})
+    kw = app.state.worker.calls[-1][1]
+    assert kw["opponent"] == "B" and kw["batch_size"] == 3
     _sse(c, {"task": "key_door", "n_agents": 32})
     assert app.state.worker.calls[-1][1]["n_agents"] == 32
     assert app.state.streams == {}
