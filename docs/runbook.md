@@ -147,6 +147,21 @@ the GPU while a training run is live unless forced. Static assets are served wit
 a browser reload picks up JS changes; Python changes need a server restart. A tab loaded while the
 server was restarting shows a failure panel with a Reload button.
 
+**Running the portal in the background (Windows).** The worker is a spawned child process, and a child spawned into
+a console that no longer exists dies during DLL initialisation (exit code 0xC0000142) before Python can print
+anything. So a background portal needs a console of its own, not the one of the shell that launched it:
+
+```powershell
+Start-Process .venv/Scripts/python.exe -ArgumentList "-u -m slm.portal --no-browser --port 8765" `
+  -RedirectStandardOutput runs/portal.log -RedirectStandardError runs/portal.err -WindowStyle Hidden
+```
+
+Never `-NoNewWindow` (it borrows the launching shell's console, which dies with that shell: the portal keeps serving
+pages but every model load fails), and never `nohup ... &` from a short-lived Git Bash. A worker that dies is reported
+as an error with its exit code ("the model worker exited (exit code ... 0xC0000142: ...)"); before 2026-10-09 it left
+the request waiting forever. If port 8765 is taken by another app, pick another port (`--port 8766`) and point
+`.claude/launch.json`'s `portal-attach` entry at it.
+
 ## 8. Windows gotchas (all learned the hard way)
 
 | Symptom | Cause | Rule |

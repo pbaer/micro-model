@@ -97,6 +97,9 @@ arch: `/arch/configs`, `/arch/graph`, `/arch/hparams`, `/arch/benchmark`.
   bracket equal to `slm.swarm.tournament`'s, both modes, the entrant cap, cancel at a round boundary), one real pass
   on a tiny CPU model, and an external slot's swarm (stubbed model: own template, verification n/a, majority fallback).
 - `tests/test_portal_arena.py`: `Harness.arena` with a scripted `arena_generate` (event shape per turn, the messages list, the declared tools read back from the prompts, stop at done, the cancel path, refusals incl. an external slot), `arena_messages` against `deliver()`, one real turn of a tiny CPU model, `/api/model/arena` validation and SSE shape against a stub worker, `/api/model/arena/tasks`, the nav entry, an info card for every `arena_*` key, `node --check` of the changed JS.
+- `tests/test_portal_worker.py`: `WorkerClient` against stub workers (`tests/_worker_stub.py`) that die at spawn or mid-request:
+  the call and the stream must fail with the exit code within seconds, the client resets so the next request starts a
+  fresh worker, and the idle stop never fires while a request holds the lock.
 - `tests/test_portal_chat.py`: `mark_default_chat` (the configured checkpoint, the stand-in order, `chat_ok`), the chat page's
   wiring (routing, API use, localStorage, a seed per reply, an info card for every `k`) and `node --check` of the page.
 - `tests/e2e/test_portal_ui.py`: Playwright + Chromium on hermetic data; every page opened, every

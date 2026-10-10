@@ -944,3 +944,20 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   config), every field is formatted defensively, and a stale graph reply (336M takes ~2 s, tiny ~20 ms) can no longer
   overwrite a newer selection. This was likely the "pre-existing Architecture-page e2e failure" noted 2026-10-02; that
   test passes now.
+
+## 2026-10-09 — the chat page stuck on "loading": a dead worker hung the request; portal now on 8766
+
+- Peter: the Inference tab still said "loading". A thread dump of the portal (py-spy) showed the load request blocked
+  in `recv()` at `worker.py:112` with `rid: 1` -- the first request this portal (restarted 2026-10-05) ever sent -- and
+  no worker process. The identical spawn and load from a normal shell answered in 4-6 s. Cause: I had restarted the
+  portal with `Start-Process -NoNewWindow`, which attaches it to the launching shell's console; that console died with
+  the session, so the portal kept serving pages while every spawned worker died at startup, silently.
+- The hang was a real bug: the parent kept its copy of the child's pipe end (so recv() never saw EOF) and never checked
+  whether the worker was alive. `WorkerClient` now closes that end after spawn, waits with a polling receive that checks
+  the process, raises `WorkerDied` with the exit code in words (0xC0000142 named as the dead-console case) and resets,
+  so the next request starts a fresh worker; the stream path reports the same as an error event; the idle stop takes the
+  lock. Shown on the old code (still waiting after 20 s) and pinned by tests/test_portal_worker.py.
+- Relaunched with a console of its own (`-WindowStyle Hidden`; runbook §7). Port 8765 was taken in the two seconds
+  between stop and start by another project's preview server (a map app started by the Claude desktop app), so the
+  portal now runs on 8766 and the `portal-attach` launch entry points there. Chat verified: loads on cuda, answers.
+  Conversations are kept per origin (localStorage), so the ones made on :8765 show only at :8765.

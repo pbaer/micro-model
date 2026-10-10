@@ -14,6 +14,25 @@ from typing import Any
 STREAM_METHODS = {"generate", "swarm", "arena"}
 
 
+class WorkerDied(RuntimeError):
+    """The worker process exited while a request was waiting on it."""
+
+
+def describe_exit(code: int | None) -> str:
+    """A worker exit code in words. Windows reports NTSTATUS values; 0xC0000142 (a DLL failed to initialise) is what a
+    child gets when it is spawned into a console that no longer exists, e.g. a portal started from a shell session
+    that has since closed."""
+    if code is None:
+        return "still running"
+    u = code & 0xFFFFFFFF
+    known = {0xC0000142: "a DLL failed to initialise -- typically a portal started from a console that has since closed; "
+                         "restart the portal from a live terminal",
+             0xC0000005: "access violation (a native crash)", 0xC0000409: "stack buffer overrun / fast-fail (a native crash)",
+             0xC000013A: "interrupted (Ctrl+C / console closed)", 1: "Python exited with an error"}
+    hint = known.get(u, "killed or crashed")
+    return f"exit code {code} (0x{u:08X}): {hint}" if u > 255 else f"exit code {code}: {hint}"
+
+
 def worker_main(conn, tokenizer_root: str) -> None:  # pragma: no cover - runs in the child
     import torch  # noqa: F401
 
@@ -53,9 +72,10 @@ def worker_main(conn, tokenizer_root: str) -> None:  # pragma: no cover - runs i
 
 
 class WorkerClient:
-    def __init__(self, tokenizer_root: Path, idle_timeout_s: float = 900.0) -> None:
+    def __init__(self, tokenizer_root: Path, idle_timeout_s: float = 900.0, target=None) -> None:
         self.tokenizer_root = str(tokenizer_root)
         self.idle_timeout_s = idle_timeout_s
+        self.target = target or worker_main  # tests pass a stub that dies on purpose
         self.proc: mp.Process | None = None
         self.conn = None
         self.lock = threading.Lock()
@@ -72,8 +92,11 @@ class WorkerClient:
             return
         ctx = mp.get_context("spawn")
         parent, child = ctx.Pipe()
-        self.proc = ctx.Process(target=worker_main, args=(child, self.tokenizer_root), daemon=True)
+        self.proc = ctx.Process(target=self.target, args=(child, self.tokenizer_root), daemon=True)
         self.proc.start()
+        # The child has its own copy of this end now. Keeping ours open meant a worker that died left recv() waiting
+        # forever (no EOF while any handle to the other end is open) -- the chat page's endless "loading" (2026-10-09).
+        child.close()
         self.conn = parent
         self.last_used = time.time()
 
@@ -91,10 +114,34 @@ class WorkerClient:
             self.conn = None
 
     def maybe_idle_stop(self) -> bool:
-        if self.alive() and not self.busy and time.time() - self.last_used > self.idle_timeout_s:
-            self.stop()
-            return True
-        return False
+        # Only while no request holds the lock: without it, a request could slip in between the busy check and stop().
+        if not self.lock.acquire(blocking=False):
+            return False
+        try:
+            if self.alive() and not self.busy and time.time() - self.last_used > self.idle_timeout_s:
+                self.stop()
+                return True
+            return False
+        finally:
+            self.lock.release()
+
+    def _recv(self, timeout: float) -> Any:
+        """The next message, or None after `timeout` seconds; raises WorkerDied when the worker has exited (and resets
+        the client, so the next request starts a fresh worker)."""
+        try:
+            if self.conn.poll(timeout):
+                return self.conn.recv()
+        except (EOFError, OSError, BrokenPipeError):
+            pass  # the pipe closed under us: the worker is gone; fall through to report how it ended
+        else:
+            if self.proc is not None and self.proc.is_alive():
+                return None
+        proc = self.proc
+        if proc is not None:
+            proc.join(timeout=2)
+        code = proc.exitcode if proc is not None else None
+        self.proc, self.conn = None, None
+        raise WorkerDied(f"the model worker exited ({describe_exit(code)})")
 
     # ------------------------------------------------------------------ rpc
     def _next_id(self) -> int:
@@ -109,8 +156,8 @@ class WorkerClient:
                 rid = self._next_id()
                 self.conn.send({"id": rid, "method": method, "kwargs": kwargs})
                 while True:
-                    msg = self.conn.recv()
-                    if msg["id"] != rid:
+                    msg = self._recv(0.5)  # never a bare blocking recv: a dead worker must surface as an error
+                    if msg is None or msg["id"] != rid:
                         continue
                     if msg["event"] == "error":
                         raise RuntimeError(msg["data"]["error"])
@@ -130,10 +177,12 @@ class WorkerClient:
                     if cancel_flag is not None and cancel_flag.is_set():
                         self.conn.send({"id": rid, "method": "cancel"})
                         cancel_flag = None
-                    if not self.conn.poll(0.05):
-                        continue
-                    msg = self.conn.recv()
-                    if msg["id"] != rid:
+                    try:
+                        msg = self._recv(0.05)
+                    except WorkerDied as e:
+                        yield {"event": "error", "error": str(e)}
+                        return
+                    if msg is None or msg["id"] != rid:
                         continue
                     if msg["event"] == "error":
                         yield {"event": "error", **msg["data"]}
