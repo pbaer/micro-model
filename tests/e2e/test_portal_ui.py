@@ -183,11 +183,20 @@ def test_home_and_runs(server, browser):
     p = Page(browser, server)
     p.goto("/")
     body = p.page.inner_text("main")
-    assert "Pipeline and runs" in body and "Data readiness" in body and "Pretraining (base model)" in body and "not started" in body
-    assert "fin" in body and "live" in body and "100.0%" in body  # finished run shows exactly 100%
-    assert body.count("live running") == 1  # the live run appears once in the table (card shows it without the word twice)
-    # by the link, not by row text: the live run's row also mentions "fin" (it inits from its checkpoint)
-    p.page.get_by_role("link", name="fin", exact=True).click()
+    assert "Runs and their lineage" in body and "Data readiness" in body
+    # the lineage graph: a node per run, and an edge from fin to live (live starts from fin's best.pt)
+    assert p.page.locator("a.lg-node").count() == 2
+    assert p.page.locator(".lg-edge").count() == 1 and p.page.locator(".lg-edge text", has_text="best").count() == 1
+    fin = p.page.locator("a.lg-node", has_text="fin").first
+    fin.hover()
+    p.settle(300)
+    card = p.page.inner_text(".lg-card")
+    assert "fin" in card and "finished" in card and "random init" in card, card
+    assert p.page.locator(".lg-node.dim").count() == 0, "fin and live are one lineage: hovering fin dims nothing"
+    p.page.locator("a.lg-node", has_text="live").first.hover()
+    p.settle(300)
+    assert "fin" in p.page.inner_text(".lg-card") and "best" in p.page.inner_text(".lg-card"), "the card names the parent checkpoint"
+    fin.click()
     p.settle(800)
     assert "finished" in p.page.inner_text("main")
     clicked = p.click_all_buttons()
@@ -201,7 +210,7 @@ def test_home_and_runs(server, browser):
     p.cycle_selects()
     # legacy #/runs route lands on the overview
     p.goto("/runs")
-    assert "Pipeline and runs" in p.page.inner_text("main")
+    assert "Runs and their lineage" in p.page.inner_text("main")  # #/runs is the Overview too
     assert not p.errors, p.errors
 
 

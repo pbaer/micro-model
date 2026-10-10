@@ -971,3 +971,13 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   8930. The preview now owns the portal: launch.json's `portal` entry pins 127.0.0.1:8930 (`autoPort: false`, `url`
   set, so the preview origin matches the one chats were saved under); the hand-started copy was stopped. Worker spawn
   verified under the preview-started process (model loads on cuda, a tool call answers). Runbook §7 says so.
+
+## 2026-10-10 — the Overview becomes the run lineage graph
+
+- Peter: the Overview as a graph, runs as nodes, an edge where a run started from another run's checkpoint, basic info
+  in the node, details on hover, click to open. `pages/home.js` replaces the pipeline table with it: a left-to-right
+  forest from every run's `init_from` (46 runs, 39 edges, 7 roots today), one column per generation, newest family on
+  top, siblings oldest first, parents centred on their children; non-final starting checkpoints label their edge
+  (latest, step_00200 x3, snap_800M); a parent missing from runs/ would be a dashed ghost node. Nodes are links (keyboard
+  and middle-click work); hover shows the details card and lights up ancestors and descendants (m9_rl7: 9 runs back
+  to the 336M base). Layout is a pure function tested under node (tests/test_portal_home.py); e2e updated.

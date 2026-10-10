@@ -16,6 +16,17 @@ export const CARDS = {
       <li>On Windows, memory past 16 GiB does not fail: it spills into host RAM and runs ~60x slower. Above ~14.5 GiB, treat it as a failure.</li>
       <li>Above 80 °C the trainers log a <code>warn</code> event, because sustained heat lowers clocks and throughput.</li></ul>
     <p class="see">While a run is live, the Inference page loads models on the CPU so it does not compete for this memory.</p>` },
+  run_graph: { t: "Runs and their lineage", b: html`
+    <p>One box per training run; an arrow from run A to run B means B started from one of A's checkpoints (its
+      <code>init_from</code>). Read left to right: pretraining on the left, the stages built on it to the right. Each
+      family of runs (a base model and everything trained from it) forms its own tree; the newest family is on top.</p>
+    <p>The coloured edge of a box is the stage (pretraining, SFT, tool SFT, reasoning SFT, RL, context extension); the dot
+      is the status (green pulsing = running, red = stopped, amber = stale, grey = finished). The last line is the run's
+      headline number: judged quality (1-5) when it has been judged, else held-out accuracy (RL), else best validation
+      loss. A label on an arrow names the checkpoint the run started from when it was not the parent's final.pt (a
+      snapshot, a step, latest.pt). A dashed box is a parent that is not in this runs folder.</p>
+    <p>Hover a box for the details and to light up its whole lineage (ancestors and descendants); click it to open the
+      run.</p>` },
   pipeline: { t: "The training pipeline", b: html`
     <p>A model is built in stages, and each stage starts from the weights of the one before it (<code>init_from</code>):</p>
     <ul><li><b>Pretraining</b>: next-token prediction on web prose, math and Python, from random weights to a base model.</li>
