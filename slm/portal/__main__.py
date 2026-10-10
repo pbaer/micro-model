@@ -1,4 +1,8 @@
-"""python -m slm.portal [--port 8765] [--runs-root runs] [--no-browser] [--reload]"""
+"""python -m slm.portal [--port 8930] [--runs-root runs] [--no-browser] [--reload]
+
+Port 8930 is the portal's (slm.portal.settings.PORT_RANGE: 8930-8939 are this project's). When the port is taken the
+portal stops and names the program holding it rather than moving to another port: chat conversations are stored per
+origin in the browser, so a silent port change makes them look lost."""
 
 from __future__ import annotations
 
@@ -9,13 +13,35 @@ from pathlib import Path
 
 import uvicorn
 
-from slm.portal.settings import PortalSettings
+from slm.portal.settings import PORT_RANGE, PORTAL_PORT, PortalSettings
+
+
+def port_holder(host: str, port: int) -> str | None:
+    """None when `host:port` can be bound; otherwise a description of who holds it (best effort)."""
+    import socket
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        try:
+            s.bind((host, port))
+            return None
+        except OSError:
+            pass
+    try:
+        import psutil
+
+        for c in psutil.net_connections(kind="tcp"):
+            if c.laddr and c.laddr.port == port and c.status == psutil.CONN_LISTEN and c.pid:
+                p = psutil.Process(c.pid)
+                return f"pid {c.pid}: {' '.join(p.cmdline())[:160]}"
+    except Exception:  # noqa: BLE001 - permissions or a vanished process: the refusal still stands
+        pass
+    return "another program"
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="127.0.0.1")
-    ap.add_argument("--port", type=int, default=8765)
+    ap.add_argument("--port", type=int, default=PORTAL_PORT, help=f"default {PORTAL_PORT}; this project's range is {PORT_RANGE.start}-{PORT_RANGE.stop - 1}")
     ap.add_argument("--runs-root", default="runs")
     ap.add_argument("--data-root", default=None)
     ap.add_argument("--gpu-policy", default="auto", choices=["auto", "cuda", "cpu"])
@@ -28,6 +54,11 @@ def main() -> None:
         s.data_root = Path(a.data_root)
     if a.default_chat:
         s.default_chat_checkpoint = a.default_chat
+    if not a.reload and (holder := port_holder(s.host, s.port)):
+        spare = next((p for p in PORT_RANGE if p != s.port and port_holder(s.host, p) is None), None)
+        raise SystemExit(f"port {s.port} is in use by {holder}.\n"
+                         + (f"Use a spare port of this project's range: python -m slm.portal --port {spare}" if spare else
+                            f"Every port of this project's range ({PORT_RANGE.start}-{PORT_RANGE.stop - 1}) is in use."))
     url = f"http://{s.host}:{s.port}/"
     if s.open_browser:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()

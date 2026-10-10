@@ -1,6 +1,6 @@
 # Command center (web UI)
 
-`python -m slm.portal` → http://127.0.0.1:8765. A local supplement for looking at runs, data, the
+`python -m slm.portal` → http://127.0.0.1:8930 (this project's ports are 8930-8939; `slm.portal.settings.PORT_RANGE`). A local supplement for looking at runs, data, the
 tokenizer, checkpoints and the architecture. The chat/CLI workflow remains the primary interface; the
 portal never launches training.
 

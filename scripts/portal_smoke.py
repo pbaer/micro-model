@@ -1,7 +1,7 @@
 """Click through every page of a LIVE portal (real data) with Playwright and report JS errors,
 hangs, raw template text, and per-page timings. Complements the hermetic e2e suite.
 
-    python scripts/portal_smoke.py --url http://127.0.0.1:8765 [--generate]
+    python scripts/portal_smoke.py --url http://127.0.0.1:8930 [--generate]
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ BAD = ("divThis", "undefined", "NaN", "[object Object]")
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--url", default="http://127.0.0.1:8765")
+    ap.add_argument("--url", default="http://127.0.0.1:8930")
     ap.add_argument("--generate", action="store_true", help="also load the newest checkpoint into slot A (CPU) and generate")
     a = ap.parse_args()
     problems: list[str] = []

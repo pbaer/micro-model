@@ -136,9 +136,9 @@ Evaluations use the GPU; run them between training runs, or accept sharing the G
 ## 7. Command center
 
 ```bash
-python -m slm.portal                # http://127.0.0.1:8765, opens a browser tab
-python -m slm.portal --no-browser --port 8766 --runs-root some/other/runs
-python scripts/portal_smoke.py --url http://127.0.0.1:8765        # click through a live portal
+python -m slm.portal                # http://127.0.0.1:8930, opens a browser tab
+python -m slm.portal --no-browser --port 8931 --runs-root some/other/runs
+python scripts/portal_smoke.py --url http://127.0.0.1:8930        # click through a live portal
 python -m pytest tests/e2e -q                                      # hermetic Playwright suite
 ```
 
@@ -152,15 +152,19 @@ a console that no longer exists dies during DLL initialisation (exit code 0xC000
 anything. So a background portal needs a console of its own, not the one of the shell that launched it:
 
 ```powershell
-Start-Process .venv/Scripts/python.exe -ArgumentList "-u -m slm.portal --no-browser --port 8765" `
+Start-Process .venv/Scripts/python.exe -ArgumentList "-u -m slm.portal --no-browser" `
   -RedirectStandardOutput runs/portal.log -RedirectStandardError runs/portal.err -WindowStyle Hidden
 ```
 
 Never `-NoNewWindow` (it borrows the launching shell's console, which dies with that shell: the portal keeps serving
 pages but every model load fails), and never `nohup ... &` from a short-lived Git Bash. A worker that dies is reported
 as an error with its exit code ("the model worker exited (exit code ... 0xC0000142: ...)"); before 2026-10-09 it left
-the request waiting forever. If port 8765 is taken by another app, pick another port (`--port 8766`) and point
-`.claude/launch.json`'s `portal-attach` entry at it.
+the request waiting forever.
+
+**Ports.** This project's range is 8930-8939 (`slm.portal.settings.PORT_RANGE`): 8930 is the portal, 8931-8939 are
+spares. 8765, the portal's port until 2026-10-09, is another local app's. When 8930 is taken the portal refuses to
+start and names the holder and a free spare; it never moves on its own, because chat conversations live in the
+browser per origin and would look lost on another port.
 
 ## 8. Windows gotchas (all learned the hard way)
 

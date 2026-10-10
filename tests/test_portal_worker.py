@@ -69,3 +69,24 @@ def test_idle_stop_never_runs_while_a_request_holds_the_lock():
 @pytest.mark.parametrize("code,needle", [(0xC0000142 - (1 << 32), "console that has since closed"), (7, "exit code 7"), (None, "still running")])
 def test_describe_exit(code, needle):
     assert needle in describe_exit(code)
+
+
+def test_portal_port_range_and_a_taken_port_is_refused_with_its_holder():
+    import socket
+    import subprocess
+    import sys
+
+    from slm.portal.__main__ import port_holder
+    from slm.portal.settings import PORT_RANGE, PORTAL_PORT, PortalSettings
+
+    assert PORTAL_PORT == 8930 and PortalSettings().port == PORTAL_PORT and PORTAL_PORT in PORT_RANGE
+    assert not any(p in PORT_RANGE for p in (8765, 8000, 8080, 8888, 5357)), "clear of the map app, common dev ports, Windows-reserved"
+    with socket.socket() as s:  # hold a free port, as another app would
+        s.bind(("127.0.0.1", 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+        assert port_holder("127.0.0.1", port) is not None
+        r = subprocess.run([sys.executable, "-m", "slm.portal", "--no-browser", "--port", str(port)], capture_output=True, text=True, timeout=60)
+        assert r.returncode != 0 and f"port {port} is in use by" in r.stderr, r.stderr[-400:]
+        assert "--port 89" in r.stderr, "it names a free spare of this project's range"
+    assert port_holder("127.0.0.1", port) is None, "free again once released"

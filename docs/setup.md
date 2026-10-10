@@ -207,7 +207,7 @@ to need attention:
 python -m pytest                                              # CUDA tests skip without a GPU
 python scripts/bench_throughput.py --config configs/model/base_336m.yaml --seq 2048
 python -m slm.train.pretrain --config configs/train/m1_tinystories_26m.yaml    # ~1 h on a 4080 SUPER
-python -m slm.portal                                          # command center at http://127.0.0.1:8765
+python -m slm.portal                                          # command center at http://127.0.0.1:8930
 ```
 
 M1 is the intended smoke test: a 26M model on TinyStories that exercises the loop, packing,

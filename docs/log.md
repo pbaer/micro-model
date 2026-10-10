@@ -961,3 +961,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   between stop and start by another project's preview server (a map app started by the Claude desktop app), so the
   portal now runs on 8766 and the `portal-attach` launch entry points there. Chat verified: loads on cuda, answers.
   Conversations are kept per origin (localStorage), so the ones made on :8765 show only at :8765.
+
+- Port: Peter asked for a permanent range clear of the map app's. The portal moved to 8930 with 8931-8939 as spares
+  (`slm.portal.settings.PORT_RANGE`; clear of 87xx, the common dev ports and this machine's Windows-reserved ranges).
+  A taken port now stops the portal with the holder's command line and a free spare instead of uvicorn's bare bind
+  error; it never switches ports by itself (per-origin chat storage). The test chats made on :8765 / :8766 stay there.

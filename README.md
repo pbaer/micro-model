@@ -213,7 +213,7 @@ loss so a regression would be visible.
 
 ## 9. Command center
 
-`python -m slm.portal` serves a local web UI at http://127.0.0.1:8765 (FastAPI, torch-free server;
+`python -m slm.portal` serves a local web UI at http://127.0.0.1:8930 (FastAPI, torch-free server;
 vendored Preact + uPlot, no build step). Pages: **Overview** (pipeline table, live runs, GPU state, data
 readiness), run detail (live charts including GPU temperature/power, milestones, samples timeline,
 checkpoints, events, config), **Data** (a recipe per training config or run: its mixture with
