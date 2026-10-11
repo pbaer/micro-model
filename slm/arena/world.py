@@ -178,11 +178,11 @@ class KeyDoor(Task):
         self.world = world
         i = agent.id // 2
         if agent.id % 2 == 0:
-            def read_key(_i=i):
+            def read_key(*_, _i=i):
                 return f"The key code for door {_i + 1} is {self.codes[_i]}."
             return [FunctionDecl("read_key", "def read_key() -> str", f"Returns the secret key code for door {i + 1}. Only you can read it; your partner needs it.", read_key)]
 
-        def open_door(code: str, _i=i, _a=agent):
+        def open_door(code: str, *_, _i=i, _a=agent):
             if _a.pos != self._door_cell(_i):
                 return f"You are at {_a.pos}; door {_i + 1} is at {self._door_cell(_i)}. Move there first."
             if _code_in(code) == self.codes[_i]:
@@ -262,9 +262,9 @@ class Relay(Task):
 
         self.world = world
         if agent.id == 0:
-            return [FunctionDecl("read_code", "def read_code() -> str", "Returns the secret code. Only you can read it.", lambda: f"The secret code is {self.code}.")]
+            return [FunctionDecl("read_code", "def read_code() -> str", "Returns the secret code. Only you can read it.", lambda *_: f"The secret code is {self.code}.")]
         if agent.id == len(world.agents) - 1:
-            def submit(code: str, _a=agent):
+            def submit(code: str, *_, _a=agent):
                 self.submitted = _code_in(code)
                 if self.submitted == self.code and self.done_at is None:
                     self.done_at = world.turn + 1; self.events.append(f"turn {world.turn + 1}: {_a.name} submitted the right code")
@@ -325,9 +325,9 @@ class Triangulate(Task):
         from slm.tools.functions import FunctionDecl
 
         self.world = world
-        out = [FunctionDecl("distance_to_target", "def distance_to_target() -> int", "Returns your distance in steps to the buried target.", lambda _a=agent: dist(_a.pos, self.target))]
+        out = [FunctionDecl("distance_to_target", "def distance_to_target() -> int", "Returns your distance in steps to the buried target.", lambda *_, _a=agent: dist(_a.pos, self.target))]
         if agent.id == 0:
-            def dig(_a=agent):
+            def dig(*_, _a=agent):
                 self.dug_at = _a.pos
                 if _a.pos == self.target:
                     if self.done_at is None:
@@ -492,9 +492,9 @@ class TeamRelay(Task):
         t, role = self.team(agent), self._role(agent)
         if role == "source":
             return [FunctionDecl("read_code", "def read_code() -> str", f"Returns team {t}'s secret code. Only you can read it.",
-                                 lambda _t=t: f"Team {_t}'s secret code is {self.codes[_t]}.")]
+                                 lambda *_, _t=t: f"Team {_t}'s secret code is {self.codes[_t]}.")]
         if role == "sink":
-            def submit(code: str, _a=agent, _t=t):
+            def submit(code: str, *_, _a=agent, _t=t):
                 c = _code_in(code)
                 if c == self.codes[_t]:
                     if _t not in self.finished:
@@ -632,7 +632,7 @@ class Tag(Task):
         if self.side(agent) != "chaser":
             return []
 
-        def tag(name: str, _a=agent):
+        def tag(name: str, *_, _a=agent):
             who = _name_in(name, [r.name for r in self.runners(live=False)])
             if who is None:
                 return f"{name!r} is not a runner."
@@ -737,7 +737,7 @@ class GoldRush(Task):
 
         self.world = world
 
-        def grab(_a=agent):
+        def grab(*_, _a=agent):
             if self.objects.get(_a.pos) != "coin":
                 return f"There is no coin at {_a.pos} (someone may have taken it)."
             del self.objects[_a.pos]
@@ -828,10 +828,13 @@ class World:
             a.tools = [d.name for d in self.decls[a.id]]
 
     # --- tools every robot has
+    # Every tool binds its robot (and its door / team) as a keyword-only default after `*_`: extra positional arguments
+    # land in `*_` and are ignored. With the robot as a plain default (`def grab(_a=agent)`) the model's grab("pick") bound
+    # _a to the string "pick" and the tool crashed (AttributeError), seen in a gold rush on 2026-10-10.
     def _common_tools(self, agent: Agent) -> list:
         from slm.tools.functions import FunctionDecl
 
-        def move(direction: str, _a=agent):
+        def move(direction: str, *_, _a=agent):
             d = DIRS.get(str(direction).strip().lower())
             if d is None:
                 return f"Unknown direction {direction!r}. Use north, south, east or west."
@@ -841,13 +844,13 @@ class World:
             _a.x, _a.y = nx, ny
             return f"You moved {direction} to {_a.pos}."
 
-        def say(message: str, _a=agent):
+        def say(message: str, *_, _a=agent):
             text = " ".join(str(message).split())[:200]
             self.pending.append((_a, text))
             near = [b.name for b in self.agents if b is not _a and dist(_a.pos, b.pos) <= self.task.comm_range]
             return f"You said: {text!r}. Heard by: {', '.join(near) if near else 'nobody (no robot within range)'}."
 
-        def look(_a=agent):
+        def look(*_, _a=agent):
             return self._visible(_a) or "Nothing within sight."
 
         return [FunctionDecl("move", "def move(direction: str) -> str", "Move one cell north, south, east or west.", move),
@@ -1089,9 +1092,14 @@ class Runner:
             else:
                 think, answer = getattr(tc, "think", None), getattr(tc, "answer", None)
             calls = [list(c) for c in getattr(tc, "calls", [])] if not isinstance(tc, dict) else tc.get("calls", [])
-            a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
-            if a.history[-1]["ids"] is None:
-                a.history[-1].pop("ids")
+            # A turn whose every call failed is not kept in the robot's history: the question restates what the robot needs,
+            # so the history only adds an example to copy, and a failed one is copied (a gold-rush robot on a coin called
+            # get("pick") six turns running, 2026-10-10). Success or a plain answer is kept as before.
+            failed = bool(calls) and all(str(c[1]).lstrip().startswith("error") for c in calls)
+            if not failed:
+                a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
+                if a.history[-1]["ids"] is None:
+                    a.history[-1].pop("ids")
             rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "status": w.status(a), "think": think, "calls": calls, "answer": answer,
                    "n_calls": len(calls), "tools": tools, "player": key}
             w.task.after_turn(w, a, rec)

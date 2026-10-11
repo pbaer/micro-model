@@ -1645,6 +1645,12 @@ arithmetic nor code, "diversity" = distinct answers across the seeds (1.0 = all 
 
 ## 28. Competitive arena games, and model against model (2026-10-10)
 
+> **Superseded numbers.** The tables below were measured before two harness fixes made the same evening: every arena tool
+> bound its robot as a default argument, so a stray argument from the model (`grab("pick")`) replaced the robot and the
+> call crashed; and a turn whose calls all failed was kept in the robot's history, where the model copied it turn after
+> turn. On the 6-robot gold rush the fixes took coins per game from 0.6 to 5.6 and failed calls from 58-114 to 0. The
+> re-measured tables replace these below (§28b); the prose about prompt shapes stays valid.
+
 Three new arena tasks where robots compete (`slm/arena/world.py`, design.md §8): **team_relay** (two teams race their own
 code down parallel lines; every robot also hears the rival team's code in the same turn and must pass on its own),
 **tag** (the first third of the robots chase with `tag(name)`, the rest run) and **gold_rush** (free for all over twice as

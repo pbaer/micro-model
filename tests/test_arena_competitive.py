@@ -262,3 +262,48 @@ def test_gold_rush_reports_coins_per_side():
     w, res = _run("gold_rush", 8, 4, seed=8, turns=40)
     sc = res["score"]
     assert sc["coins_A"] + sc["coins_B"] == sc["collected"] == sc["coins"] and sc["winner_side"] in ("A", "B", "tie")
+
+
+# ---------------------------------------------------------------- tool binding and history (a gold rush on 2026-10-10)
+@pytest.mark.parametrize("task", ["key_door", "relay", "triangulate", "team_relay", "tag", "gold_rush"])
+def test_a_stray_argument_never_replaces_the_robot_a_tool_acts_for(task):
+    """grab("pick") once bound the tool's robot to the string "pick" (AttributeError). Every tool must ignore extra
+    positional arguments and keep acting for its own robot."""
+    from slm.tools.functions import functions_env
+
+    w = World(task, 12, 4, seed=1)
+    for a in w.agents:
+        env = functions_env(w.decls[a.id])
+        for name, fn in env.items():
+            import inspect
+
+            params = [p for p in inspect.signature(fn).parameters.values() if p.kind == p.POSITIONAL_OR_KEYWORD]
+            args = ["east" if name == "move" else "the code is 1234" if name in ("say", "submit", "open_door") else "R2"][: len(params)]
+            out = fn(*args, "pick", 99)  # two stray extra arguments
+            assert isinstance(out, (str, int)) and "AttributeError" not in str(out), (task, name, out)
+
+
+def test_grab_with_a_stray_argument_takes_the_coin():
+    from slm.tools.functions import functions_env
+
+    w = World("gold_rush", 8, 2, seed=3)
+    a = w.agents[0]
+    a.x, a.y = next(iter(w.task.coins()))
+    assert "picked up" in functions_env(w.decls[a.id])["grab"]("pick")
+
+
+def test_a_turn_where_every_call_failed_is_not_kept_in_history():
+    w = World("gold_rush", 8, 2, seed=3)
+    a = w.agents[0]
+    a.x, a.y = next(iter(w.task.coins()))
+    turns = iter([[["get('pick')", "error: line 1: NameError: get is not defined"]], [["grab()", "You picked up the coin"]]])
+
+    def gen(prompts, sessions):
+        calls = next(turns)
+        return [{"calls": calls, "answer": "x", "think": ""}] + [{"calls": [], "answer": "", "think": ""} for _ in prompts[1:]]
+
+    r = Runner(w, generate=gen)
+    r.step()
+    assert a.history == [], "the failed turn is not an example for the next one"
+    r.step()
+    assert len(a.history) == 2 and a.log[0]["calls"][0][1].startswith("error"), "the failure is still in the record"
