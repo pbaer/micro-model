@@ -1028,3 +1028,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   robot's context (history, prompt / reply tokens, window). Found while testing: inconsistent triangle winding (fixed at
   upload by checking each face against its normals), the default selection auto-following, a lost-context bug when a
   second episode opened, and canvas listeners that outlived their camera.
+
+- Arena re-measurement (§28b). Two fixes after Peter's gold-rush screenshot: tools bound their robot as a plain default
+  argument (grab("pick") replaced it); and my first answer to the copied-failure loop (drop failed turns from the
+  context) made greedy prompts identical, so a relay source repeated says("...") forever and relay failures doubled.
+  Measured four rules; keep + sample the next turn at 0.8 (also after a call-less turn) wins and is the default. Final:
+  M10 wins 14/14 decided relays and every gold rush by coins against M9, SmolLM2-360M and Qwen2.5-0.5B, loses tag on
+  below-chance chasing; every model is at or below chance on the numeric direction decisions; team red won 8/8 relays.

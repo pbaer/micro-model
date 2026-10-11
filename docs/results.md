@@ -1649,7 +1649,8 @@ arithmetic nor code, "diversity" = distinct answers across the seeds (1.0 = all 
 > bound its robot as a default argument, so a stray argument from the model (`grab("pick")`) replaced the robot and the
 > call crashed; and a turn whose calls all failed was kept in the robot's history, where the model copied it turn after
 > turn. On the 6-robot gold rush the fixes took coins per game from 0.6 to 5.6 and failed calls from 58-114 to 0. The
-> re-measured tables replace these below (§28b); the prose about prompt shapes stays valid.
+> re-measured tables are in §28b, with a fifth fix measured there (failed turns kept, the next one sampled); the prose
+> about prompt shapes stays valid.
 
 Three new arena tasks where robots compete (`slm/arena/world.py`, design.md §8): **team_relay** (two teams race their own
 code down parallel lines; every robot also hears the rival team's code in the same turn and must pass on its own),
@@ -1713,3 +1714,62 @@ What this says: the arena now measures something the cooperative tasks did not -
 depends on reading numbers -- and every model here fails it, M10 worst. Training the direction decision (a few hundred
 synthetic "which call moves (x, y) towards (x', y')" examples in the tool SFT mix) is the obvious next rung, and the
 tag / gold-rush good-move rates against their chance columns are the gate.
+
+
+### 28b. Re-measured after the harness fixes (2026-10-10, final)
+
+Two harness bugs distorted the first tables: every tool took its robot as a plain default argument, so a stray argument
+(`grab("pick")`) replaced the robot and the call crashed; and how a failed turn is handled matters under greedy
+decoding, which repeats a failure whenever the prompt does not change. The binding is now keyword-only (stray
+arguments ignored). For failed turns four rules were measured (M10 on every robot, 6 robots, 5 seeds, 12 turns):
+
+| failed turn | next turn | team relays decided | failed calls (5 relays) | gold rush coins / game |
+|---|---|---|---|---|
+| kept in the robot's context | greedy (the original) | 4 / 5 | 58 | 5.6 |
+| dropped from it | greedy | 4 / 5 | 112 | 5.6 |
+| **kept** | **sampled at 0.8** | **5 / 5** | **45** | 5.6 |
+| dropped | sampled at 0.8 | 5 / 5 | 66 | 5.6 |
+
+Dropping the failed turn made the prompt identical, so a team-relay source wrote `says("...")` turn after turn; keeping
+it lets the model copy it (the gold-rush `get("pick")` loop, which only started because of the binding crash). Sampling
+the next turn after a failed or call-less one breaks both, and is the default now (`Runner(failed_history="keep",
+retry_temperature=0.8)`). The gold rush is the same in all four: after the binding fix its turns do not fail at all
+(0 failed calls); the fix alone took it from 0.6 to 5.6 coins per game.
+
+**M10 playing every robot** (5 seeds, 12 turns):
+
+| task | robots | outcome | the decision | M10 | chance |
+|---|---|---|---|---|---|
+| team_relay | 6 | a winner in 5 of 5 (mean turn 4.6; the minimum is 4) | picks the rival's code (lower is better) | 0.00 (6 choices) | 0.50 |
+| team_relay | 12 | a winner in 3 of 5 (mean turn 8.3) | picks the rival's code | 0.41 (27 choices) | 0.50 |
+| tag | 6 / 12 | 1.2 of 4 / 5.4 of 8 runners tagged, never all | chaser step closes the distance | 0.29 / 0.28 | 0.40 / 0.39 |
+| | | | runner step opens it | 0.18 / 0.26 | 0.35 / 0.41 |
+| gold_rush | 6 / 12 | 5.6 of 12 / 12.0 of 24 coins taken | step heads for a nearest coin | 0.37 / 0.37 | 0.41 / 0.44 |
+| | | | step heads for any listed coin | 0.62 / 0.60 | -- |
+
+Every team relay with a winner in this sweep was won by team red (8 of 8); with greedy retries blue won 1 of 4.
+The two teams' prompts differ only in their codes and names, so this is a model preference the arena now shows, not a
+layout advantage (the two lines are identical, one row apart); unexplained.
+
+**Model against model** (`scripts/arena_versus.sh`; each pairing both ways, 3 seeds per game per order, 8 robots, 12 turns):
+
+| M10 against | team_relay wins (M10 : other) | tag: runners tagged (M10 chasing / other chasing, of 18) | gold_rush coins (M10 : other) | other acted (tag runner / chaser · gold as B / A) |
+|---|---|---|---|---|
+| itself (mirror) | 2 : 0 (one order) | 8 | 14 : 16 | 1.00 · 1.00 |
+| M9 (`m9_rl6` final) | 4 : 0 | 2 / 0 | 37 : 13 | 0.38 / 0.00 · 0.82 / 0.74 |
+| SmolLM2-360M-Instruct | 5 : 0 | 2 / 6 | 35 : 8 | 0.17 / 0.68 · 0.31 / 0.40 |
+| Qwen2.5-0.5B-Instruct | 5 : 0 | 2 / 0 | 37 : 3 | 0.16 / 0.03 · 0.13 / 0.05 |
+
+- **M10 wins every decided team relay (14 of 14) and every gold rush by coins (3-12x the opponent's).** Both games reward
+  making the offered call every turn; M10 does (acted 0.94-1.00), the others often do not.
+- **Tag is the exception.** M10's chasers close the distance on 0.05-0.06 of their steps (chance 0.44-0.47) and tagged 2 of
+  18 runners against every opponent; SmolLM2's chasers, acting on two thirds of their turns at 0.32 good steps (chance
+  0.41), tagged 6 of 18 M10 runners. Below-chance direction choices lose to near-chance ones.
+- **Where the decision has a right answer in numbers, nobody is clearly above chance**: nearest-coin steps 0.30-0.43
+  against 0.40-0.45 for every model (the best, 0.43 against 0.40); the team-code choice is above chance only at 6 robots (0.00 vs 0.5; at 12 it is 0.41).
+- **The external models still rarely act** in tag and gold rush (Qwen 3-16%, SmolLM2 17-68%): their answers discuss the
+  options without settling on a call, or never write one in the plain-text forms `text_action` accepts.
+- **Memory**: peak allocated VRAM 1.3-1.7 GiB per turn with both models resident (8 robots, 128 new tokens).
+
+The conclusion of §28 stands with corrected numbers: the arena now measures a decision with a numeric right answer,
+every model fails it, and M10 fails it worst in tag; it wins the games that reward reliably executing the offered call.
