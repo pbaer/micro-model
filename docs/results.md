@@ -1776,3 +1776,26 @@ layout advantage (the two lines are identical, one row apart); unexplained.
 
 The conclusion of §28 stands with corrected numbers: the arena now measures a decision with a numeric right answer,
 every model fails it, and M10 fails it worst in tag; it wins the games that reward reliably executing the offered call.
+
+### 28c. Sampling temperature in the arena (2026-10-11)
+
+The arena was greedy: every turn at temperature 0 (a failed or call-less turn's retry at 0.8), so a seed replayed the same
+episode. The portal now samples every turn (`Runner(temperature=...)`, top-p 0.95, a random sample seed per run). Before
+picking its default: M10 playing every robot, 6 robots, 5 seeds per task, 12 turns, retries at max(temperature, 0.8)
+(`runs/arena/temp_sweep/`).
+
+| temperature | turns with a call | failed calls (all tasks) | key_door / relay / triangulate (solved, progress) | team_relay won | tag: runners tagged | gold_rush coins |
+|---|---|---|---|---|---|---|
+| 0 (greedy) | 0.96-1.00 | 132 | 1/5 0.60 · 2/5 0.80 · 1/5 0.59 | 5 / 5 | 6 | 28 |
+| 0.3 | 0.80-1.00 | 166 | 0/5 0.47 · 1/5 0.44 · 0/5 0.35 | 2 / 5 | 5 | 32 |
+| 0.5 | 0.66-0.94 | 165 | 0/5 0.33 · 1/5 0.28 · 0/5 0.25 | 3 / 5 | 3 | 27 |
+| 0.8 | 0.44-0.93 | 314 | 1/5 0.60 · 0/5 0.08 · 0/5 0.20 | 0 / 5 | 0 | 18 |
+| 1.0 | 0.34-0.78 | 337 | 0/5 0.47 · 0/5 0.20 · 0/5 0.32 | 1 / 5 | 0 | 13 |
+
+- **Any temperature costs the chained cooperative tasks** (progress roughly halves already at 0.3): one robot's skipped or
+  garbled call breaks the chain, and the chain needs many in a row.
+- **From 0.8 the robots stop acting**: a third to a half of tag turns carry no usable call, no runner is tagged and the
+  gold rush loses a third of its coins. The tool-call shape is reliable only near the greedy choice; 0.8, right for chat
+  (§27), is wrong here.
+- **0.3 keeps the games**: calls on 80-100% of turns, gold rush and tag at their greedy level (32 and 5 vs 28 and 6;
+  5 seeds, within noise). The portal's default is 0.3; evals stay greedy (`arena_eval.py --temperature 0`).

@@ -980,7 +980,7 @@ class Runner:
 
     def __init__(self, world: World, model=None, tok=None, max_new_tokens: int = 128, max_calls: int = 4, generate=None,
                  players: dict | None = None, batch_size: int | None = None, failed_history: str = "keep",
-                 retry_temperature: float | None = 0.8) -> None:
+                 retry_temperature: float | None = 0.8, temperature: float = 0.0, sample_seed: int | None = None) -> None:
         from slm.tools.pysandbox import PySession
 
         self.world, self.model, self.tok = world, model, tok
@@ -1002,7 +1002,18 @@ class Runner:
         if failed_history not in ("keep", "drop"):
             raise ValueError("failed_history must be 'keep' or 'drop'")
         self.failed_history, self.retry_temperature = failed_history, retry_temperature
+        # every turn's temperature (top-p 0.95 when > 0): 0 = greedy, the evals' setting; the portal samples by default so an
+        # episode is not the same film every time. A retry is sampled at the higher of the two.
+        if temperature < 0:
+            raise ValueError("temperature must be >= 0")
+        self.temperature = float(temperature)
+        self.sample_seed = sample_seed  # seeds the sampler apart from the world (None = the world's seed, as the evals run)
         self.current_temperature = 0.0  # the temperature of the generation call in flight (the portal's generate reads it)
+
+    @property
+    def turn_seed(self) -> int:
+        """The sampler's seed for this turn: the same game replays from (world seed, sample seed)."""
+        return (self.world.seed if self.sample_seed is None else self.sample_seed) * 1000 + self.world.turn
 
     @property
     def generate(self):  # the single player's generator (the portal and older callers set it)
@@ -1020,7 +1031,7 @@ class Runner:
         from slm.tools.loop import sample_with_tools
         from slm.utils.sdpa import sdpa_context
 
-        gen = torch.Generator(device=next(player.model.parameters()).device); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
+        gen = torch.Generator(device=next(player.model.parameters()).device); gen.manual_seed(self.turn_seed)
         t = self.current_temperature
         with torch.no_grad(), sdpa_context("decode"):
             if t and t > 0:  # a retry after a failed turn: sampled, so a deterministic failure need not repeat
@@ -1034,7 +1045,7 @@ class Runner:
         else:
             t = self.current_temperature or 0.0
             gens = player.model.batch_generate_chat(prompts, self.max_new_tokens, temperature=t, top_p=0.95 if t else 1.0,
-                                                    seed=self.world.seed * 1000 + self.world.turn, batch_size=max(1, len(prompts)))
+                                                    seed=self.turn_seed, batch_size=max(1, len(prompts)))
             texts = [g.text for g in gens]
         out = []
         for i, (text, sess, names) in enumerate(zip(texts, sessions, tool_names)):
@@ -1082,9 +1093,11 @@ class Runner:
             torch.cuda.reset_peak_memory_stats()
         for key, player in self.players.items():
             mine = [a for a in w.agents if w.player_of.get(a.id, "A") == key]
-            groups = [(0.0, [a.id for a in mine if not (self.retry_temperature and a.memory.get("_failed"))])]
-            if self.retry_temperature:
-                groups.append((self.retry_temperature, [a.id for a in mine if a.memory.get("_failed")]))
+            retry = max(self.temperature, self.retry_temperature or 0.0)
+            if retry > self.temperature:
+                groups = [(self.temperature, [a.id for a in mine if not a.memory.get("_failed")]), (retry, [a.id for a in mine if a.memory.get("_failed")])]
+            else:  # every turn is sampled at least as hot as a retry would be
+                groups = [(self.temperature, [a.id for a in mine])]
             chunks = []
             for temp, ids in groups:
                 step = self.batch_size or max(1, len(ids))

@@ -375,7 +375,8 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   slot, task (`key_door`, `relay`, `triangulate`, and the competitive `team_relay`, `tag`, `gold_rush`, each with its
   description from `GET /api/model/arena/tasks`), grid 4-16, robots 1-32 (each task's own rule, `Task.check`: key_door an
   even count, team_relay an even count of at least 4 on a grid at least robots - 1 cells across), seed, max turns (empty = no limit, the default since 2026-10-11: the episode runs until the game ends or you press stop;
-  else 1-1000), max new tokens (512), max tool calls (4),
+  else 1-1000), max new tokens (512), temperature (0.3, top-p 0.95; 0 = greedy as the evals run; higher costs calls, results §28c; every run
+  sends a random `sample_seed`, recorded in `meta` with the temperature, so the same world seed plays a new game), max tool calls (4),
   history (1, the World default: earlier exchanges kept per robot), stop when done; run / stop; download episode log.
 - **Grid** (SVG): cells with coordinates, doors (amber, green ✓ when opened), the triangulate target hidden until dug (a
   checkbox reveals it for analysis; a failed dig leaves a grey ×), robots as circles coloured by their unique tool and

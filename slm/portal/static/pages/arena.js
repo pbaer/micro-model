@@ -18,7 +18,7 @@ const html = htm.bind(h);
  *  step back. With 32 robots only the selected robot's transcript is rendered; the rest is one compact table. */
 
 const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: null, max_new_tokens: 512, max_calls: 4, max_history: 1, stop_when_done: true,
-  opponent: null, batch_size: null };
+  opponent: null, batch_size: null, temperature: 0.3 };  // 0.3: livelier than greedy; 0.5+ costs the robots their calls (results §28c)
 const SPILL_GIB = 14.5;  // reserved VRAM above this spills into host memory on Windows (CLAUDE.md): 60x slower, no error
 const LIMITS = { n: [4, 16], n_agents: [1, 32], turns: [1, 1000], max_new_tokens: [16, 1024], max_calls: [0, 16], max_history: [0, 10] };
 
@@ -159,7 +159,7 @@ function TaskPanel({ task, meta, state, result, showTarget }) {
     ${task && html`<p class="arena-desc">${task.description}</p><div class="legend">roles: ${task.roles}</div>`}
     ${meta && meta.players && Object.keys(meta.players).length > 1 && html`<div class="arena-players">${Object.entries(meta.players).map(([k, pl]) => html`<span key=${k}>
       <b>side ${k}</b> ${pl.label}${pl.external ? " (external, plain-text calls)" : ""} plays ${pl.plays}${sc.winner_side === k ? html` <span class="stage-badge rl">winner</span>` : ""}</span>`)}</div>`}
-    ${meta && html`<div class="legend">grid ${meta.n}×${meta.n} · ${meta.n_agents} robot${meta.n_agents === 1 ? "" : "s"} · comm range ${meta.comm_range} · sight ${meta.sight}<${Info} k="arena_range" /> · seed ${meta.seed} · ${meta.device === "file" ? `${meta.checkpoint} (episode file)` : `${meta.checkpoint || ""} on ${meta.device}`}</div>`}
+    ${meta && html`<div class="legend">grid ${meta.n}×${meta.n} · ${meta.n_agents} robot${meta.n_agents === 1 ? "" : "s"} · comm range ${meta.comm_range} · sight ${meta.sight}<${Info} k="arena_range" /> · seed ${meta.seed}${meta.temperature != null ? ` · temperature ${meta.temperature}${meta.temperature > 0 && meta.sample_seed != null ? ` (sample seed ${meta.sample_seed})` : ""}` : ""} · ${meta.device === "file" ? `${meta.checkpoint} (episode file)` : `${meta.checkpoint || ""} on ${meta.device}`}</div>`}
     ${state && html`<h3 style="margin-top:8px">score at turn ${state.turn}${state.derived ? html` <span class="muted" title="CLI files carry only the final score; the earlier ones are derived from the transcript">(derived)</span>` : ""}</h3>
       <div class="evd-kv">${Object.entries(sc).map(([k, v]) => html`<span key=${k}><i>${k}</i>${hide(k) ? "hidden" : fmtVal(v)}</span>`)}</div>
       <h3 style="margin-top:8px">events</h3>
@@ -343,7 +343,8 @@ export function ArenaPage() {
 
   const run = async () => {
     setErr(null); setPlaying(false); setFollow(true); setView(0); setSel(0); setFocusMsg(null);
-    const req = { ...p, seed: Number(p.seed) || 0, opponent: versus ? other : null, batch_size: p.batch_size ? Number(p.batch_size) : null };
+    const req = { ...p, seed: Number(p.seed) || 0, opponent: versus ? other : null, batch_size: p.batch_size ? Number(p.batch_size) : null,
+      sample_seed: Math.floor(Math.random() * 2 ** 31) };  // a fresh game each run; the episode file records it
     setNow(Date.now()); setEp({ request: req, meta: null, robots: [], start: null, turns: [], result: null, t0: Date.now(), source: "live", notes: [] });
     setBusy(true);
     const ctrl = new AbortController(); abortRef.current = ctrl;
@@ -433,6 +434,8 @@ export function ArenaPage() {
       </div>
       <div class="row" style="margin-bottom:6px">
         <span class="grp"><span class="muted">max new tokens</span>${num("max_new_tokens", { step: 16 })}</span>
+        <span class="grp" title="sampling temperature of every robot's turn (top-p 0.95): 0 = greedy, the same episode every time for a seed (the evals' setting); higher = livelier, less predictable robots"><span class="muted">temperature</span><input type="number" min="0" max="2" step="0.1" value=${p.temperature}
+          onChange=${(e) => set("temperature", Math.max(0, Math.min(2, Number(e.target.value) || 0)))} style="width:56px" /></span>
         <span class="grp"><span class="muted">max tool calls</span>${num("max_calls")}</span>
         <span class="grp"><span class="muted">history</span>${num("max_history")}<${Info} k="arena_turn" /></span>
         <label class="muted"><input type="checkbox" checked=${p.stop_when_done} onChange=${(e) => set("stop_when_done", e.target.checked)} /> stop when done</label>

@@ -52,7 +52,7 @@ class SwarmRequest(BaseModel):
     slot: Literal["A", "B"] = "A"
     text: str = ""  # the task prompt
     k: int = Field(16, ge=1, le=64)
-    temperature: float = Field(0.8, ge=0.0, le=2.0)
+    temperature: float = Field(0.3, ge=0.0, le=2.0)
     top_p: float = Field(0.95, gt=0.0, le=1.0)
     max_new_tokens: int = Field(512, ge=1, le=4096)
     max_calls: int = Field(6, ge=0, le=16)
@@ -81,6 +81,8 @@ class ArenaRequest(BaseModel):
     # side B of a competitive task played by the other slot's model (ours or an external one); None = one model plays all
     opponent: Literal["A", "B"] | None = None
     batch_size: int | None = Field(None, ge=1, le=32)  # max robots per generation call (lower = less peak VRAM); None = all
+    temperature: float = Field(0.3, ge=0.0, le=2.0)  # every turn's sampling temperature (top-p 0.95); 0 = greedy, as the evals run
+    sample_seed: int | None = Field(None, ge=0, le=2**31 - 1)  # the sampler's seed apart from the world's (the tab sends a random one)
 
     @model_validator(mode="after")
     def _robots_fit_task(self):

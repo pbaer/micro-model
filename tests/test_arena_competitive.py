@@ -337,3 +337,27 @@ def test_a_text_players_earlier_answer_is_kept_whole():
     runner.run(2)
     later = runner.world.messages(w.agents[0])
     assert len(long) > 600 and [m["content"] for m in later if m["role"] == "assistant"] == [long.strip()]
+
+
+def test_temperature_samples_every_turn_and_the_sample_seed_replays_a_game():
+    """Runner(temperature=t): every turn is generated at t (a retry at the higher of t and retry_temperature); the
+    sampler's seed is the sample seed when given, else the world's, so (world seed, sample seed) replays a game."""
+    def run(temperature, sample_seed=None, turns=3):
+        w = World("gold_rush", 8, 4, seed=3)
+        temps, seeds = [], []
+
+        def gen(prompts, sessions):
+            temps.append(r.current_temperature); seeds.append(r.turn_seed)
+            return [{"calls": [], "answer": "hmm", "think": ""} for _ in prompts]  # no call: counts as failed for the retry
+        r = Runner(w, generate=gen, temperature=temperature, sample_seed=sample_seed)
+        r.run(turns)
+        return temps, seeds
+
+    temps, seeds = run(0.0)
+    assert temps == [0.0, 0.8, 0.8] and seeds == [3000, 3001, 3002], "greedy, then the retry after a call-less turn"
+    temps, _ = run(0.5)
+    assert temps == [0.5, 0.8, 0.8], "a retry is sampled at the higher temperature"
+    temps, seeds = run(1.0, sample_seed=77)
+    assert temps == [1.0] * 3 and seeds == [77000, 77001, 77002]
+    with pytest.raises(ValueError):
+        Runner(World("tag", 8, 3, 0), generate=lambda p, s_: [], temperature=-0.1)

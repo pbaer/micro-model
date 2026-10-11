@@ -305,7 +305,8 @@ def test_arena_endpoint_validates_and_streams(tmp_path):
     assert body[1][1]["messages"][0]["heard_by"] == ["R2"] and body[2][1]["result"]["score"]["success"]
     method, kw = app.state.worker.calls[0]
     assert method == "arena" and kw == {"slot": "A", "task": "relay", "n": 10, "n_agents": 4, "seed": 0, "turns": 6, "max_new_tokens": 512,
-                                        "max_calls": 4, "max_history": 1, "stop_when_done": True, "opponent": None, "batch_size": None}
+                                        "max_calls": 4, "max_history": 1, "stop_when_done": True, "opponent": None, "batch_size": None,
+                                        "temperature": 0.3, "sample_seed": None}
     # (one robot was accepted here and could only fail in the worker: World needs at least 2; the task's check now says so up front)
     assert c.post("/api/model/arena", json={"task": "triangulate", "n_agents": 1}).status_code == 422
     _sse(c, {"task": "triangulate", "n_agents": 2, "n": 16, "turns": 50, "slot": "B", "stop_when_done": False, "max_new_tokens": 1024})

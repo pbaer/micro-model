@@ -29,6 +29,7 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=None, help="max robots per generation call (lower = less peak VRAM)")
     ap.add_argument("--failed-history", default="keep", choices=["keep", "drop"], help="keep a turn whose calls all failed in the robot's context?")
     ap.add_argument("--retry-temperature", type=float, default=0.8, help="sample a robot's turn after a failed or call-less one at this temperature (0 = always greedy)")
+    ap.add_argument("--temperature", type=float, default=0.0, help="every turn's sampling temperature (top-p 0.95); 0 = greedy")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -46,7 +47,8 @@ def main() -> None:
             for seed in range(a.seeds):
                 w = World(task, n, k, seed)
                 r = Runner(w, players=players if (a.opponent and task in ("team_relay", "tag", "gold_rush")) else {"A": players["A"]},
-                           batch_size=a.batch_size, failed_history=a.failed_history, retry_temperature=a.retry_temperature)
+                           batch_size=a.batch_size, failed_history=a.failed_history, retry_temperature=a.retry_temperature,
+                           temperature=a.temperature)
                 res = r.run(max(a.turns, k + 2) if task == "relay" else max(a.turns, k // 2 + 3) if task == "team_relay" else a.turns)
                 calls = sum(x["n_calls"] for x in res["transcript"]); turns_rows = len(res["transcript"])
                 errors = sum(1 for x in res["transcript"] for c in x["calls"] if str(c[1]).startswith("error"))
@@ -88,6 +90,7 @@ def main() -> None:
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps({"checkpoint": a.checkpoint, "opponent": a.opponent, "batch_size": a.batch_size, "turns": a.turns,
+                                           "temperature": a.temperature, "retry_temperature": a.retry_temperature, "failed_history": a.failed_history,
                                            "players": {k: {"label": p.label, "native": p.native} for k, p in players.items()}, "results": rows}, indent=1), encoding="utf-8")
 
 

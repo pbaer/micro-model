@@ -158,7 +158,7 @@ def arena_check(task: str, n: int, n_agents: int, turns: int | None, max_new_tok
 def arena_generate(runner, prompts: list[list[int]], sessions: list, model=None, tok=None) -> list:
     """`Runner._generate` on the model's own device: the library's version builds its generator on cuda, which a CPU
     slot cannot use. Same sampler (`sample_with_tools`, temperature 1, top-p 1), same per-turn seed
-    (world.seed * 1000 + turn), same decode SDPA context. Looked up on this module at call time (tests script it)."""
+    (`Runner.turn_seed`: the sample seed, else world.seed, * 1000 + turn), same decode SDPA context. Looked up on this module at call time (tests script it)."""
     from slm.tools.loop import sample_with_tools
     from slm.utils.sdpa import sdpa_context
 
@@ -166,8 +166,8 @@ def arena_generate(runner, prompts: list[list[int]], sessions: list, model=None,
     tok = tok if tok is not None else runner.tok
     device = next(model.parameters()).device
     gen = torch.Generator(device=device)
-    gen.manual_seed(runner.world.seed * 1000 + runner.world.turn)
-    t = getattr(runner, "current_temperature", 0.0) or 0.0  # a retry after a failed turn is sampled (Runner.retry_temperature)
+    gen.manual_seed(getattr(runner, "turn_seed", runner.world.seed * 1000 + runner.world.turn))
+    t = getattr(runner, "current_temperature", 0.0) or 0.0  # Runner.temperature, or a retry after a failed turn (retry_temperature)
     with torch.no_grad(), sdpa_context("decode"):
         if t > 0:
             return sample_with_tools(model, tok, prompts, runner.max_new_tokens, t, 0.95, 0, gen, max_calls=runner.max_calls, sessions=sessions)
@@ -655,7 +655,7 @@ class Harness:
     @torch.no_grad()
     def arena(self, slot: str, task: str = "key_door", n: int = 8, n_agents: int = 4, seed: int = 0, turns: int | None = 12, max_new_tokens: int = 128,
               max_calls: int = 4, max_history: int = 1, stop_when_done: bool = True, opponent: str | None = None, batch_size: int | None = None,
-              should_stop=None):
+              temperature: float = 0.0, sample_seed: int | None = None, should_stop=None):
         """The arena (slm.arena.world) on one slot: an n x n grid of `n_agents` robots, each a conversation with the
         model, one batched generation per turn (`Runner.step`). Yields {'event': 'start'} with the initial state, the
         task's comm range and sight, and every robot's system prompt and declared tools (`turns=None`: no turn limit, the
@@ -679,7 +679,8 @@ class Harness:
         for k in keys:
             self.slots[k].require()
         world = A.World(task, int(n), int(n_agents), int(seed), int(max_history))
-        runner = A.Runner(world, None, None, int(max_new_tokens), int(max_calls), batch_size=batch_size)
+        runner = A.Runner(world, None, None, int(max_new_tokens), int(max_calls), batch_size=batch_size, temperature=float(temperature),
+                          sample_seed=sample_seed)
         declared: dict[int, list[str]] = {}
 
         def player_for(key: str) -> A.Player:
@@ -709,7 +710,8 @@ class Harness:
         meta = {"slot": slot, "checkpoint": s.info.get("name"), "run": s.info.get("run"), "device": s.info.get("device"), "task": task, "n": int(n),
                 "n_agents": int(n_agents), "seed": int(seed), "turns": None if turns is None else int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
                 "max_history": int(max_history), "stop_when_done": bool(stop_when_done), "comm_range": world.task.comm_range, "sight": world.task.sight,
-                "players": players_meta, "batch_size": batch_size, "opponent": opponent}
+                "players": players_meta, "batch_size": batch_size, "opponent": opponent,
+                "temperature": float(temperature), "sample_seed": sample_seed}
         robots = arena_robots(world)
         yield {"event": "start", "state": world.state(), "robots": robots, "meta": meta}
         t0, cancelled, all_messages = time.time(), False, []
