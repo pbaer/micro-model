@@ -1020,3 +1020,11 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
 - Finding: M10 picks its team's code well (0.17-0.32 rival against 0.5) but chooses directions from coordinates below
   chance (a west habit); it wins every decided team relay against M9, SmolLM2-360M and Qwen2.5-0.5B, and is the worst
   chaser in the field.
+
+- Peter (while the rerun went): redo the arena visualization in 3D -- orbit camera, WASD, click a robot to follow it
+  with its context window, a funny goofy look. No three.js on the machine and a download needs Peter's OK, so
+  `components/arena3d.js` is a hand-written WebGL renderer (toon shading, inverted-hull outlines, blob shadows) with an
+  HTML overlay for tags, bubbles, emotes and flying mail; the old SVG map stays as a switch. Turn records now carry the
+  robot's context (history, prompt / reply tokens, window). Found while testing: inconsistent triangle winding (fixed at
+  upload by checking each face against its normals), the default selection auto-following, a lost-context bug when a
+  second episode opened, and canvas listeners that outlived their camera.

@@ -464,6 +464,21 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   this). Cancel is honoured between turns (a turn is one batch); `torch.cuda.empty_cache()` at the end on cuda.
 - **Cost**: one batch of n_agents rows per turn; on the GPU decode is launch-bound, so up to ~32 rows cost about one row
   per step (docs/results.md §24). On CPU, keep to a few robots: the 336M model does 4 robots × 64 tokens in ~3-4 s a turn.
+- **The 3D arena** (2026-10-10, default; the 2D map is a switch away, remembered per browser): `components/arena3d.js`, a
+  hand-written WebGL renderer (no library: the portal vendors its dependencies and has no build step) -- toon-shaded,
+  ink-outlined cartoon robots (side or role colour, the robot's own colour as a band, googly eyes, a wobbling antenna whose
+  bulb glows when it speaks, red after an error, green on a goal) on a candy checkerboard that floats on a plinth; coins
+  spin, doors are arches whose panel swings open, the triangulate target is an X. Robots hop between cells and face where
+  they go; a speech bubble shows what each said and envelopes fly to every hearer; emotes from the turn's calls (💥 failed
+  call, ❓ no call, 👀 look, 🧱 blocked / refused, 🤫 secret read, 🪙 coin, 🫵 tag, 🎉 goal); a tagged runner keels over
+  (x_x); confetti on goals and a falling shower plus a banner on a verdict; smoke on errors; footprints for trails; the
+  selected robot's comm-range diamond. Camera: drag orbit, right-drag / Shift pan, wheel zoom, W A S D move the centre, Q/E
+  turn, R reset, T top-down; keys act only while the pointer is over the view (never while typing). Click a robot to
+  select and follow it (Esc, F, a pan or the button toggle following); its panel opens with **its context window**: the
+  declared tool block, the earlier exchange the arena kept, the question, and what the model wrote, with a
+  `ContextMeter` of prompt + reply tokens against the model's window (records carry `history`, `prompt_tokens`,
+  `gen_tokens`, `context` since 2026-10-10). Without WebGL the view says so and the map remains. Info cards `arena_3d`,
+  `arena_context`. One renderer per canvas is reused across episodes (losing the context on cleanup broke the next one).
 - **Model against model** (2026-10-10): for a competitive task the controls offer an *opponent (side B)*: the other
   slot's model, ours or an external one (any slot may now hold an external model in the arena: it answers in plain text
   and the call it writes is run, `slm.arena.world.text_action`). The form names what each side plays (from the tasks

@@ -991,6 +991,22 @@ export const CARDS = {
       towards it, so it must compare the distances itself. The number beside a robot is its coins so far.</p>
     <p>The most coins when all are gone wins. <i>nearest_coin_moves</i>: the share of moves that closed in on a truly
       nearest coin; <i>any_coin_moves</i>: towards any of the three listed.</p>` },
+  arena_3d: { t: "The arena in 3D", b: html`
+    <p>The same episode as the map, as a little world. Drag to orbit, right-drag or Shift+drag to pan, the wheel zooms;
+      <b>W A S D</b> move the centre, <b>Q / E</b> turn, <b>R</b> resets the camera, <b>T</b> looks straight down. Click a robot
+      to select it: the camera follows it (Esc or a pan stops following, F resumes) and its panel opens with its context
+      window.</p>
+    <p>Robots wear their side's colour (team, chaser / runner) or their role's, with their own colour as a band; they hop
+      from cell to cell and face where they go. A speech bubble is what a robot said this turn, and the envelopes fly to
+      every robot in range. Over a robot: 💥 a call failed, ❓ no tool call, 👀 a look, 🧱 a move or action that did not work,
+      🤫 it read the secret, 🪙 / 🫵 / 🎉 a coin, a tag, a goal. A tagged runner keels over. The map view is still there for
+      seeing every message and label at once.</p>` },
+  arena_context: { t: "A robot's context window", b: html`
+    <p>Exactly what that robot's model was given this turn, in order: the declared tool block (only the tool the question
+      needs), the earlier exchange the arena keeps (a turn whose every call failed is not kept: the model copied
+      failures), and the question. Below it, what the model wrote: its think span, the tool calls with their results,
+      and the answer. The bar counts prompt plus reply tokens against the model's context window (our checkpoints; an
+      external model uses its own tokenizer, so its count is not shown).</p>` },
   arena_versus: { t: "Model against model", b: html`
     <p>In the competitive tasks (team relay, tag, gold rush) the robots are on two sides. Choose an <i>opponent</i> and the
       model in the other slot plays side B (team blue, the runners, the even robots) while this slot plays side A; with

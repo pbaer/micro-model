@@ -353,7 +353,7 @@ def test_arena_js_parses_and_is_routed():
     if not node:
         pytest.skip("node not installed")
     for f in (static / "app.js", static / "pages" / "arena.js", static / "pages" / "model.js", static / "components" / "cards.js",
-              static / "components" / "arena_views.js"):
+              static / "components" / "arena_views.js", static / "components" / "arena3d.js"):
         tmp = Path(tempfile.gettempdir()) / "slm_arena_check.mjs"
         shutil.copy(f, tmp)
         r = subprocess.run([node, "--check", str(tmp)], capture_output=True, text=True)
@@ -442,3 +442,22 @@ def test_arena_grid_has_a_messages_toggle():
     assert "showMsgs=${showMsgs}" in arena, "the page passes the toggle to the grid"
     assert 'turn && showMsgs !== "none" ? turn.messages' in arena, "hidden draws no arcs"
     assert 'const labelAll = showMsgs === "all" && msgs.length <= 6' in arena, "arrows only draws no text"
+
+
+
+def test_arena_3d_view_is_self_contained_and_wired():
+    """The 3D arena is a hand-written WebGL view: no library beyond the vendored preact/htm, the page offers it next to
+    the map, and the followed robot's context window is shown from the turn records."""
+    import re
+
+    static = Path("slm/portal/static")
+    src = (static / "components" / "arena3d.js").read_text(encoding="utf-8")
+    imports = re.findall(r'from "([^"]+)"', src)
+    assert set(imports) <= {"preact", "preact/hooks", "htm", "./arena_views.js"}, imports
+    assert "export function Arena3D" in src and 'getContext("webgl"' in src
+    for control in ('"wasdqe"', 'k === "r"', 'k === "t"', 'k === "escape"', "pick("):
+        assert control in src, control
+    page = (static / "pages" / "arena.js").read_text(encoding="utf-8")
+    assert "<${Arena3D}" in page and "function RobotContext" in page and "setMode3d" in page
+    cards = (static / "components" / "cards.js").read_text(encoding="utf-8")
+    assert "  arena_3d: {" in cards and "  arena_context: {" in cards

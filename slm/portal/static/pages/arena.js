@@ -5,6 +5,8 @@ import { api, readSSE, fmtTime } from "../components/util.js";
 import { TextWithSpecials } from "../components/tokens.js";
 import { Info } from "../components/info.js";
 import { SlotCard } from "./model.js";
+import { Arena3D } from "../components/arena3d.js";
+import { ContextMeter } from "../components/context.js";
 import { ArrowDefs, COMMON, GlyphLegend, KINDS, MessageLog, SummaryStrip, Timeline, analyze, clip, doorsOpened, episodeKind, fmtVal, heardOf, normalizeEpisode, robotColor, roleOf, xy, TEAM_TASKS, gameStatus } from "../components/arena_views.js";
 
 const html = htm.bind(h);
@@ -222,11 +224,39 @@ function RobotPanel({ robot, ep, view, state, ix }) {
   const recs = ep.turns.slice(0, view).map((t) => t.records.find((r) => r.agent_id === robot.id)).filter(Boolean).reverse();
   return html`<div class="panel arena-robot-panel">
     <div class="row"><span class="arena-dot big" style=${`background:${role.color}`}></span><b style=${`color:${robotColor(robot.id)}`}>${robot.name}</b><span class="muted">${role.label}${a ? ` · at ${xy([a.x, a.y])} after turn ${state.turn} · moved ${ix.steps[view] ? ix.steps[view][robot.id] : 0} cells` : ""}</span></div>
+    <${RobotContext} robot=${robot} ep=${ep} view=${view} />
     <div class="evd-lab" style="margin-top:6px">declared tools (the turn's question declares only the one it needs)<${Info} k="arena_scaffold" /></div>
     ${robot.tools.map((t) => html`<div class="arena-decl" key=${t.name}><code>${t.signature}</code> <span class="muted">${t.comment}</span></div>`)}
     <details style="margin-top:6px"><summary class="muted">briefing (world.system_prompt: the robot's task as the world writes it; the model sees only what the user turns carry)</summary><${TextWithSpecials} text=${robot.system_prompt} /></details>
     <h3 style="margin-top:10px">turns ${view ? `1-${view}` : ""} (newest first)</h3>
     ${recs.length ? recs.map((r) => html`<${RobotTurn} key=${r.turn} r=${r} open=${r.turn === view} />`) : html`<div class="muted">no turn yet at this point of the episode</div>`}
+  </div>`;
+}
+
+/** The followed robot's context window at the viewed turn: everything its model saw (the declared tool blocks, the
+ *  kept history, the question) and what it wrote, with the token count against the model's window. Older episode files
+ *  carry no `history` / token counts: the panel shows what the record has. */
+function RobotContext({ robot, ep, view }) {
+  const tu = view > 0 ? ep.turns[view - 1] : null;
+  const r = tu ? tu.records.find((x) => x.agent_id === robot.id) : null;
+  if (!r) return html`<div class="a3-ctx muted">The robot's context window appears from turn 1.</div>`;
+  const pl = ep.meta && ep.meta.players ? ep.meta.players[r.player || "A"] : null;
+  const decls = robot.tools.filter((t) => (r.declared || r.tools || []).includes(t.name));
+  const used = r.prompt_tokens != null ? r.prompt_tokens + (r.gen_tokens || 0) : null;
+  return html`<div class="a3-ctx">
+    <div class="row" style="gap:8px"><b>🧠 context window · turn ${r.turn}</b><span class="muted">${pl ? `${pl.label}${pl.external ? " (external, plain text)" : ""}` : ""}</span><${Info} k="arena_context" /></div>
+    ${used != null && r.context ? html`<${ContextMeter} used=${used} total=${r.context} note=${`prompt ${r.prompt_tokens} + reply ${r.gen_tokens}`} />`
+      : html`<div class="legend">${r.context ? `window ${r.context} tokens · ` : ""}token counts are not recorded for ${pl && pl.external ? "an external model (its own tokenizer)" : "this episode (an older file)"}</div>`}
+    <div class="a3-ctx-msgs">
+      ${decls.map((t) => html`<div class="a3-msg sys" key=${"d" + t.name}><span class="a3-role">declared</span><code>${t.signature}</code> <span class="muted">${t.comment}</span></div>`)}
+      ${(r.history || []).map((m, i) => html`<div class=${"a3-msg " + m.role} key=${"h" + i}><span class="a3-role">${m.role} (earlier)</span>${m.content}</div>`)}
+      <div class="a3-msg user"><span class="a3-role">user (this turn)</span>${r.observation}</div>
+      <div class="a3-msg assistant"><span class="a3-role">assistant</span>
+        ${r.think != null && r.think !== "" && html`<div class="a3-think">💭 ${clip(r.think, 600)}</div>`}
+        ${(r.calls || []).map((c, i) => html`<div class="a3-call" key=${"c" + i}><code>${clip(c[0], 120)}</code> → <span class=${/^\s*error/.test(c[1]) ? "err" : ""}>${clip(String(c[1]), 160)}</span></div>`)}
+        ${r.answer && html`<div>${clip(r.answer, 400)}</div>`}
+      </div>
+    </div>
   </div>`;
 }
 
@@ -266,7 +296,9 @@ export function ArenaPage() {
   const [showTarget, setShowTarget] = useState(false);
   const [trails, setTrails] = useState("all");
   const [showRange, setShowRange] = useState(false);
-  const [showMsgs, setShowMsgs] = useState("all");  // messages on the grid: all (arcs + text) / arcs / none
+  const [showMsgs, setShowMsgs] = useState("all");
+  const [mode3d, setMode3d] = useState(() => { try { return localStorage.getItem("slm.arena.view") !== "map"; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem("slm.arena.view", mode3d ? "3d" : "map"); } catch { /* blocked storage */ } }, [mode3d]);  // messages on the grid: all (arcs + text) / arcs / none
   const [focusMsg, setFocusMsg] = useState(null);
   const [now, setNow] = useState(Date.now());
   const abortRef = useRef(null);
@@ -435,9 +467,12 @@ export function ArenaPage() {
 
     ${ep && ep.start && html`<div class="arena-main">
       <div>
-        <h2>Grid<${Info} k="arena_grid" /></h2>
-        <${ArenaGrid} n=${meta.n} state=${state} turn=${turn} view=${view} meta=${meta} ix=${ix} focus=${focus} sel=${sel} setSel=${setSel} setHover=${setHover} showTarget=${showTarget}
-          trails=${trails} showRange=${showRange} showMsgs=${showMsgs} focusMsg=${focusMsg} />
+        <div class="row" style="justify-content:space-between;align-items:baseline"><h2 style="flex:1">${mode3d ? "Arena" : "Grid"}<${Info} k=${mode3d ? "arena_3d" : "arena_grid"} /></h2>
+          <span class="seg"><button class=${mode3d ? "active" : ""} onClick=${() => setMode3d(true)} title="the 3D arena: orbit, WASD, click a robot to follow">3D</button><button class=${mode3d ? "" : "active"} onClick=${() => setMode3d(false)} title="the flat map: every arc and label at once">map</button></span></div>
+        ${mode3d ? html`<${Arena3D} ep=${ep} ix=${ix} view=${view} sel=${sel} setSel=${setSel} showMsgs=${showMsgs} showRange=${showRange} trails=${trails} showTarget=${showTarget}
+            titleOf=${(id) => { const a = state && state.agents.find((x) => x.id === id); return a ? robotTitle(a, ix, view) : ""; }} />`
+          : html`<${ArenaGrid} n=${meta.n} state=${state} turn=${turn} view=${view} meta=${meta} ix=${ix} focus=${focus} sel=${sel} setSel=${setSel} setHover=${setHover} showTarget=${showTarget}
+          trails=${trails} showRange=${showRange} showMsgs=${showMsgs} focusMsg=${focusMsg} />`}
         <div class="arena-scrub">
           <button onClick=${() => scrub(0)} disabled=${view === 0} title="start">⏮</button>
           <button onClick=${() => scrub(view - 1)} disabled=${view === 0} title="previous turn">◀</button>

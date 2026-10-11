@@ -1042,7 +1042,7 @@ class Runner:
 
         w = self.world
         w.deliver()
-        prompts, sessions, obs, declared, no_args = {}, {}, {}, {}, {}
+        prompts, sessions, obs, declared, no_args, history_seen = {}, {}, {}, {}, {}, {}
         for a in w.agents:
             player = self.players[w.player_of.get(a.id, "A")]
             msgs = w.messages(a)
@@ -1054,6 +1054,7 @@ class Runner:
             else:
                 prompts[a.id] = [{k: v for k, v in m.items() if k != "ids"} for m in msgs] if not player.native else msgs
             sessions[a.id] = self.sessions[a.id]; obs[a.id] = msgs[-1]["content"]; declared[a.id] = [d.name for d in tools]
+            history_seen[a.id] = [{"role": m["role"], "content": m.get("content", "")} for m in msgs[:-1]]  # what precedes the question
             no_args[a.id] = {d.name for d in tools if re.search(r"\(\s*\)", d.signature)}
         t0 = time.time()
         tcs: dict[int, object] = {}
@@ -1100,8 +1101,12 @@ class Runner:
                 a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
                 if a.history[-1]["ids"] is None:
                     a.history[-1].pop("ids")
+            # the robot's context window this turn, for the portal's follow panel: what came before the question, how many
+            # tokens the prompt and the reply took (our checkpoints; an external model's tokenizer is its own), the window
+            ctx = getattr(getattr(player.model, "cfg", None), "max_seq_len", None) or getattr(player.model, "max_positions", None)
             rec = {"turn": w.turn + 1, "agent": a.name, "pos": a.pos, "observation": o, "status": w.status(a), "think": think, "calls": calls, "answer": answer,
-                   "n_calls": len(calls), "tools": tools, "player": key}
+                   "n_calls": len(calls), "tools": tools, "player": key, "history": history_seen[a.id],
+                   "prompt_tokens": len(prompts[a.id]) if native_ids else None, "gen_tokens": len(tc.ids) if native_ids else None, "context": ctx}
             w.task.after_turn(w, a, rec)
             a.log.append(rec); records.append(rec)
         w.turn += 1

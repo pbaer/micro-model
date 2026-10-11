@@ -5,7 +5,7 @@ set -u
 P=.venv/Scripts/python.exe
 M10=runs/m10_rl_336m/checkpoints/final.pt
 M9=runs/m9_rl6_336m/checkpoints/final.pt
-OUT=runs/arena/versus
+OUT=${OUT:-runs/arena/versus}
 mkdir -p $OUT
 run() {  # name, side A, side B
   $P -u scripts/arena_eval.py --checkpoint "$2" --opponent "$3" --tasks team_relay,tag,gold_rush --agents 8 --seeds 3 --turns 12 \
