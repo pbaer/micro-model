@@ -198,7 +198,7 @@ def test_harness_arena_external_slot_plays_through_plain_text(harness):
         name = "smollm2-135m-instruct"
         calls = []
 
-        def batch_generate_chat(self, prompts, max_new_tokens, temperature=0.0, batch_size=32):
+        def batch_generate_chat(self, prompts, max_new_tokens, temperature=0.0, batch_size=32, **_):
             FakeExt.calls.append(len(prompts))
             return [Gen("I will read it.\n#### read_code()") if "read_code()" in m[-1]["content"] else Gen("#### look()") for m in prompts]
 

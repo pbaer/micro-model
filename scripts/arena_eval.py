@@ -27,6 +27,8 @@ def main() -> None:
     ap.add_argument("--opponent", default=None, help="side B of the competitive tasks: a checkpoint path or external:<name> "
                     "(e.g. external:smollm2-360m-instruct); the checkpoint plays side A")
     ap.add_argument("--batch-size", type=int, default=None, help="max robots per generation call (lower = less peak VRAM)")
+    ap.add_argument("--failed-history", default="keep", choices=["keep", "drop"], help="keep a turn whose calls all failed in the robot's context?")
+    ap.add_argument("--retry-temperature", type=float, default=0.8, help="sample a robot's turn after a failed or call-less one at this temperature (0 = always greedy)")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
@@ -44,7 +46,7 @@ def main() -> None:
             for seed in range(a.seeds):
                 w = World(task, n, k, seed)
                 r = Runner(w, players=players if (a.opponent and task in ("team_relay", "tag", "gold_rush")) else {"A": players["A"]},
-                           batch_size=a.batch_size)
+                           batch_size=a.batch_size, failed_history=a.failed_history, retry_temperature=a.retry_temperature)
                 res = r.run(max(a.turns, k + 2) if task == "relay" else max(a.turns, k // 2 + 3) if task == "team_relay" else a.turns)
                 calls = sum(x["n_calls"] for x in res["transcript"]); turns_rows = len(res["transcript"])
                 errors = sum(1 for x in res["transcript"] for c in x["calls"] if str(c[1]).startswith("error"))

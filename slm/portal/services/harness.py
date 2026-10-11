@@ -164,7 +164,10 @@ def arena_generate(runner, prompts: list[list[int]], sessions: list, model=None,
     device = next(model.parameters()).device
     gen = torch.Generator(device=device)
     gen.manual_seed(runner.world.seed * 1000 + runner.world.turn)
+    t = getattr(runner, "current_temperature", 0.0) or 0.0  # a retry after a failed turn is sampled (Runner.retry_temperature)
     with torch.no_grad(), sdpa_context("decode"):
+        if t > 0:
+            return sample_with_tools(model, tok, prompts, runner.max_new_tokens, t, 0.95, 0, gen, max_calls=runner.max_calls, sessions=sessions)
         return sample_with_tools(model, tok, prompts, runner.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=runner.max_calls,
                                  sessions=sessions)
 

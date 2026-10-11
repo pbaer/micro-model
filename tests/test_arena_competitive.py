@@ -292,18 +292,38 @@ def test_grab_with_a_stray_argument_takes_the_coin():
     assert "picked up" in functions_env(w.decls[a.id])["grab"]("pick")
 
 
-def test_a_turn_where_every_call_failed_is_not_kept_in_history():
+def test_failed_turns_kept_by_default_and_retried_with_sampling():
+    """Greedy decoding repeats a failure when the prompt does not change. Measured (results §28): keeping the failed turn
+    and sampling the robot's next turn decided every team relay with the fewest failed calls; dropping it doubled them.
+    A turn with no call counts as failed for the retry. `failed_history="drop"` stays available."""
     w = World("gold_rush", 8, 2, seed=3)
     a = w.agents[0]
     a.x, a.y = next(iter(w.task.coins()))
-    turns = iter([[["get('pick')", "error: line 1: NameError: get is not defined"]], [["grab()", "You picked up the coin"]]])
+    script = iter([[["get('pick')", "error: line 1: NameError: get is not defined"]], [], [["grab()", "You picked up the coin"]]])
+    temps = []
+
+    r = Runner(w, generate=None)
 
     def gen(prompts, sessions):
-        calls = next(turns)
-        return [{"calls": calls, "answer": "x", "think": ""}] + [{"calls": [], "answer": "", "think": ""} for _ in prompts[1:]]
+        temps.append(r.current_temperature)
+        calls = next(script) if len(prompts) == 1 or temps else []
+        return [{"calls": calls, "answer": "x", "think": ""} for _ in prompts]
 
-    r = Runner(w, generate=gen)
+    r.generate = gen
+    assert r.failed_history == "keep" and r.retry_temperature == 0.8
+    r.batch_size = None
+    w.player_of = {0: "A", 1: "A"}
     r.step()
-    assert a.history == [], "the failed turn is not an example for the next one"
+    assert len(a.history) == 2, "kept by default"
+    assert a.memory["_failed"] is True
     r.step()
-    assert len(a.history) == 2 and a.log[0]["calls"][0][1].startswith("error"), "the failure is still in the record"
+    assert 0.8 in temps, "the robot that failed is sampled on its next turn"
+    assert a.memory["_failed"] is True, "a call-less turn also counts as failed for the retry"
+
+    w2 = World("gold_rush", 8, 2, seed=3)
+    r2 = Runner(w2, generate=lambda p, s_: [{"calls": [["x()", "error: boom"]], "answer": "", "think": ""} for _ in p], failed_history="drop")
+    r2.step()
+    assert w2.agents[0].history == [], "drop: the failed exchange is not kept"
+    import pytest as _pt
+    with _pt.raises(ValueError):
+        Runner(World("tag", 8, 3, 0), generate=lambda p, s_: [], failed_history="sometimes")

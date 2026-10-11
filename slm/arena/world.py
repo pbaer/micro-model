@@ -979,7 +979,8 @@ class Runner:
     which shows as a 60x slowdown, not an error). `generate` (one player) can be injected for tests."""
 
     def __init__(self, world: World, model=None, tok=None, max_new_tokens: int = 128, max_calls: int = 4, generate=None,
-                 players: dict | None = None, batch_size: int | None = None) -> None:
+                 players: dict | None = None, batch_size: int | None = None, failed_history: str = "keep",
+                 retry_temperature: float | None = 0.8) -> None:
         from slm.tools.pysandbox import PySession
 
         self.world, self.model, self.tok = world, model, tok
@@ -991,6 +992,17 @@ class Runner:
         for a in world.agents:
             world.player_of[a.id] = world.task.side_of(a) if two else "A"
         self.vram_peak_gib = 0.0
+        # Decoding is greedy, so an identical prompt gives an identical answer. A robot whose turn failed gets the same
+        # question again: `failed_history` says whether the failed exchange stays in its context ("keep": the model may
+        # copy it, as a gold-rush robot copied get("pick") six times) or not ("drop": the prompt is then identical, and a
+        # deterministic failure repeats forever, as a team-relay source repeated says("...")); `retry_temperature`, when
+        # set, samples that robot's next turn instead (top-p 0.95), so a failure need not repeat. A turn with no call at all
+        # counts as failed for the retry: under greedy decoding an unchanged question repeats the silence too. Measured
+        # (results §28): keep + retry at 0.8 decided 5 of 5 team relays with the fewest failed calls; "drop" doubled them.
+        if failed_history not in ("keep", "drop"):
+            raise ValueError("failed_history must be 'keep' or 'drop'")
+        self.failed_history, self.retry_temperature = failed_history, retry_temperature
+        self.current_temperature = 0.0  # the temperature of the generation call in flight (the portal's generate reads it)
 
     @property
     def generate(self):  # the single player's generator (the portal and older callers set it)
@@ -1009,7 +1021,10 @@ class Runner:
         from slm.utils.sdpa import sdpa_context
 
         gen = torch.Generator(device=next(player.model.parameters()).device); gen.manual_seed(self.world.seed * 1000 + self.world.turn)
+        t = self.current_temperature
         with torch.no_grad(), sdpa_context("decode"):
+            if t and t > 0:  # a retry after a failed turn: sampled, so a deterministic failure need not repeat
+                return sample_with_tools(player.model, player.tok, prompts, self.max_new_tokens, t, 0.95, 0, gen, max_calls=self.max_calls, sessions=sessions)
             return sample_with_tools(player.model, player.tok, prompts, self.max_new_tokens, 1.0, 1.0, 1, gen, max_calls=self.max_calls, sessions=sessions)
 
     def _text(self, player: Player, prompts: list, sessions: list, tool_names: list, no_args: list | None = None) -> list:
@@ -1017,7 +1032,9 @@ class Runner:
         if player.generate is not None:
             texts = player.generate(prompts, sessions)
         else:
-            gens = player.model.batch_generate_chat(prompts, self.max_new_tokens, temperature=0.0, batch_size=max(1, len(prompts)))
+            t = self.current_temperature or 0.0
+            gens = player.model.batch_generate_chat(prompts, self.max_new_tokens, temperature=t, top_p=0.95 if t else 1.0,
+                                                    seed=self.world.seed * 1000 + self.world.turn, batch_size=max(1, len(prompts)))
             texts = [g.text for g in gens]
         out = []
         for i, (text, sess, names) in enumerate(zip(texts, sessions, tool_names)):
@@ -1064,10 +1081,16 @@ class Runner:
 
             torch.cuda.reset_peak_memory_stats()
         for key, player in self.players.items():
-            ids = [a.id for a in w.agents if w.player_of.get(a.id, "A") == key]
-            step = self.batch_size or max(1, len(ids))
-            for i in range(0, len(ids), step):
-                chunk = ids[i:i + step]
+            mine = [a for a in w.agents if w.player_of.get(a.id, "A") == key]
+            groups = [(0.0, [a.id for a in mine if not (self.retry_temperature and a.memory.get("_failed"))])]
+            if self.retry_temperature:
+                groups.append((self.retry_temperature, [a.id for a in mine if a.memory.get("_failed")]))
+            chunks = []
+            for temp, ids in groups:
+                step = self.batch_size or max(1, len(ids))
+                chunks += [(temp, ids[i:i + step]) for i in range(0, len(ids), step)]
+            for temp, chunk in chunks:
+                self.current_temperature = temp
                 if player.native:
                     outs = self._native(player, [prompts[j] for j in chunk], [sessions[j] for j in chunk])
                 else:
@@ -1097,7 +1120,8 @@ class Runner:
             # so the history only adds an example to copy, and a failed one is copied (a gold-rush robot on a coin called
             # get("pick") six turns running, 2026-10-10). Success or a plain answer is kept as before.
             failed = bool(calls) and all(str(c[1]).lstrip().startswith("error") for c in calls)
-            if not failed:
+            a.memory["_failed"] = failed or not calls  # the next turn is sampled when retry_temperature is set
+            if not failed or self.failed_history == "keep":
                 a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
                 if a.history[-1]["ids"] is None:
                     a.history[-1].pop("ids")
