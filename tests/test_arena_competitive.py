@@ -7,7 +7,7 @@ import re
 
 import pytest
 
-from slm.arena.world import DIRS, Runner, World, dist
+from slm.arena.world import DIRS, Player, Runner, World, dist
 
 POS = r"\((\d+), (\d+)\)"
 
@@ -221,7 +221,6 @@ def test_text_action_reads_the_final_line_else_the_last_offered_call():
 
 
 def test_two_players_split_the_sides_and_a_text_player_acts_by_writing_calls():
-    from slm.arena.world import Player
 
     n, k = 12, 8
     w = World("team_relay", n, k, seed=1)
@@ -327,3 +326,14 @@ def test_failed_turns_kept_by_default_and_retried_with_sampling():
     import pytest as _pt
     with _pt.raises(ValueError):
         Runner(World("tag", 8, 3, 0), generate=lambda p, s_: [], failed_history="sometimes")
+
+
+def test_a_text_players_earlier_answer_is_kept_whole():
+    """A plain-text player sees its earlier reply as history content: clipped to 300 characters it taught SmolLM2 to stop
+    mid-word at the same place every turn (2026-10-11)."""
+    w = World("gold_rush", 8, 2, seed=0)
+    long = "Let me think. " + "The coins are far away, so I compare every distance carefully. " * 12 + "\n#### move(\"north\")"
+    runner = Runner(w, players={"A": Player("external", native=False, generate=lambda p, s_: [long for _ in p])})
+    runner.run(2)
+    later = runner.world.messages(w.agents[0])
+    assert len(long) > 600 and [m["content"] for m in later if m["role"] == "assistant"] == [long.strip()]

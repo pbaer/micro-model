@@ -374,9 +374,9 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
 - **Controls**: the two slot cards (the Inference page's `SlotCard`, so a checkpoint can be loaded here, CPU or cuda),
   slot, task (`key_door`, `relay`, `triangulate`, and the competitive `team_relay`, `tag`, `gold_rush`, each with its
   description from `GET /api/model/arena/tasks`), grid 4-16, robots 1-32 (each task's own rule, `Task.check`: key_door an
-  even count, team_relay an even count of at least 4 on a grid at least robots - 1 cells across), seed, turns 1-50, max new tokens (128), max tool calls (4),
+  even count, team_relay an even count of at least 4 on a grid at least robots - 1 cells across), seed, max turns (empty = no limit, the default since 2026-10-11: the episode runs until the game ends or you press stop;
+  else 1-1000), max new tokens (512), max tool calls (4),
   history (1, the World default: earlier exchanges kept per robot), stop when done; run / stop; download episode log.
-  External slots are refused (the robots act through our tool protocol).
 - **Grid** (SVG): cells with coordinates, doors (amber, green ✓ when opened), the triangulate target hidden until dug (a
   checkbox reveals it for analysis; a failed dig leaves a grey ×), robots as circles coloured by their unique tool and
   labelled R1..Rn (several on a cell share it on a small ring). Hover or select a robot: its comm range and sight are shaded;
@@ -394,7 +394,7 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   covers roles, shading, arcs, trails, ranges and doors. Below the grid the messages of the turn as text.
 - **Scrubber**: start / previous / play / next / latest and a slider over 0..turns (0 = the start state). While a run
   streams, the view follows the newest turn unless you step back.
-- **Task panel**: the task's description and roles, grid / robots / comm range / sight / seed / checkpoint, the score at
+- **Task panel** (above the arena since 2026-10-11): the task's description and roles, grid / robots / comm range / sight / seed / checkpoint, the score at
   the viewed turn (the hidden target is masked), the events, and at the end the result (solved in k turns, or not;
   turns played, seconds, robot turns, tool calls, messages; "stopped by you" after a cancel).
 - **Episode summary** (`SummaryStrip`): four small SVG charts over turns, click a turn to jump there: task progress
@@ -421,7 +421,8 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   the speaker and light that message's arc alone on the grid. Renders the first 400 matches.
 - **Robots**: one compact table for all robots at the viewed turn (position, cells moved so far, unique tool, the tool its
   prompt declared this turn, the calls (red when one failed), its inbox this turn, what it said and who heard it, its
-  answer), and below it the transcript of ONE selected robot (click a row, a circle or a timeline cell): its declared
+  answer). The transcript of ONE selected robot (click a row, a robot or a timeline cell) sits to the right of the arena
+  (sticky, scrolls on its own; below it on narrow screens): its declared
   functions, the briefing (`world.system_prompt`, collapsible), and per turn (newest first, the viewed turn open) its
   inbox ("heard: R1 said: '...'" lines), the situation line (the world's record, not shown to the model), the user turn
   exactly as the model saw it, the declared tools, the generated turn with its reserved tokens as chips
@@ -472,7 +473,7 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   they go; a speech bubble shows what each said and envelopes fly to every hearer; emotes from the turn's calls (💥 failed
   call, ❓ no call, 👀 look, 🧱 blocked / refused, 🤫 secret read, 🪙 coin, 🫵 tag, 🎉 goal); a tagged runner keels over
   (x_x); confetti on goals and a falling shower plus a banner on a verdict; smoke on errors; footprints for trails; the
-  selected robot's comm-range diamond. Camera: drag orbit, right-drag / Shift pan, wheel zoom, W A S D move the centre, Q/E
+  selected robot's comm-range diamond. Camera: drag orbit (drag right turns the board right, 2026-10-11), right-drag / Shift pan, wheel zoom, W A S D move the centre, Q/E
   turn, R reset, T top-down; keys act only while the pointer is over the view (never while typing). Click a robot to
   select and follow it (Esc, F, a pan or the button toggle following); its panel opens with **its context window**: the
   declared tool block, the earlier exchange the arena kept, the question, and what the model wrote, with a

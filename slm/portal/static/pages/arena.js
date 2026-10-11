@@ -17,10 +17,10 @@ const html = htm.bind(h);
  *  an episode summary, an interaction timeline (swimlanes) and a message log, and keeps every turn so the scrubber can
  *  step back. With 32 robots only the selected robot's transcript is rendered; the rest is one compact table. */
 
-const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: 12, max_new_tokens: 128, max_calls: 4, max_history: 1, stop_when_done: true,
+const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: null, max_new_tokens: 512, max_calls: 4, max_history: 1, stop_when_done: true,
   opponent: null, batch_size: null };
 const SPILL_GIB = 14.5;  // reserved VRAM above this spills into host memory on Windows (CLAUDE.md): 60x slower, no error
-const LIMITS = { n: [4, 16], n_agents: [1, 32], turns: [1, 50], max_new_tokens: [16, 1024], max_calls: [0, 16], max_history: [0, 10] };
+const LIMITS = { n: [4, 16], n_agents: [1, 32], turns: [1, 1000], max_new_tokens: [16, 1024], max_calls: [0, 16], max_history: [0, 10] };
 
 // ---------------------------------------------------------------------------------------------------- the grid
 const C = 40, PAD = 18;  // cell size and the coordinate margin, in SVG user units
@@ -252,9 +252,9 @@ function RobotContext({ robot, ep, view }) {
       ${(r.history || []).map((m, i) => html`<div class=${"a3-msg " + m.role} key=${"h" + i}><span class="a3-role">${m.role} (earlier)</span>${m.content}</div>`)}
       <div class="a3-msg user"><span class="a3-role">user (this turn)</span>${r.observation}</div>
       <div class="a3-msg assistant"><span class="a3-role">assistant</span>
-        ${r.think != null && r.think !== "" && html`<div class="a3-think">💭 ${clip(r.think, 600)}</div>`}
+        ${r.think != null && r.think !== "" && html`<div class="a3-think">💭 ${r.think}</div>`}
         ${(r.calls || []).map((c, i) => html`<div class="a3-call" key=${"c" + i}><code>${clip(c[0], 120)}</code> → <span class=${/^\s*error/.test(c[1]) ? "err" : ""}>${clip(String(c[1]), 160)}</span></div>`)}
-        ${r.answer && html`<div>${clip(r.answer, 400)}</div>`}
+        ${r.answer && html`<div>${r.answer}</div>`}
       </div>
     </div>
   </div>`;
@@ -427,7 +427,9 @@ export function ArenaPage() {
         <span class="grp"><span class="muted">grid</span>${num("n")}</span>
         <span class="grp"><span class="muted">robots</span>${num("n_agents", { step: p.task === "key_door" ? 2 : 1 })}</span>
         <span class="grp"><span class="muted">seed</span><input type="number" value=${p.seed} min="0" onChange=${(e) => set("seed", Math.max(0, Math.round(Number(e.target.value)) || 0))} style="width:70px" /></span>
-        <span class="grp"><span class="muted">turns</span>${num("turns")}</span>
+        <span class="grp"><span class="muted">max turns</span><input type="number" min="1" max="1000" placeholder="∞" value=${p.turns || ""}
+          title="empty = no limit: the episode runs until the game ends (with stop when done) or you press stop"
+          onChange=${(e) => set("turns", e.target.value ? Math.max(1, Math.min(1000, Math.round(Number(e.target.value)) || 1)) : null)} style="width:64px" /></span>
       </div>
       <div class="row" style="margin-bottom:6px">
         <span class="grp"><span class="muted">max new tokens</span>${num("max_new_tokens", { step: 16 })}</span>
@@ -459,13 +461,14 @@ export function ArenaPage() {
       </div>
       <${ViewerBar} episodes=${episodes} onOpen=${openFile} onFile=${openLocal} busy=${running} refresh=${refreshEpisodes} />
       ${ep && ep.source === "live" && html`<div class="stage-steps">
-        <span class=${"step " + (ep.result ? "past" : "now")}>${ep.result ? (ep.result.cancelled ? "stopped" : "done") : ep.start ? `turn ${nTurns + 1} of ${ep.request.turns}` : "building the world"}</span>
+        <span class=${"step " + (ep.result ? "past" : "now")}>${ep.result ? (ep.result.cancelled ? "stopped" : "done") : ep.start ? `turn ${nTurns + 1}${ep.request.turns ? ` of ${ep.request.turns}` : ""}` : "building the world"}</span>
         <span class="muted">${busy ? `${(Math.max(0, now - ep.t0) / 1000).toFixed(0)} s` : ep.result ? `${ep.result.seconds.toFixed(1)} s` : ""}${nTurns ? ` · ${nTurns} turn${nTurns === 1 ? "" : "s"}, ${genSec.toFixed(1)} s generating (${(genSec / nTurns).toFixed(1)} s per batched turn of ${ep.request.n_agents})` : ""}</span>
       </div>`}
       ${ep && ep.source === "file" && html`<div class="arena-file-note">viewing <b>${ep.name}</b> (${ep.kind === "cli" ? "CLI transcript" : "Arena tab download"}; no model involved)${(ep.notes || []).map((n, i) => html`<div key=${i} class="legend">${n}</div>`)}</div>`}
     </div>
 
-    ${ep && ep.start && html`<div class="arena-main">
+    ${ep && ep.start && html`<h2>Task</h2><${TaskPanel} task=${tasks.find((t) => t.key === meta.task)} meta=${meta} state=${state} result=${ep.result} showTarget=${showTarget} />
+    <div class="arena-main">
       <div>
         <div class="row" style="justify-content:space-between;align-items:baseline"><h2 style="flex:1">${mode3d ? "Arena" : "Grid"}<${Info} k=${mode3d ? "arena_3d" : "arena_grid"} /></h2>
           <span class="seg"><button class=${mode3d ? "active" : ""} onClick=${() => setMode3d(true)} title="the 3D arena: orbit, WASD, click a robot to follow">3D</button><button class=${mode3d ? "" : "active"} onClick=${() => setMode3d(false)} title="the flat map: every arc and label at once">map</button></span></div>
@@ -500,7 +503,8 @@ export function ArenaPage() {
         </div>
         ${turn && turn.messages.length > 0 && html`<div class="arena-msgs">${turn.messages.map((m, i) => html`<div key=${i} class=${focusMsg === `${view}:${i}` ? "sel" : ""}><b style=${`color:${robotColor(m.speaker_id)}`}>${m.speaker}</b> at ${xy(m.pos)}: "${m.text}" → ${m.heard_by.length ? m.heard_by.join(", ") : html`<span class="muted">nobody in range</span>`}</div>`)}</div>`}
       </div>
-      <div><h2>Task</h2><${TaskPanel} task=${tasks.find((t) => t.key === meta.task)} meta=${meta} state=${state} result=${ep.result} showTarget=${showTarget} /></div>
+      <div class="arena-side"><h2>${robot ? robot.name : "Robot"}</h2>
+        ${robot ? html`<${RobotPanel} robot=${robot} ep=${ep} view=${view} state=${state} ix=${ix} />` : html`<div class="muted">Click a robot to inspect it.</div>`}</div>
     </div>
     <h2>Episode summary<${Info} k="arena_summary" /></h2>
     <${SummaryStrip} ep=${ep} ix=${ix} view=${view} onPick=${scrub} />
@@ -511,8 +515,6 @@ export function ArenaPage() {
     <${MessageLog} ep=${ep} ix=${ix} view=${view} focusMsg=${focusMsg} onPick=${pickMsg} />
     <h2>Robots ${view ? `(turn ${view})` : "(start)"}<${Info} k="arena_turn" /></h2>
     <div class="arena-table-wrap"><${RobotTable} state=${state} turn=${turn} ix=${ix} view=${view} sel=${sel} setSel=${setSel} /></div>
-    <div class="legend">Click a row, a robot on the grid or a timeline cell to open its transcript below; only one robot's turns are rendered at a time.</div>
-    <h2>${robot ? robot.name : "Robot"}</h2>
-    <${RobotPanel} robot=${robot} ep=${ep} view=${view} state=${state} ix=${ix} />`}
+    <div class="legend">Click a row, a robot in the arena or a timeline cell to inspect it beside the arena; only one robot's turns are rendered at a time.</div>`}
   </div>`;
 }

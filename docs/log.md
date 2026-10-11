@@ -1035,3 +1035,10 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Measured four rules; keep + sample the next turn at 0.8 (also after a call-less turn) wins and is the default. Final:
   M10 wins 14/14 decided relays and every gold rush by coins against M9, SmolLM2-360M and Qwen2.5-0.5B, loses tag on
   below-chance chasing; every model is at or below chance on the numeric direction decisions; team red won 8/8 relays.
+
+- 2026-10-11 Arena tab: SmolLM2's replies stopped mid-word at the same place every turn whatever max new tokens said. Not
+  the budget: the Runner kept each robot's earlier answer clipped to 300 characters in its history, a plain-text player
+  sees that content as its own previous reply, and greedy decoding copied the clipped reply and stopped where it ended.
+  Answers are now kept whole (our checkpoints replay the turn's ids and never saw the clip). Also: no turn limit by default
+  (runs until the game ends or stop), max new tokens 512, the task panel above the arena and the selected robot beside it,
+  the 3D orbit drag direction reversed.

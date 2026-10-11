@@ -73,8 +73,8 @@ class ArenaRequest(BaseModel):
     n: int = Field(8, ge=4, le=16)  # grid side
     n_agents: int = Field(4, ge=1, le=32)
     seed: int = Field(0, ge=0, le=2**31 - 1)
-    turns: int = Field(12, ge=1, le=50)
-    max_new_tokens: int = Field(128, ge=16, le=1024)  # per robot per turn
+    turns: int | None = Field(None, ge=1, le=1000)  # None = until the game ends (stop_when_done) or the user stops it
+    max_new_tokens: int = Field(512, ge=16, le=1024)  # per robot per turn
     max_calls: int = Field(4, ge=0, le=16)  # tool calls per robot per turn
     max_history: int = Field(1, ge=0, le=10)  # prior (observation, action) exchanges kept in each robot's conversation (World default)
     stop_when_done: bool = True

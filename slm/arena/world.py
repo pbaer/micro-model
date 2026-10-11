@@ -43,7 +43,7 @@ class Agent:
     y: int
     tools: list[str]                       # names of the task tools this robot has (besides move/say/look)
     inbox: list[str] = field(default_factory=list)      # messages heard this turn (delivered next observation)
-    history: list[dict] = field(default_factory=list)   # prior (user, assistant) turns, truncated
+    history: list[dict] = field(default_factory=list)   # prior (user, assistant) turns (World keeps max_history)
     inventory: list[str] = field(default_factory=list)
     memory: dict = field(default_factory=dict)          # task-private state (e.g. the key this robot read)
     log: list[dict] = field(default_factory=list)       # per-turn record for the transcript / portal
@@ -1122,7 +1122,9 @@ class Runner:
             failed = bool(calls) and all(str(c[1]).lstrip().startswith("error") for c in calls)
             a.memory["_failed"] = failed or not calls  # the next turn is sampled when retry_temperature is set
             if not failed or self.failed_history == "keep":
-                a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip()[:300], "ids": list(tc.ids) if native_ids else None}]
+                # the answer is kept whole: a plain-text player sees this content as its earlier reply, and a clipped one taught
+                # SmolLM2 to stop mid-word at the same place every turn (2026-10-11); our checkpoints replay `ids` instead
+                a.history += [{"role": "user", "content": o}, {"role": "assistant", "content": (answer or "").strip(), "ids": list(tc.ids) if native_ids else None}]
                 if a.history[-1]["ids"] is None:
                     a.history[-1].pop("ids")
             # the robot's context window this turn, for the portal's follow panel: what came before the question, how many

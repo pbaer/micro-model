@@ -293,7 +293,7 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
         cam.tx -= (dx * c + dy * sn) * s; cam.tz -= (-dx * sn + dy * c) * s;
         live.current.setFollow(false);
       } else {
-        cam.yaw += dx * 0.008; cam.pitch = Math.max(0.12, Math.min(1.5, cam.pitch + dy * 0.006));
+        cam.yaw -= dx * 0.008; cam.pitch = Math.max(0.12, Math.min(1.5, cam.pitch + dy * 0.006));
       }
     };
     const pick = (mx, my) => {  // the robot under the cursor: ray against each robot's bounding sphere

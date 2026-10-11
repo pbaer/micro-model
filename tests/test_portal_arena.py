@@ -141,6 +141,10 @@ def test_harness_arena_turn_events_messages_and_stop_at_done(harness, monkeypatc
     assert res["meta"]["task"] == "key_door" and res["meta"]["n_agents"] == 2 and res["meta"]["turns"] == 20
     json.dumps(evs)  # crosses the worker pipe and the SSE stream
 
+    # no turn limit: the episode runs until the game is won (or a cancel)
+    evs = list(h.arena("A", task="key_door", n=5, n_agents=2, seed=7, turns=None, max_new_tokens=64))
+    assert evs[-1]["result"]["turns"] == res["turns"] and evs[0]["meta"]["turns"] is None
+
     # without stop_when_done every turn is played
     evs = list(h.arena("A", task="key_door", n=5, n_agents=2, seed=7, turns=res["turns"] + 2, stop_when_done=False))
     assert evs[-1]["result"]["turns"] == res["turns"] + 2 and sum(e["event"] == "turn" for e in evs) == res["turns"] + 2
@@ -177,7 +181,7 @@ def test_harness_arena_refusals(harness):
     h, _ = harness
     for kw, msg in (({"task": "key_door", "n_agents": 3}, "even number"), ({"task": "relay", "n_agents": 1}, "at least 2"),
                     ({"task": "maze"}, "unknown arena task"), ({"n": 3}, "n=3"), ({"n": 17}, "n=17"), ({"n_agents": 33, "task": "triangulate"}, "n_agents"),
-                    ({"turns": 0}, "turns"), ({"turns": 51}, "turns"), ({"max_new_tokens": 8}, "max_new_tokens")):
+                    ({"turns": 0}, "turns"), ({"turns": 1001}, "turns"), ({"max_new_tokens": 8}, "max_new_tokens")):
         with pytest.raises(RuntimeError, match=msg):
             list(h.arena("A", **kw))
     with pytest.raises(RuntimeError, match="slot B is empty"):
@@ -288,7 +292,7 @@ def test_arena_endpoint_validates_and_streams(tmp_path):
               {"event": "turn", "turn": 1, "seconds": 0.1, "records": [], "state": {**state, "turn": 1}, "messages": [{"speaker": "R1", "text": "hi", "heard_by": ["R2"]}]},
               {"event": "done", "result": {"turns": 1, "score": {"success": True}}}]
     app, c = _client(tmp_path, events)
-    for bad in ({"n": 3}, {"n": 17}, {"n_agents": 0}, {"n_agents": 34}, {"turns": 0}, {"turns": 51}, {"task": "maze"}, {"slot": "C"},
+    for bad in ({"n": 3}, {"n": 17}, {"n_agents": 0}, {"n_agents": 34}, {"turns": 0}, {"turns": 1001}, {"task": "maze"}, {"slot": "C"},
                 {"task": "key_door", "n_agents": 3}, {"task": "relay", "n_agents": 1}, {"max_new_tokens": 8}, {"max_calls": 17},
                 {"max_history": 11}, {"seed": -1}):
         assert c.post("/api/model/arena", json=bad).status_code == 422, bad
@@ -300,7 +304,7 @@ def test_arena_endpoint_validates_and_streams(tmp_path):
     assert [n for n, _ in body] == ["start", "turn", "done"] and all(d["slot"] == "A" for _, d in body)
     assert body[1][1]["messages"][0]["heard_by"] == ["R2"] and body[2][1]["result"]["score"]["success"]
     method, kw = app.state.worker.calls[0]
-    assert method == "arena" and kw == {"slot": "A", "task": "relay", "n": 10, "n_agents": 4, "seed": 0, "turns": 6, "max_new_tokens": 128,
+    assert method == "arena" and kw == {"slot": "A", "task": "relay", "n": 10, "n_agents": 4, "seed": 0, "turns": 6, "max_new_tokens": 512,
                                         "max_calls": 4, "max_history": 1, "stop_when_done": True, "opponent": None, "batch_size": None}
     # (one robot was accepted here and could only fail in the worker: World needs at least 2; the task's check now says so up front)
     assert c.post("/api/model/arena", json={"task": "triangulate", "n_agents": 1}).status_code == 422

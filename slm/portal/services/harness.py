@@ -13,6 +13,7 @@ turn by turn (external slots are refused: no tool protocol)."""
 from __future__ import annotations
 
 import gc
+import itertools
 import time
 from pathlib import Path
 
@@ -130,10 +131,10 @@ def _external_compare(ext, text: str, pairs: list, enc, pair_budget_tokens: int,
     return [S.parse_pick(g.text) for g in gens]
 
 # ------------------------------------------------------------------------------------------------ arena
-ARENA_LIMITS = {"n": (4, 16), "n_agents": (1, 32), "turns": (1, 50), "max_new_tokens": (16, 1024), "max_calls": (0, 16), "max_history": (0, 10)}
+ARENA_LIMITS = {"n": (4, 16), "n_agents": (1, 32), "turns": (1, 1000), "max_new_tokens": (16, 1024), "max_calls": (0, 16), "max_history": (0, 10)}
 
 
-def arena_check(task: str, n: int, n_agents: int, turns: int, max_new_tokens: int, max_calls: int, max_history: int) -> None:
+def arena_check(task: str, n: int, n_agents: int, turns: int | None, max_new_tokens: int, max_calls: int, max_history: int) -> None:
     """The arena's argument rules (the API validates the same ones): ranges, and the robot counts a task can be built
     for -- key_door pairs a key holder with a door opener (an odd robot out has no door: its system prompt cannot be
     written), and a relay needs a source and a sink."""
@@ -143,6 +144,8 @@ def arena_check(task: str, n: int, n_agents: int, turns: int, max_new_tokens: in
         raise RuntimeError(f"unknown arena task {task!r}; known: {', '.join(sorted(TASKS))}")
     for k, v in (("n", n), ("n_agents", n_agents), ("turns", turns), ("max_new_tokens", max_new_tokens), ("max_calls", max_calls),
                  ("max_history", max_history)):
+        if k == "turns" and v is None:  # no turn limit: the episode runs until the game ends or is stopped
+            continue
         lo, hi = ARENA_LIMITS[k]
         if not lo <= int(v) <= hi:
             raise RuntimeError(f"arena {k}={v}: expected {lo}-{hi}")
@@ -650,12 +653,13 @@ class Harness:
         return entrants[0], rounds
 
     @torch.no_grad()
-    def arena(self, slot: str, task: str = "key_door", n: int = 8, n_agents: int = 4, seed: int = 0, turns: int = 12, max_new_tokens: int = 128,
+    def arena(self, slot: str, task: str = "key_door", n: int = 8, n_agents: int = 4, seed: int = 0, turns: int | None = 12, max_new_tokens: int = 128,
               max_calls: int = 4, max_history: int = 1, stop_when_done: bool = True, opponent: str | None = None, batch_size: int | None = None,
               should_stop=None):
         """The arena (slm.arena.world) on one slot: an n x n grid of `n_agents` robots, each a conversation with the
         model, one batched generation per turn (`Runner.step`). Yields {'event': 'start'} with the initial state, the
-        task's comm range and sight, and every robot's system prompt and declared tools; one {'event': 'turn'} per turn
+        task's comm range and sight, and every robot's system prompt and declared tools (`turns=None`: no turn limit, the
+        episode runs until the game ends, with stop_when_done, or is cancelled); one {'event': 'turn'} per turn
         with the Runner's record of every robot (plus `raw`, the generated turn with its reserved tokens), the state
         after the turn, `messages` (what was said this turn and who hears it, see `arena_messages`) and per record
         `declared` (the tools that robot's prompt declared this turn, parsed from the prompt) and `heard` (its inbox:
@@ -703,14 +707,14 @@ class Harness:
         players_meta = {k: {"label": p.label, "slot": keys[i], "external": not p.native, "plays": sides.get(k, "every robot") if len(keys) > 1 else "every robot"}
                         for i, (k, p) in enumerate(runner.players.items())}
         meta = {"slot": slot, "checkpoint": s.info.get("name"), "run": s.info.get("run"), "device": s.info.get("device"), "task": task, "n": int(n),
-                "n_agents": int(n_agents), "seed": int(seed), "turns": int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
+                "n_agents": int(n_agents), "seed": int(seed), "turns": None if turns is None else int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
                 "max_history": int(max_history), "stop_when_done": bool(stop_when_done), "comm_range": world.task.comm_range, "sight": world.task.sight,
                 "players": players_meta, "batch_size": batch_size, "opponent": opponent}
         robots = arena_robots(world)
         yield {"event": "start", "state": world.state(), "robots": robots, "meta": meta}
         t0, cancelled, all_messages = time.time(), False, []
         try:
-            for _ in range(int(turns)):
+            for _ in (itertools.count() if turns is None else range(int(turns))):
                 if stop():
                     cancelled = True
                     break
