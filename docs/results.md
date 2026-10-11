@@ -1769,6 +1769,9 @@ layout advantage (the two lines are identical, one row apart); unexplained.
   against 0.40-0.45 for every model (the best, 0.43 against 0.40); the team-code choice is above chance only at 6 robots (0.00 vs 0.5; at 12 it is 0.41).
 - **The external models still rarely act** in tag and gold rush (Qwen 3-16%, SmolLM2 17-68%): their answers discuss the
   options without settling on a call, or never write one in the plain-text forms `text_action` accepts.
+  Caveat (found 2026-10-11): these runs kept a plain-text player's earlier reply clipped to 300 characters in its
+  history, and greedy decoding copied the clipped reply, stopping mid-word where it ended; that may have cost the
+  external models actions. Our checkpoints replay token ids and were not affected. Not yet re-measured.
 - **Memory**: peak allocated VRAM 1.3-1.7 GiB per turn with both models resident (8 robots, 128 new tokens).
 
 The conclusion of §28 stands with corrected numbers: the arena now measures a decision with a numeric right answer,
