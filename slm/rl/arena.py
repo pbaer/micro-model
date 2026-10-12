@@ -8,7 +8,8 @@ first tool call, as the arena counts only one per turn:
 
     1.0   the right tool, and the right fact in its argument (the code, the name), or a step that really closes (or, for
           a runner, opens) the distance to its goal, or a right tool that takes no argument
-    0.25  the right tool with the wrong argument or a step the wrong way
+    0.25  a real step the wrong way (a sensible action; a move without a direction, or the right tool with the wrong
+          fact, earns nothing: partial credit there was farmed with move("pen") and say("ruler"), tries 1 and 2)
     0.0   no tool call, or the wrong tool
 
 A task carries only a JSON-safe spec of its world (`meta["arena"]`); its declared functions replay that world afresh on
@@ -159,9 +160,10 @@ def arena_verdict(task: Task, calls: list) -> Verdict:
                        fraction=1.0 if good else 0.25)
     if j.get("fact"):  # the team code it must pick of the two it heard
         ok = re.search(rf"\b{j['fact']}\b", str(first[0])) is not None
-        return Verdict(ok, first[0], "own team's code" if ok else "not its own team's code", fraction=1.0 if ok else 0.25)
+        return Verdict(ok, first[0], "own team's code" if ok else "not its own team's code", fraction=1.0 if ok else 0.0)
     if v["call_ok"] is not None:
-        return Verdict(bool(v["call_ok"]), first[0], "right fact" if v["call_ok"] else "wrong argument", fraction=1.0 if v["call_ok"] else 0.25)
+        # no partial credit for the right tool with the wrong fact: at 0.25, try 2 drifted to say("ruler") / say("tape") (2026-10-12)
+        return Verdict(bool(v["call_ok"]), first[0], "right fact" if v["call_ok"] else "wrong argument", fraction=1.0 if v["call_ok"] else 0.0)
     return Verdict(True, first[0], "right tool", fraction=1.0)
 
 

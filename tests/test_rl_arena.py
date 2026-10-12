@@ -47,8 +47,8 @@ def test_the_verdict_from_the_first_tool_call():
     assert arena_verdict(door, [["x = 3", "3"]]).fraction == 0.0, "plain code is not a tool call"
     assert arena_verdict(door, [["look()", "R2 at (1, 1)"]]).fraction == 0.0, "the wrong tool"
     assert arena_verdict(door, [[f'say("it is {code}")', "You said"]]).fraction == 1.0
-    assert arena_verdict(door, [['say("hello")', "You said"]]).fraction == 0.25
-    assert arena_verdict(door, [['say("hello")', "x"], [f'say("{code}")', "x"]]).fraction == 0.25, "only the first tool call counts"
+    assert arena_verdict(door, [['say("hello")', "You said"]]).fraction == 0.0, "the right tool without the fact earns nothing"
+    assert arena_verdict(door, [['say("hello")', "x"], [f'say("{code}")', "x"]]).fraction == 0.0, "only the first tool call counts"
 
     mover = next(x for x in _tasks("tag", 120) if x.meta["judge"]["goal"])
     pos, cells, sense = mover.meta["judge"]["goal"]
@@ -71,7 +71,7 @@ def test_team_relay_scores_its_own_team_code():
     arg = f'"{own}"' if tool != "say" else f'"the code is {own}"'
     name = next(n for n in t.meta["judge"]["tools"] if n in ("say", "submit", "hand_in") and (n == "say") == (tool == "say"))
     assert arena_verdict(t, [[f"{name}({arg})", "ok"]]).fraction == 1.0
-    assert arena_verdict(t, [[f'{name}("{"0000" if own != "0000" else "1111"}")', "ok"]]).fraction == 0.25
+    assert arena_verdict(t, [[f'{name}("{"0000" if own != "0000" else "1111"}")', "ok"]]).fraction == 0.0
 
 
 def test_families_split_train_and_heldout_disjointly():
