@@ -95,7 +95,7 @@ def _fresh_impl(spec: dict, name: str):
     return call
 
 
-def make_arena_task(rng: random.Random, task: str) -> Task | None:
+def make_arena_task(rng: random.Random, task: str, first_turn: bool = False) -> Task | None:
     """One robot-turn task of `task`, or None when the drawn turn asks for no call (the generator retries)."""
     from slm.arena.world import expected_calls
 
@@ -103,7 +103,7 @@ def make_arena_task(rng: random.Random, task: str) -> Task | None:
     style = rng.choices([s for s, _ in STYLES], weights=[w for _, w in STYLES])[0]
     if rng.random() < 0.5:
         style = {**style, "names": "domain"}
-    spec = {"task": task, "n": n, "k": k, "seed": rng.randrange(10**6), "play_seed": rng.randrange(10**6), "turn": rng.randint(0, 8),
+    spec = {"task": task, "n": n, "k": k, "seed": rng.randrange(10**6), "play_seed": rng.randrange(10**6), "turn": 0 if first_turn else rng.randint(0, 8),
             "agent": rng.randrange(k), "style": style}
     try:
         w, a = replay(spec)

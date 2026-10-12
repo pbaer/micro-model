@@ -53,14 +53,21 @@ def _move_turn(goal, n: int, rng: random.Random):
     if not good:
         return None
     dx, dy = near[0] - pos[0], near[1] - pos[1]
+    # the arithmetic written out, own position first: "(2, 5) is 1 west and 2 north of me, I am at (0, 7)" (v1's order,
+    # the relation before the position) came back wrong in most turns of the v1 SFT model (2026-10-12)
+    xs = (f"x: {near[0]} - {pos[0]} = {dx}, so it is {abs(dx)} {'east' if dx > 0 else 'west'}" if dx else f"x: {near[0]} - {pos[0]} = 0, the same column")
+    ys = (f"y: {near[1]} - {pos[1]} = {dy}, so it is {abs(dy)} {'south' if dy > 0 else 'north'}" if dy else f"y: {near[1]} - {pos[1]} = 0, the same row")
+    what = "it" if sense == "towards" else "the chaser"
+    head = f"I am at {pos} and {what} is at {near}. {xs}. {ys}."
     if sense == "towards":  # step along the bigger gap
         best = [d for d in good if (d in ("east", "west") and abs(dx) >= abs(dy)) or (d in ("north", "south") and abs(dy) > abs(dx))] or good
         d = rng.choice(best)
-        why = (f"{near} is {_where(pos, near)}, I am at {pos}. "
-               f"{'Going ' + d + ' closes the bigger gap' if len(good) > 1 else 'Only going ' + d + ' gets me closer'}, so I step {d}.")
-    else:
-        d = rng.choice(good)
-        why = f"The chaser at {near} is {_where(pos, near)}, I am at {pos}. Going {d} takes me further from it, so I step {d}."
+        why = f"{head} {'The bigger gap is ' + d if len(good) > 1 else 'Only ' + d + ' gets me closer'}, so I step {d}."
+    else:  # away: the opposite of where it is, along the bigger gap when that is open
+        opp = {"east": "west", "west": "east", "north": "south", "south": "north"}
+        lean = (("east" if dx > 0 else "west") if abs(dx) >= abs(dy) and dx else ("south" if dy > 0 else "north")) if (dx or dy) else None
+        d = opp[lean] if lean and opp[lean] in good else rng.choice(good)
+        why = f"{head} Going {d} takes me further from it, so I step {d}."
     return d, why
 
 
@@ -86,13 +93,15 @@ def target_turn(task, rng: random.Random):
     args = re.findall(r'"([^"]*)"', exp)
     call = f"{shown}({', '.join(json.dumps(a) for a in args)})"
     if name in ("read_key", "read_code"):
-        why = rng.choice(["I don't know the code yet, and the declared function tells me.", "The code is not in the question; I read it."])
+        why = rng.choice([f"I have not read the code yet, and nobody has told me it. {shown}() returns it, so I read it.",
+                          f"The question asks for the code and I do not have it yet: I read it with {shown}()."])
     elif name == "distance_to_target":
         why = "I need my distance to the target; the declared function measures it."
     elif name == "look":
         why = rng.choice(["I have nothing to pass on yet, so I look who is around.", "Let me see who is near me."])
     elif name == "say":
-        why = f"The robot that needs it can hear me, so I say it: {args[0]}."
+        code = re.search(r"\d+", args[0])
+        why = (f"I know it: {code.group(0)}. " if code else "") + f"The robot that needs it can hear me, so I say it: {args[0]}."
     elif name in ("submit",):
         why = f"I am the last robot and I heard the code {args[0]}, so I hand it in."
     elif name == "open_door":
@@ -124,7 +133,8 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
     # of them against 10k moves, and reading the code is the first link of every chain
     while sum(counts.values()) < n:
         task_name = rng.choice(TRAIN_TASKS)
-        t = make_arena_task(rng, task_name)
+        # first turns, 15% of draws: reading the code opens every chain, and a random turn of a random robot rarely is one
+        t = make_arena_task(rng, task_name, first_turn=rng.random() < 0.15)
         if t is None:
             skipped["no call"] += 1
             continue
@@ -143,7 +153,7 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
         w, a = replay(t.meta["arena"])
         msgs = w.messages(a)
         key = (msgs[-1]["content"], call)
-        if seen[key] >= 40:
+        if seen[key] >= (200 if re.fullmatch(r"\w+\(\)", call) else 40):  # a call with no argument (read, look, pick up) repeats more
             skipped["duplicate"] += 1
             continue
         seen[key] += 1
