@@ -54,6 +54,10 @@ VARIANTS = {
     # round 5: tools named with the words their questions use (key_code, secret_code, pick_up_coin, hand_in)
     "ask_d201_names": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "demos": [2, 0, 1], "names": "domain"},
     "ask_names": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "names": "domain"},
+    # round 6 (a compromise): the tool named, its argument left to the robot
+    "hint_turn": {"tools": "turn", "brief": "none", "question": "hint", "ending": ""},
+    "hint_all": {"tools": "all", "brief": "none", "question": "hint", "ending": ""},
+    "hint_turn_d201": {"tools": "turn", "brief": "none", "question": "hint", "ending": "", "demos": [2, 0, 1]},
     "sit_d201_names": {"tools": "all", "brief": "none", "question": "situation", "ending": " What do you do?", "demos": [2, 0, 1], "names": "domain"},
 }
 SIZES = {"key_door": (8, 6), "relay": (14, 6), "triangulate": (8, 6), "team_relay": (8, 6), "tag": (8, 6), "gold_rush": (8, 6)}

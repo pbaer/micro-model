@@ -1,0 +1,56 @@
+# M11: M10's RL mix plus arena robot turns under fair prompts (slm.rl.arena; results §29 found that M10 cannot play the
+# arena unless the question spells out the call). One task = one robot's turn: every tool declared (or the turn's tool
+# named, its argument left to the robot), the situation in plain words, and the reward from its first tool call (1.0
+# right tool + right fact / a step that really closes or opens the distance; 0.25 right tool, wrong argument; 0 else).
+# Four task families train (key_door, relay, tag, gold_rush, 2 draws each of 33, ~24%); triangulate and team_relay are
+# held out and checked afterwards with the probe and whole episodes. M10's 25 draws stay as they were, so chat, tools
+# and reasoning keep their anchor; continuing from M10's final weights, the reference for the KL is M10 itself.
+run_name: m11_rl_arena_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+model:
+  max_seq_len: 4096
+init_from: runs/m10_rl_336m/checkpoints/final.pt
+tools: true
+max_tool_calls: 6
+tasks: [chat, chat, chat, constraints, constraints, constraints, constraints, gsm8k, gsm8k, gsm8k, pytool_numbers, pytool_numbers, pytool_declared, algebra, algebra, arith2, word, select, select, select, recall, recall, revise, revise, sysrule,
+        arena_key_door, arena_key_door, arena_relay, arena_relay, arena_tag, arena_tag, arena_gold_rush, arena_gold_rush]
+n_train_prompts: 6000
+n_heldout_prompts: 128  # ~31 arena turns among them; per-family scores are logged (heldout_fam_*)
+group_size: 6
+prompts_per_step: 8
+max_new_tokens: 512
+temperature: 0.8
+top_p: 0.95
+think_required: true
+reward_scheme: tool
+reward_schemes:
+  gsm8k: tool
+  pytool: tool
+  constraints: fraction
+  chat: plain
+  select: binary
+  recall: plain
+  revise: fraction
+  sysrule: fraction
+  arena: fraction       # slm.rl.arena.arena_verdict: 1.0 / 0.25 / 0 from the first tool call
+lr: 4.0e-6
+weight_decay: 0.0
+grad_clip: 1.0
+clip_eps: 0.2
+use_ratio: true
+kl_coef: 0.05
+kl_kind: k3
+normalize_std: true
+ppo_epochs: 1
+microbatch: 2
+total_steps: 250        # M10's stage took 1.73 h for 250 steps at 9.9 GiB peak
+entropy_stop: 2.5
+kl_stop: 0.15
+guard_window: 10
+eval_every_steps: 50
+eval_max_new_tokens: 512
+ckpt_every_minutes: 15
+report_every_minutes: 5
+seed: 16
+notes: "M10 + arena robot turns (fair prompts). Gate: heldout_fam_arena_* up, the other families flat; then the probe and whole fair-prompt episodes incl. the held-out triangulate / team_relay, and the standard evals against M10."

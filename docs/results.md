@@ -1845,5 +1845,9 @@ Right tool in those fair episodes: 0.21-0.90 against 0.24-0.31 chance (highest w
 chains still stall at their first link (the code is never read and passed on correctly) and no coin is ever picked up.
 **Under a fair prompt M10 cannot play any of the six games.** Everything the arena measured before was the model
 executing a spelled-out call; choosing the tool and its argument from the situation is a capability it does not have
-yet, and the fair arena is now a target for training rather than an eval it passes. The portal defaults to the fair
-prompt (`ask_examples`); `scaffold` reproduces §24-§28c and is the one that makes for a lively game to watch.
+yet, and the fair arena is now a target for training rather than an eval it passes. A compromise, `hint` (the turn's tool declared
+and named, "Use say() to do it.", its argument left to the robot; three worked examples), scored 0.97 right tool and
+0.45 right fact in the probe (task mean 0.58, the scaffold's 0.66), but in whole episodes (5 seeds) still finished
+nothing: relay progress 0.44, team_relay's codes reached both sinks with no winner, 2 of 20 runners tagged, no coin.
+**The portal is back on the scaffold** (DEFAULT_PROMPT); the fair styles stay selectable, and the arena is now an RL
+target (`slm.rl.arena`, run m11_rl_arena_336m).

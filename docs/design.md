@@ -509,6 +509,12 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   judged against the call the scaffold would have spelled out (`_judge`: `tool_ok` against `tool_chance`, `call_ok` for a
   call that carries a fact) and carries `prompt_text`, the exact context the model read. `scripts/arena_prompt_probe.py`
   hill-climbs styles one decision at a time (results §29).
+  **RL on robot turns** (`slm/rl/arena.py`, families `arena_<task>`): a task is one robot's turn of an oracle-played
+  episode (20% random actions, so the states vary) under a fair prompt; only a JSON spec of the world travels with it,
+  and every declared tool replays that world afresh when called (`replay`), so the samples of a group never share one.
+  `arena_verdict` scores the first tool call (1.0 right tool and fact / a step that closes or opens the distance to the
+  question's `goal`; 0.25 right tool, wrong argument; 0), through the rollout's `verifier: "arena"` branch and the
+  `fraction` scheme. triangulate and team_relay are never trained on. The trainer's eval logs `heldout_fam_<family>`.
   **Competitive tasks** (2026-10-10): `team_relay` (two teams race their own code down parallel lines; comm range 3 steps, a
   square of 2 since 2026-10-11, so each robot hears its teammate and the rival robot diagonally behind it in the same turn), `tag` (the first third chase
   with `tag(name)`, the rest run) and `gold_rush` (free for all over twice as many coins as robots, `grab()`). Each keeps

@@ -227,12 +227,12 @@ class KeyDoor(Task):
             d = _direction(agent.pos, partner.pos)
             return _ask(agent, f"Robot {partner.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"],
                         f"The key code for door {i + 1} is {code}. You are at {agent.pos}; {partner.name}, who opens the door, is at {partner.pos}, "
-                        f"too far to hear you (robots hear within {self.comm_range} cells in every direction). Get closer to {partner.name}.", ask=f"Which cell are you on after one step towards {partner.name}?")
+                        f"too far to hear you (robots hear within {self.comm_range} cells in every direction). Get closer to {partner.name}.", ask=f"Which cell are you on after one step towards {partner.name}?", goal=([partner.pos], "towards"))
         door = self._door_cell(i)
         if agent.pos != door:
             d = _direction(agent.pos, door)
             return _ask(agent, f"Door {i + 1} is at {door} and you are at {agent.pos}. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"],
-                        f"Door {i + 1} is at {door} and you are at {agent.pos}. Get to the door.", ask="Which cell are you on after one step towards the door?")
+                        f"Door {i + 1} is at {door} and you are at {agent.pos}. Get to the door.", ask="Which cell are you on after one step towards the door?", goal=([door], "towards"))
         msg = agent.memory.get("code_msg")
         if msg:
             code = re.search(r"\d{4}", msg).group(0)
@@ -382,7 +382,7 @@ class Triangulate(Task):
             d = _direction(agent.pos, digger.pos)
             return _ask(agent, f"Robot {digger.name} is too far to hear you. Call move(\"{d}\") to step one cell {d}. What does move() return?", ["move"],
                         f"You are at {agent.pos}, {dsn} steps from the buried target. {digger.name}, the digger, is at {digger.pos}, too far to "
-                        f"hear you (robots hear within {self.comm_range} cells in every direction). Get closer to {digger.name}.", ask=f"Which cell are you on after one step towards {digger.name}?")
+                        f"hear you (robots hear within {self.comm_range} cells in every direction). Get closer to {digger.name}.", ask=f"Which cell are you on after one step towards {digger.name}?", goal=([digger.pos], "towards"))
         cur = dist(agent.pos, self.target)
         if cur == 0:
             return _ask(agent, "You are standing right on the buried target. Call dig() to dig it up. What does dig() return?", ["dig"],
@@ -418,7 +418,7 @@ class Triangulate(Task):
 # say("the code is ...") verbatim, every one of 48 moves invalid. Given the calls themselves it copies one, and which
 # one is the decision. Each score carries the chance rate of its decision (the share of offered calls that are right).
 
-def _ask(agent: Agent, legacy: str, tools: list[str], situation: str, ask: str = "") -> tuple[str, list[str]]:
+def _ask(agent: Agent, legacy: str, tools: list[str], situation: str, ask: str = "", goal: tuple | None = None) -> tuple[str, list[str]]:
     """A question branch: the scaffolded question (the call to make, spelled out) and the tool it declares, plus the
     fair `situation` (stored on the robot for World): the facts the robot has and its immediate goal in plain words, no
     tool named and no call or argument given, so choosing the tool and its argument is the model's (2026-10-11)."""
@@ -427,6 +427,9 @@ def _ask(agent: Agent, legacy: str, tools: list[str], situation: str, ask: str =
     # shape the declared-function training data has ("What is the combined population of ...?" with population()
     # declared), so the "ask" question level is the situation followed by it
     agent.memory["_ask"] = ask
+    # `goal`: for a move, the cells it should head for ("towards") or get away from ("away"), so a step can be judged by
+    # whether it really closes or opens the distance (slm.rl.arena); None for every other question and a free move
+    agent.memory["_goal"] = (agent.pos, [tuple(c) for c in goal[0]], goal[1]) if goal else None
     return legacy, tools
 
 
@@ -730,7 +733,7 @@ class Tag(Task):
             agent.memory["q_move"] = (agent.pos, r.pos)
             return _ask(agent, (f"You are at {agent.pos}. The nearest runner, {r.name}, is at {r.pos}. Which step gets you closer to it? "
                                 f"Call one of {opts}. What does move() return?"), ["move"],
-                        f"You are a chaser, at {agent.pos}. The nearest runner, {r.name}, is at {r.pos}. Get closer to it.", ask=f"Which cell are you on after one step towards {r.name}?")
+                        f"You are a chaser, at {agent.pos}. The nearest runner, {r.name}, is at {r.pos}. Get closer to it.", ask=f"Which cell are you on after one step towards {r.name}?", goal=([r.pos], "towards"))
         if agent.name in self.tagged:
             return _ask(agent, "You have been tagged and are out of the game. Use look() to watch. What does look() return?", ["look"],
                         "You have been tagged and are out of the game.", ask="What do you see around you?")
@@ -739,7 +742,7 @@ class Tag(Task):
         agent.memory["q_move"] = (agent.pos, c.pos)
         return _ask(agent, (f"You are at {agent.pos}. The nearest chaser, {c.name}, is at {c.pos}. Which step gets you further away from it? "
                             f"Call one of {opts}. What does move() return?"), ["move"],
-                    f"You are a runner, at {agent.pos}. The nearest chaser, {c.name}, is at {c.pos}. Get away from it.", ask=f"Which cell are you on after one step away from {c.name}?")
+                    f"You are a runner, at {agent.pos}. The nearest chaser, {c.name}, is at {c.pos}. Get away from it.", ask=f"Which cell are you on after one step away from {c.name}?", goal=([c.pos], "away"))
 
     def after_turn(self, world, agent, record):
         q = agent.memory.pop("q_move", None)
@@ -846,7 +849,7 @@ class GoldRush(Task):
         listed = ", ".join(str(c) for c in shown[:-1]) + (" and " if len(shown) > 1 else "") + str(shown[-1])
         return _ask(agent, (f"You are at {agent.pos}. Coins lie at {listed}. Which coin is nearest to you? Step towards it: call one of "
                             f"{_move_calls(self.rng)[0]}. What does move() return?"), ["move"],
-                    f"You are at {agent.pos}. Coins lie at {listed}. Head for the nearest coin.", ask="Which cell are you on after one step towards the nearest coin?")
+                    f"You are at {agent.pos}. Coins lie at {listed}. Head for the nearest coin.", ask="Which cell are you on after one step towards the nearest coin?", goal=(agent.memory["q_move"][1], "towards"))
 
     def after_turn(self, world, agent, record):
         q = agent.memory.pop("q_move", None)
@@ -882,9 +885,12 @@ PROMPTS = {
     # the probe's best fair shape (results §29): every tool declared, no briefing, the "ask" question, and three worked
     # examples in the order look around, move to a pad, pass a password on (the last example weighs most), and the tools
     # named with the words their questions use (key_code, secret_code, pick_up_coin, hand_in)
+    # the compromise (results §29): the turn's tool declared and named ("Use say() to do it."), its argument left to the
+    # robot, which must carry the fact from the situation into the call; three worked examples in the same shape
+    "hint": {"tools": "turn", "brief": "none", "question": "hint", "ending": "", "demos": [2, 0, 1]},
     "ask_examples": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "demos": [2, 0, 1], "names": "domain"},
 }
-DEFAULT_PROMPT = "ask_examples"
+DEFAULT_PROMPT = "scaffold"  # results §29: under the fair prompts M10 makes no progress in any task
 
 # Worked examples put in front of the conversation (`demo`: how many): a situation from no task of the arena and a turn
 # that reasons, makes one call and answers, in the shape our checkpoints generate. They show the protocol (pick a tool,
@@ -954,7 +960,7 @@ def prompt_style(prompt) -> dict:
     st = {"demo": 0, "docs": "plain"} | dict(PROMPTS[DEFAULT_PROMPT]) | dict(prompt or {})
     if "demo" in (prompt or {}) and "demos" not in (prompt or {}):
         st.pop("demos", None)  # a count of examples asked for: not the default's ordered list
-    if st["tools"] not in ("turn", "all") or st["brief"] not in ("none", "system", "user") or st["question"] not in ("call", "situation", "ask"):
+    if st["tools"] not in ("turn", "all") or st["brief"] not in ("none", "system", "user") or st["question"] not in ("call", "situation", "ask", "hint"):
         raise ValueError(f"bad prompt style {st}")
     return st
 
@@ -1068,6 +1074,9 @@ class World:
         if st["question"] == "situation":
             q = agent.memory.get("_situation") or q
             q = f"{q}{st['ending']}"
+        elif st["question"] == "hint":  # the situation, then the tool to use, named; its argument is the robot's to fill in
+            _, names = self.turn_question(agent)
+            q = f"{agent.memory.get('_situation') or q} Use {names[0]}() to do it." if names else q
         elif st["question"] == "ask":
             q = " ".join(x for x in (agent.memory.get("_situation"), agent.memory.get("_ask")) if x) or q
         if st["brief"] == "user":
@@ -1124,7 +1133,8 @@ class World:
         demos = []
         order = self.prompt.get("demos") or list(range(self.prompt.get("demo", 0)))  # `demos`: which examples, in order (the last weighs most)
         for d in (DEMOS[i] for i in order):  # worked examples: a plain-text player reads the call and the answer
-            q = f"{d['situation']} {d['ask']}" if self.prompt["question"] == "ask" else f"{d['situation']}{self.prompt['ending']}"
+            q = (f"{d['situation']} {d['ask']}" if self.prompt["question"] == "ask" else f"{d['situation']} Use {d['call'].split('(')[0]}() to do it."
+                 if self.prompt["question"] == "hint" else f"{d['situation']}{self.prompt['ending']}")
             demos += [{"role": "user", "content": f"{q}{self.SUFFIX}"},
                       {"role": "assistant", "content": f"{d['call']}\n{d['answer']}", "demo": d}]
         return system + demos + history + [{"role": "user", "content": self.observation(agent)}]

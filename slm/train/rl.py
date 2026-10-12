@@ -190,12 +190,18 @@ class RlTrainer:
         c = self.cfg
         self.model.eval()
         with sdpa_context("decode"):
-            held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls)
+            kept: list = []
+            held = greedy_accuracy(self.model, self.tok, self.heldout_tasks, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls,
+                                   keep=kept)
             train_sub = self.rng.sample(self.train_tasks, min(len(self.heldout_tasks), len(self.train_tasks)))
             tr = greedy_accuracy(self.model, self.tok, train_sub, c.eval_max_new_tokens, c.think_required, tools=c.tools, max_tool_calls=c.max_tool_calls)
         self.model.train()
+        fam: dict[str, list] = {}
+        for r in kept:  # per family: the trainer's aggregate hides a family that moves the other way
+            fam.setdefault(r.task, []).append(r.fraction if r.fraction is not None else float(r.correct))
         return {"heldout_acc": held["accuracy"], "heldout_score": held["score"], "heldout_malformed": held["malformed_rate"], "heldout_len": held["mean_len"],
-                "train_acc": tr["accuracy"], "train_score": tr["score"], "train_len": tr["mean_len"]}
+                "train_acc": tr["accuracy"], "train_score": tr["score"], "train_len": tr["mean_len"],
+                **{f"heldout_fam_{k}": round(sum(v) / len(v), 3) for k, v in sorted(fam.items())}}
 
     def train(self) -> None:
         c = self.cfg

@@ -120,9 +120,14 @@ def sample_completions(
 
 def _make_rollout(tok, task, prompt_ids, c, old_lp, ref_lp, temperature, top_p, reward_scheme, checkpoint, step, tc=None) -> Rollout:
     parsed = parse_assistant(tok, c)
-    v = verify_answer(parsed["answer"], task.answer, task.meta.get("verifier", "auto"))
-    malformed = bool(parsed["malformed"]) or not parsed["terminated"]
     calls = list(tc.calls) if tc is not None else []
+    if task.meta.get("verifier") == "arena":  # a robot turn is judged by the tool call it made, not by its answer line
+        from slm.rl.arena import arena_verdict
+
+        v = arena_verdict(task, calls)
+    else:
+        v = verify_answer(parsed["answer"], task.answer, task.meta.get("verifier", "auto"))
+    malformed = bool(parsed["malformed"]) or not parsed["terminated"]
     aft = answer_from_tool(v.parsed, calls)
     return Rollout(
         prompt_id=task.id, task=task.task, prompt=task.prompt, gold=task.answer, prompt_ids=prompt_ids, completion_ids=c,
@@ -194,7 +199,9 @@ def greedy_accuracy(model: Transformer, tok: SlmTokenizer, tasks: list[Task], ma
     by_len: dict[tuple, list] = {}
     for t, ids in enc:  # one batch shares a prompt length AND a set of declared functions (one session env per call)
         fns = t.meta.get("functions") or None
-        by_len.setdefault((len(ids), tuple(sorted((d.name, d.signature, d.comment) for d in fns)) if fns else ()), []).append((t, ids))
+        # an arena task's impls replay its own world: tasks with the same declarations still need their own batch
+        own = t.id if t.meta.get("verifier") == "arena" else None
+        by_len.setdefault((len(ids), tuple(sorted((d.name, d.signature, d.comment) for d in fns)) if fns else (), own), []).append((t, ids))
     correct = malformed = calls = errors = used = from_tool = 0
     lengths, scores = [], []
     for group in by_len.values():

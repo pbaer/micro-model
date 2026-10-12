@@ -270,6 +270,19 @@ GENERATORS = {
 }
 
 
+def _arena(task: str):
+    def gen(rng: random.Random):
+        from slm.rl.arena import make_arena_task  # lazy: slm.rl.arena imports this module
+
+        return make_arena_task(rng, task)
+    return gen
+
+
+# arena robot turns under a fair prompt (slm.rl.arena); triangulate and team_relay are the held-out generalization check
+for _t in ("key_door", "relay", "tag", "gold_rush", "triangulate", "team_relay"):
+    GENERATORS[f"arena_{_t}"] = _arena(_t)
+
+
 def task_key(t: Task) -> str:
     """What makes a task distinct for splitting and leak checks: the prompt alone, or, for multi-turn families, the
     whole conversation (the same final question recurs over many histories)."""
