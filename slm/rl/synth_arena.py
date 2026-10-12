@@ -106,8 +106,9 @@ def target_turn(task, rng: random.Random):
         why = f"I am the last robot and I heard the code {args[0]}, so I hand it in."
     elif name == "open_door":
         why = f"I am on the door's cell and I was told the code {args[0]}, so I open the door with it."
-    elif name == "tag":
-        why = f"{args[0]} is right next to me, so I tag it."
+    elif name == "tag":  # v3: the v2 model, next to a runner, kept stepping into its cell (a bump every turn)
+        at = re.search(r"right next to you at (\(\d+, \d+\))", task.prompt)
+        why = f"{args[0]} is right next to me{' at ' + at.group(1) if at else ''}, one step away. I cannot step onto its cell, so I tag it."
     elif name == "grab":
         why = "I am standing on a coin, so I pick it up."
     else:
@@ -131,12 +132,17 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
     seen: Counter = Counter()  # identical conversations, capped: a turn whose question is the same in every world
     # (reading the code, picking up a coin) is word for word identical; deduplicated to one copy, the first build had 3-12
     # of them against 10k moves, and reading the code is the first link of every chain
+    tag_quota = max(1, n * 3 // 100)  # v3: a chaser next to a runner is ~3% of tag turns; ~600 of 20k are drawn on purpose
     while sum(counts.values()) < n:
-        task_name = rng.choice(TRAIN_TASKS)
+        hunting = tools["tag"] < tag_quota
+        task_name = "tag" if hunting else rng.choice(TRAIN_TASKS)
         # first turns, 15% of draws: reading the code opens every chain, and a random turn of a random robot rarely is one
         t = make_arena_task(rng, task_name, first_turn=rng.random() < 0.15)
         if t is None:
             skipped["no call"] += 1
+            continue
+        if hunting and not t.answer.startswith("tag("):
+            skipped["tag hunt"] += 1
             continue
         if t.answer.startswith("move(") and rng.random() < 0.5:  # moves are most robot-turns: kept to about half the set
             skipped["move thinned"] += 1
