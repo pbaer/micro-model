@@ -1,16 +1,18 @@
 # M11: M10's RL mix plus arena robot turns under fair prompts (slm.rl.arena; results §29 found that M10 cannot play the
 # arena unless the question spells out the call). One task = one robot's turn: every tool declared (or the turn's tool
 # named, its argument left to the robot), the situation in plain words, and the reward from its first tool call (1.0
-# right tool + right fact / a step that really closes or opens the distance; 0.25 right tool, wrong argument; 0 else).
+# right tool + right fact / a step that really closes or opens the distance; 0.25 a real step the wrong way; 0 else).
 # Four task families train (key_door, relay, tag, gold_rush, 2 draws each of 33, ~24%); triangulate and team_relay are
 # held out and checked afterwards with the probe and whole episodes. M10's 25 draws stay as they were, so chat, tools
-# and reasoning keep their anchor; continuing from M10's final weights, the reference for the KL is M10 itself.
+# and reasoning keep their anchor. Tries 1-3 (runs/m11_rl_arena_336m_try1..3) started from M10: try 1 farmed 0.25 with
+# move("pen"), try 2 with say("ruler") (partial credit for a wrong argument, now 0), and try 3, clean, earned 0.07 a turn
+# after 50 steps; so this starts from the arena SFT (m11_arena_sft_336m), which is also the KL reference.
 run_name: m11_rl_arena_336m
 tokenizer_dir: C:\slm-data\tokenizer\v1
 model_file: configs/model/base_336m.yaml
 model:
   max_seq_len: 4096
-init_from: runs/m10_rl_336m/checkpoints/final.pt
+init_from: runs/m11_arena_sft_336m/checkpoints/final.pt  # the arena-format SFT on M10 (tries 1-3 started from M10 itself)
 tools: true
 max_tool_calls: 6
 tasks: [chat, chat, chat, constraints, constraints, constraints, constraints, gsm8k, gsm8k, gsm8k, pytool_numbers, pytool_numbers, pytool_declared, algebra, algebra, arith2, word, select, select, select, recall, recall, revise, revise, sysrule,
