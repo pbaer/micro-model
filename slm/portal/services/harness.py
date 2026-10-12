@@ -177,14 +177,9 @@ def arena_generate(runner, prompts: list[list[int]], sessions: list, model=None,
 
 def arena_messages(world) -> list[dict]:
     """What was said this turn, from `world.pending` before the next `deliver()`: speaker, text, and the robots that
-    will hear it -- computed exactly as `deliver` will (Manhattan distance from the speaker's position now, within the
-    task's comm range). A robot that spoke and then moved is heard from where it ended the turn, so `heard_by` can
-    differ from the "Heard by" line its `say` call returned."""
-    from slm.arena.world import dist
-
+    will hear it (those within the comm range square when it was said, as its "Heard by" line says; delivered next turn)."""
     out = []
-    for speaker, text in world.pending:
-        near = [b for b in world.agents if b is not speaker and dist(speaker.pos, b.pos) <= world.task.comm_range]
+    for speaker, text, near in world.pending:
         out.append({"speaker": speaker.name, "speaker_id": speaker.id, "pos": list(speaker.pos), "text": text,
                     "heard_by": [b.name for b in near], "heard_by_ids": [b.id for b in near]})
     return out
@@ -655,7 +650,7 @@ class Harness:
     @torch.no_grad()
     def arena(self, slot: str, task: str = "key_door", n: int = 8, n_agents: int = 4, seed: int = 0, turns: int | None = 12, max_new_tokens: int = 128,
               max_calls: int = 4, max_history: int = 1, stop_when_done: bool = True, opponent: str | None = None, batch_size: int | None = None,
-              temperature: float = 0.0, sample_seed: int | None = None, should_stop=None):
+              temperature: float = 0.0, sample_seed: int | None = None, prompt: str | None = None, should_stop=None):
         """The arena (slm.arena.world) on one slot: an n x n grid of `n_agents` robots, each a conversation with the
         model, one batched generation per turn (`Runner.step`). Yields {'event': 'start'} with the initial state, the
         task's comm range and sight, and every robot's system prompt and declared tools (`turns=None`: no turn limit, the
@@ -678,7 +673,7 @@ class Harness:
         keys = [slot] + ([opponent] if opponent and opponent != slot else [])
         for k in keys:
             self.slots[k].require()
-        world = A.World(task, int(n), int(n_agents), int(seed), int(max_history))
+        world = A.World(task, int(n), int(n_agents), int(seed), int(max_history), prompt=prompt)
         runner = A.Runner(world, None, None, int(max_new_tokens), int(max_calls), batch_size=batch_size, temperature=float(temperature),
                           sample_seed=sample_seed)
         declared: dict[int, list[str]] = {}
@@ -711,7 +706,8 @@ class Harness:
                 "n_agents": int(n_agents), "seed": int(seed), "turns": None if turns is None else int(turns), "max_new_tokens": int(max_new_tokens), "max_calls": int(max_calls),
                 "max_history": int(max_history), "stop_when_done": bool(stop_when_done), "comm_range": world.task.comm_range, "sight": world.task.sight,
                 "players": players_meta, "batch_size": batch_size, "opponent": opponent,
-                "temperature": float(temperature), "sample_seed": sample_seed}
+                "temperature": float(temperature), "sample_seed": sample_seed, "prompt": world.prompt,
+                "prompt_name": prompt or A.DEFAULT_PROMPT}
         robots = arena_robots(world)
         yield {"event": "start", "state": world.state(), "robots": robots, "meta": meta}
         t0, cancelled, all_messages = time.time(), False, []

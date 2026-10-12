@@ -40,6 +40,15 @@ def harness(tmp_path_factory):
     h.load("A", str(ck), device="cpu", dtype="fp32")
     return h, tok
 
+@pytest.fixture(autouse=True)
+def _scaffold_prompt(monkeypatch):
+    """These tests check the arena's mechanics through the scaffolded questions (the oracle reads the call they spell
+    out), so the World default is the scaffold here; the fair prompt shapes have their own tests."""
+    from slm.arena import world as _w
+
+    monkeypatch.setattr(_w, "DEFAULT_PROMPT", "scaffold")
+
+
 
 def _tc(tok, think: str, answer: str, calls: list) -> ToolCompletion:
     """A generated turn as sample_with_tools returns it: think, </think>, the status line, <|end|>."""
@@ -94,7 +103,7 @@ def test_harness_arena_turn_events_messages_and_stop_at_done(harness, monkeypatc
 
     start = evs[0]
     assert start["state"]["turn"] == 0 and start["state"]["task"] == "key_door" and len(start["state"]["agents"]) == 2
-    assert start["meta"]["comm_range"] == 3 and start["meta"]["sight"] == 2 and start["meta"]["device"] == "cpu"
+    assert start["meta"]["comm_range"] == 2 and start["meta"]["sight"] == 2 and start["meta"]["device"] == "cpu"
     r1, r2 = start["robots"]
     assert [t["name"] for t in r1["tools"]] == ["move", "say", "look", "read_key"]
     assert [t["name"] for t in r2["tools"]] == ["move", "say", "look", "open_door"]
@@ -225,7 +234,7 @@ def test_harness_arena_external_slot_plays_through_plain_text(harness):
 def test_arena_messages_follow_delivery():
     w = World("key_door", n=8, n_agents=4, seed=2)
     a, b, c, d = w.agents
-    a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y = 0, 0, 1, 1, 7, 7, 0, 3
+    a.x, a.y, b.x, b.y, c.x, c.y, d.x, d.y = 0, 0, 1, 1, 7, 7, 2, 2  # R4 on a corner of R1's 5x5 square
     env = {x.id: {f.name: f.impl for f in w.decls[x.id]} for x in w.agents}
     env[0]["say"]("door 1 code 1234")
     env[2]["say"]("anyone?")
@@ -306,7 +315,7 @@ def test_arena_endpoint_validates_and_streams(tmp_path):
     method, kw = app.state.worker.calls[0]
     assert method == "arena" and kw == {"slot": "A", "task": "relay", "n": 10, "n_agents": 4, "seed": 0, "turns": 6, "max_new_tokens": 512,
                                         "max_calls": 4, "max_history": 1, "stop_when_done": True, "opponent": None, "batch_size": None,
-                                        "temperature": 0.3, "sample_seed": None}
+                                        "temperature": 0.3, "sample_seed": None, "prompt": None}
     # (one robot was accepted here and could only fail in the worker: World needs at least 2; the task's check now says so up front)
     assert c.post("/api/model/arena", json={"task": "triangulate", "n_agents": 1}).status_code == 422
     _sse(c, {"task": "triangulate", "n_agents": 2, "n": 16, "turns": 50, "slot": "B", "stop_when_done": False, "max_new_tokens": 1024})
@@ -427,7 +436,7 @@ def test_arena_world_endpoint_rebuilds_the_start(tmp_path):
     v = c.get("/api/model/arena/world", params={"task": "key_door", "n": 8, "n_agents": 4, "seed": 5}).json()
     w = World("key_door", 8, 4, 5)
     assert v["state"] == json.loads(json.dumps(w.state())), "World is deterministic: the start a CLI episode was played from"
-    assert v["meta"] == {"task": "key_door", "n": 8, "n_agents": 4, "seed": 5, "comm_range": 3, "sight": 2}
+    assert v["meta"] == {"task": "key_door", "n": 8, "n_agents": 4, "seed": 5, "comm_range": 2, "sight": 2}
     assert [r["name"] for r in v["robots"]] == ["R1", "R2", "R3", "R4"] and v["robots"][1]["tools"][-1]["name"] == "open_door"
     assert v["robots"][0]["system_prompt"] == w.system_prompt(w.agents[0])
     # the CLI transcript's turn-1 positions agree with the rebuilt start (relay robots never move)

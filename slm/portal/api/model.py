@@ -83,15 +83,22 @@ class ArenaRequest(BaseModel):
     batch_size: int | None = Field(None, ge=1, le=32)  # max robots per generation call (lower = less peak VRAM); None = all
     temperature: float = Field(0.3, ge=0.0, le=2.0)  # every turn's sampling temperature (top-p 0.95); 0 = greedy, as the evals run
     sample_seed: int | None = Field(None, ge=0, le=2**31 - 1)  # the sampler's seed apart from the world's (the tab sends a random one)
+    prompt: str | None = None  # a slm.arena.world PROMPTS style (None = DEFAULT_PROMPT): which tools are declared, the briefing, how much the question spells out
 
     @model_validator(mode="after")
     def _robots_fit_task(self):
         from slm.arena.world import TASKS  # torch-free
 
+        from slm.arena.world import PROMPTS
+
         try:
             TASKS[self.task].check(self.n, self.n_agents)
         except ValueError as e:
             raise ValueError(str(e)) from None
+        if self.n_agents > self.n * self.n:
+            raise ValueError(f"{self.n_agents} robots do not fit on a {self.n}x{self.n} grid: one robot per cell")
+        if self.prompt is not None and self.prompt not in PROMPTS:
+            raise ValueError(f"unknown prompt style {self.prompt!r}; known: {', '.join(PROMPTS)}")
         if self.opponent is not None and self.opponent == self.slot:
             raise ValueError("the opponent must be the other slot")
         return self
@@ -374,6 +381,15 @@ def arena_tasks() -> list[dict]:
              "gold_rush": {"A": "the odd robots (R1, R3, ...)", "B": "the even robots (R2, R4, ...)"}}  # = Task.sides()
     return [{"key": k, **ARENA_TASKS[k], "comm_range": TASKS[k].comm_range, "sight": TASKS[k].sight, "sides": sides.get(k)}
             for k in sorted(TASKS) if k in ARENA_TASKS]
+
+
+@router.get("/arena/prompts")
+def arena_prompts() -> dict:
+    """The arena's prompt styles (slm.arena.world PROMPTS) and the default: which tools a robot's prompt declares, where
+    its briefing goes, whether the question spells out the call, how many worked examples come first."""
+    from slm.arena.world import DEFAULT_PROMPT, PROMPTS, prompt_style
+
+    return {"default": DEFAULT_PROMPT, "styles": {k: prompt_style(k) for k in PROMPTS}}
 
 
 @router.get("/arena/episodes")

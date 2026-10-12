@@ -53,6 +53,19 @@ const M4 = {
 const lerp = (a, b, t) => a + (b - a) * t;
 const ROBOT = 1.3;  // robot scale: chunky enough to read their googly eyes from the default camera
 const ease = (t) => (t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t));
+const backOut = (t, c = 1.9) => { const u = Math.max(0, Math.min(1, t)) - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+/** A cartoon scoot over one cell, `tt` seconds into the turn: a wind-up (lean back, squash, a little step back), a dash
+ *  that overshoots and settles (leaning into it), then a rocking stop. p = progress 0..1(+), lean in radians (+ = forward). */
+const SCOOT = 0.62;
+const scootPose = (tt) => {
+  if (tt < 0.12) { const u = Math.sin((tt / 0.12) * Math.PI / 2); return { p: -0.07 * u, lean: -0.22 * u, squash: 1 - 0.12 * u }; }
+  if (tt < SCOOT) { const u = (tt - 0.12) / (SCOOT - 0.12); return { p: -0.07 + 1.07 * backOut(u), lean: 0.36 * Math.sin(Math.min(1, u * 1.3) * Math.PI) - 0.22 * Math.max(0, 1 - u * 4), squash: 1 + 0.07 * Math.sin(u * Math.PI) }; }
+  const s = tt - SCOOT;
+  return { p: 1, lean: 0.3 * Math.exp(-4 * s) * Math.sin(16 * s), squash: 1 - 0.07 * Math.exp(-6 * s) * Math.sin(18 * s) };
+};
+/** A bump: lunge 0.4 of a cell towards the occupied cell, hit at BUMP_HIT, bounce back past the start and settle. */
+const BUMP_HIT = 0.16;
+const bumpOffset = (tt) => (tt < BUMP_HIT ? 0.4 * ease(tt / BUMP_HIT) : 0.4 * Math.exp(-7 * (tt - BUMP_HIT)) * Math.cos(13 * (tt - BUMP_HIT)));
 const hex = (c) => { const m = /^#?([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(c); return m ? [1, 2, 3].map((i) => parseInt(m[i], 16) / 255) : [0.6, 0.6, 0.6]; };
 const hsl = (s) => {  // "hsl(h, s%, l%)" -> rgb 0..1
   const m = /hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*\)/.exec(s);
@@ -146,7 +159,14 @@ function fixWinding(g) {
 const VS = `attribute vec3 aP; attribute vec3 aN; attribute vec3 aC;
 uniform mat4 uM; uniform mat4 uVP; uniform float uInflate;
 varying vec3 vN; varying vec3 vW; varying vec3 vC;
-void main() { vec4 w = uM * vec4(aP + aN * uInflate, 1.0); vW = w.xyz; vN = mat3(uM) * aN; vC = aC; gl_Position = uVP * w; }`;
+void main() {
+  vec4 w = uM * vec4(aP, 1.0);
+  // the ink hull: pushed away from the part's centre in world space, after scaling. Pushed along the vertex normals in
+  // the mesh's own space (until 2026-10-11) it took the scale with it (a flattened coin or a board-sized box got a thick
+  // slab on one side and none on another) and split at hard edges, where the rim and the caps have different normals.
+  if (uInflate > 0.0) { vec3 c = (uM * vec4(0.0, 0.0, 0.0, 1.0)).xyz; w.xyz += normalize(w.xyz - c + vec3(1e-5)) * uInflate * 0.7; }
+  vW = w.xyz; vN = mat3(uM) * aN; vC = aC; gl_Position = uVP * w;
+}`;
 const FS = `precision mediump float;
 uniform vec3 uColor; uniform vec3 uLight; uniform vec3 uCam; uniform vec3 uFog; uniform float uAlpha; uniform float uVC; uniform float uFlat; uniform float uEmit; uniform float uFogFar;
 varying vec3 vN; varying vec3 vW; varying vec3 vC;
@@ -219,12 +239,24 @@ class Renderer {
 }
 
 // ------------------------------------------------------------------------------------------------ what a turn did, per robot
+/** The robot this turn's move bumped into, {into, at: [x, y]}: the record's `bumped` (2026-10-11), else the move's result. */
+const bumpOf = (rec) => {
+  if (!rec) return null;
+  if (rec.bumped) return rec.bumped;
+  for (const c of rec.calls || []) {
+    const m = /Bump! (R\d+) is standing at \((\d+), (\d+)\)/.exec(String(c[1] || ""));
+    if (m) return { into: m[1], at: [Number(m[2]), Number(m[3])] };
+  }
+  return null;
+};
 const EMOTE = (rec, said) => {
   if (!rec) return null;
   const res = (rec.calls || []).map((c) => String(c[1] || ""));
   const code = (rec.calls || []).map((c) => String(c[0] || ""));
   if (!rec.calls || !rec.calls.length) return { e: "❓", why: "no tool call this turn" };
   if (res.some((r) => /^\s*error\b|Traceback/.test(r))) return { e: "💥", why: "a call failed" };
+  const bump = bumpOf(rec);
+  if (bump) return { e: "💫", why: `bumped into ${bump.into}`, bump: true };
   if (res.some((r) => /You tagged/.test(r))) return { e: "🫵", why: "tagged a runner!", big: true };
   if (res.some((r) => /picked up the coin/.test(r))) return { e: "🪙", why: "+1 coin", big: true };
   if (res.some((r) => /is open|Task complete|Correct!|finished|found it/i.test(r))) return { e: "🎉", why: "goal!", big: true };
@@ -268,8 +300,17 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
       d.__seen = true;
       return d;
     };
-    const burst = (x, y, z, kind, k = 26) => {
-      const COLS = { confetti: [[0.98, 0.4, 0.5], [0.4, 0.75, 0.98], [0.99, 0.84, 0.3], [0.55, 0.9, 0.55], [0.8, 0.55, 0.98]], sparkle: [[1, 0.88, 0.3], [1, 0.97, 0.7]], smoke: [[0.55, 0.55, 0.6], [0.72, 0.72, 0.76]] }[kind];
+    const burst = (x, y, z, kind, k = 26, back = null) => {
+      const COLS = { confetti: [[0.98, 0.4, 0.5], [0.4, 0.75, 0.98], [0.99, 0.84, 0.3], [0.55, 0.9, 0.55], [0.8, 0.55, 0.98]], sparkle: [[1, 0.88, 0.3], [1, 0.97, 0.7]], smoke: [[0.55, 0.55, 0.6], [0.72, 0.72, 0.76]],
+        dust: [[0.93, 0.88, 0.78], [0.86, 0.8, 0.7]] }[kind];
+      if (kind === "dust") {  // a scoot's launch puffs: low, quick, kicked out behind the robot
+        for (let i = 0; i < k; i++) {
+          const j = (Math.random() - 0.5) * 1.2;
+          particles.push({ x: x + (Math.random() - 0.5) * 0.2, y, z: z + (Math.random() - 0.5) * 0.2, vx: (back[0] + back[1] * j) * (0.9 + Math.random()), vy: 0.35 + Math.random() * 0.4,
+            vz: (back[1] - back[0] * j) * (0.9 + Math.random()), life: 0, max: 0.45 + Math.random() * 0.25, color: COLS[i % 2], s: 0.09 + Math.random() * 0.07, kind: "smoke", spin: 0 });
+        }
+        return;
+      }
       for (let i = 0; i < k; i++) {
         const a = Math.random() * Math.PI * 2, sp = kind === "smoke" ? 0.6 : 1.4 + Math.random() * 1.6;
         particles.push({ x, y, z, vx: Math.cos(a) * sp * (kind === "confetti" ? 0.8 : 0.5), vy: kind === "smoke" ? 0.8 + Math.random() : 2.5 + Math.random() * 2.5, vz: Math.sin(a) * sp * (kind === "confetti" ? 0.8 : 0.5),
@@ -355,11 +396,27 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
       if (v !== shownView) {
         const step = v === shownView + 1;
         prevView = shownView < 0 ? v : shownView; shownView = v; turnStart = now;
+        const idOf = Object.fromEntries(state.agents.map((a) => [a.name, a.id]));
+        for (const a of Object.values(anim)) { a.bump = null; a.jolt = null; }
         for (const a of state.agents) {
           const cur = anim[a.id], tx = W(a.x), tz = Wz(a.y);
-          if (!cur) { anim[a.id] = { x: tx, z: tz, yaw: 0, fromX: tx, fromZ: tz, toX: tx, toZ: tz, hop: false }; continue; }
-          cur.fromX = cur.x; cur.fromZ = cur.z; cur.toX = tx; cur.toZ = tz; cur.hop = step && (cur.fromX !== tx || cur.fromZ !== tz);
+          if (!cur) { anim[a.id] = { x: tx, z: tz, yaw: 0, fromX: tx, fromZ: tz, toX: tx, toZ: tz, scoot: false, bump: null, jolt: null }; continue; }
+          cur.fromX = cur.x; cur.fromZ = cur.z; cur.toX = tx; cur.toZ = tz; cur.scoot = step && (cur.fromX !== tx || cur.fromZ !== tz);
           if (tx !== cur.fromX || tz !== cur.fromZ) cur.yaw = Math.atan2(tx - cur.fromX, tz - cur.fromZ);
+          if (cur.scoot) {  // dust kicked out behind at launch
+            const dx = tx - cur.fromX, dz = tz - cur.fromZ, l = Math.hypot(dx, dz) || 1;
+            burst(cur.fromX - (dx / l) * 0.3, 0.08, cur.fromZ - (dz / l) * 0.3, "dust", 7, [-(dx / l) * 1.2, -(dz / l) * 1.2]);
+          }
+        }
+        if (step && turn) {  // a move into a robot: the mover lunges, bounces back and sees stars; the robot it hit is jolted
+          for (const r of turn.records) {
+            const b = bumpOf(r), A = anim[r.agent_id];
+            if (!b || !A || A.scoot) continue;
+            const dx = W(b.at[0]) - A.toX, dz = Wz(b.at[1]) - A.toZ, l = Math.hypot(dx, dz) || 1;
+            A.bump = { dx: dx / l, dz: dz / l, fired: false }; A.yaw = Math.atan2(dx, dz);
+            const H = anim[idOf[b.into]];
+            if (H && (b.kind || "occupied") === "occupied") H.jolt = { dx: dx / l, dz: dz / l };  // contested / head-on: both lunge
+          }
         }
         if (step && turn) {  // the turn's one-shot effects
           const prevObjs = new Set((v >= 2 ? E.turns[v - 2].state.objects : E.start.objects).filter((o) => o.what === "coin").map((o) => `${o.x},${o.y}`));
@@ -378,7 +435,7 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
         }
       }
       const tt = (now - turnStart) / 1000, k = ease(tt / 0.6);
-      for (const a of Object.values(anim)) { a.x = lerp(a.fromX, a.toX, k); a.z = lerp(a.fromZ, a.toZ, k); }
+      for (const a of Object.values(anim)) { const p = a.scoot ? scootPose(tt).p : k; a.x = lerp(a.fromX, a.toX, p); a.z = lerp(a.fromZ, a.toZ, p); }
       // camera: keys, follow
       const c = Math.cos(cam.yaw), sn = Math.sin(cam.yaw), sp = (cam.dist * 0.9 + 4) * dt;
       if (keys.has("w")) { cam.tx -= sn * sp; cam.tz -= c * sp; }
@@ -398,8 +455,8 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
       R.frame(VP, eye, cam.dist * 2.2 + n, BG);
       const T = now / 1000;
       // floor, and a far ground disc so the board floats on a pastel plane
-      R.draw(R.mesh.box, M4.trs(0, -0.42, 0, 0, 0, 0, n + 0.7, 0.62, n + 0.7), [0.72, 0.66, 0.95], { outline: 0.03 });  // the board's plinth
-      R.draw(R.mesh.box, M4.trs(0, -0.9, 0, 0, 0, 0, n + 0.2, 0.3, n + 0.2), [0.58, 0.52, 0.86], { outline: 0.03 });
+      R.draw(R.mesh.box, M4.trs(0, -0.42, 0, 0, 0, 0, n + 0.7, 0.62, n + 0.7), [0.72, 0.66, 0.95], {});  // the board's plinth (no ink outline: the hull is inflated before scaling, a slab at this size)
+      R.draw(R.mesh.box, M4.trs(0, -0.9, 0, 0, 0, 0, n + 0.2, 0.3, n + 0.2), [0.58, 0.52, 0.86], {});
       R.draw(groundMesh, M4.ident(), [1, 1, 1], { vc: true });
       // objects
       const opened = doorsOpened(state.events || []);
@@ -453,15 +510,27 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
         const role = roleOf(a.tools, a.team), body = hex(role.color), self = hsl(robotColor(a.id));
         const rec = turn ? turn.records.find((r) => r.agent_id === a.id) : null;
         const em = EMOTE(rec, said.has(a.id));
-        const hopY = A.hop && tt < 0.6 ? Math.sin((tt / 0.6) * Math.PI) * 0.45 : 0;
+        const pose = A.scoot ? scootPose(tt) : { lean: 0, squash: 1 };
+        // a bump: the mover's lunge and bounce, a squash on impact, a dizzy sway while the stars circle; the robot it hit rocks
+        let ox = 0, oz = 0, squash = pose.squash, sway = 0;
+        if (A.bump) {
+          const d = bumpOffset(tt);
+          ox += A.bump.dx * d; oz += A.bump.dz * d;
+          squash *= 1 - 0.2 * Math.exp(-(((tt - BUMP_HIT) / 0.05) ** 2));
+          sway = tt > BUMP_HIT ? 0.13 * Math.sin(T * 8) * Math.max(0, 1 - (tt - BUMP_HIT) / 2.4) : 0;
+          if (!A.bump.fired && tt >= BUMP_HIT) { A.bump.fired = true; burst(A.toX + A.bump.dx * 0.5, 0.75, A.toZ + A.bump.dz * 0.5, "sparkle", 12); }
+        }
+        if (A.jolt && tt > BUMP_HIT) { const s = tt - BUMP_HIT, e = 0.12 * Math.exp(-6 * s) * Math.sin(20 * s); ox += A.jolt.dx * e; oz += A.jolt.dz * e; }
+        const PX = A.x + ox, PZ = A.z + oz;
         const bob = Math.sin(T * 3.1 + a.id * 1.7) * 0.04;
         const shake = em && em.e === "💥" && tt < 0.8 ? Math.sin(T * 60) * 0.06 * (1 - tt / 0.8) : 0;
         const down = a.tagged ? Math.min(1, tt / 0.5) * (Math.PI / 2) : 0;  // a tagged runner keels over
         const isSel = a.id === S.sel;
-        const base = M4.mul(M4.trs(A.x + shake, hopY + bob, A.z, A.yaw), M4.trs(0, 0, 0, 0, down, 0, ROBOT));
-        // shadow (shrinks while airborne)
-        R.draw(R.mesh.disc, M4.trs(A.x, 0.014, A.z, 0, 0, 0, (0.7 - hopY * 0.5) * ROBOT), [0.1, 0.1, 0.18], { alpha: 0.22 });
-        if (isSel) R.draw(R.mesh.disc, M4.trs(A.x, 0.016, A.z, 0, 0, 0, 1.0 + Math.sin(T * 5) * 0.08), [1, 0.85, 0.2], { alpha: 0.45, flat: true });
+        const base = M4.mul(M4.mul(M4.trs(PX + shake, bob, PZ, A.yaw), M4.trs(0, 0, 0, 0, down + pose.lean, sway)),
+          M4.trs(0, 0, 0, 0, 0, 0, ROBOT * (2 - squash) ** 0.5, ROBOT * squash, ROBOT * (2 - squash) ** 0.5));
+        // shadow
+        R.draw(R.mesh.disc, M4.trs(PX, 0.014, PZ, 0, 0, 0, 0.7 * ROBOT), [0.1, 0.1, 0.18], { alpha: 0.22 });
+        if (isSel) R.draw(R.mesh.disc, M4.trs(PX, 0.016, PZ, 0, 0, 0, 1.0 + Math.sin(T * 5) * 0.08), [1, 0.85, 0.2], { alpha: 0.45, flat: true });
         // wheels, body, head
         for (const sx of [-0.24, 0.24]) R.draw(R.mesh.cyl, M4.mul(base, M4.trs(sx, 0.11, 0, 0, 0, Math.PI / 2, 0.2, 0.1, 0.2)), [0.25, 0.25, 0.32], { outline: 0.05 });
         R.draw(R.mesh.cyl, M4.mul(base, M4.trs(0, 0.42, 0, 0, 0, 0, 0.5, 0.42, 0.5)), a.tagged ? [0.7, 0.7, 0.72] : body, { outline: 0.05 });
@@ -475,7 +544,7 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
           R.draw(R.mesh.sphere, M4.mul(base, M4.trs(ex + look + jig, a.tagged ? 0.72 : 0.71 + jig, 0.28, 0, 0, 0, a.tagged ? 0.03 : 0.08)), [0.05, 0.05, 0.08], {});
         }
         // antenna with a bulb: glows when speaking, red after an error, green on a success
-        const wob = Math.sin(T * 7 + a.id) * 0.18 + (A.hop && tt < 0.6 ? Math.sin(tt * 20) * 0.4 : 0);
+        const wob = Math.sin(T * 7 + a.id) * 0.18 + (A.scoot && tt < 1.2 ? Math.sin(tt * 20) * 0.4 * (1 - tt / 1.2) : 0) + (A.bump && tt > BUMP_HIT && tt < 1.2 ? Math.sin(tt * 26) * 0.5 * (1 - tt / 1.2) : 0);
         R.draw(R.mesh.cyl, M4.mul(base, M4.trs(0, 0.98, 0, 0, 0, wob, 0.03, 0.28, 0.03)), [0.3, 0.3, 0.36], {});
         const bulb = em && em.e === "💥" ? [1, 0.3, 0.3] : em && em.big ? [0.4, 1, 0.5] : said.has(a.id) ? [1, 0.9, 0.3] : [0.75, 0.75, 0.82];
         R.draw(R.mesh.sphere, M4.mul(base, M4.trs(-Math.sin(wob) * 0.14, 1.13, 0, 0, 0, 0, 0.11)), bulb, { outline: 0.04, emit: said.has(a.id) || (em && em.big) ? 0.6 + Math.sin(T * 12) * 0.3 : 0 });
@@ -486,25 +555,36 @@ export function Arena3D({ ep, ix, view, sel, setSel, showMsgs = "all", showRange
         const tagEl = el(`tag:${a.id}`, "a3-tag" + (isSel ? " sel" : "") + (a.tagged ? " out" : ""), `${a.name}${a.player === "B" ? " ·B" : ""}${a.coins ? ` 🪙${a.coins}` : ""}`);
         tagEl.className = "a3-tag" + (isSel ? " sel" : "") + (a.tagged ? " out" : "");
         tagEl.style.setProperty("--c", role.color);
-        place(tagEl, [A.x, 1.45 * ROBOT + hopY, A.z], VP, rect);
-        if (em && tt < 2.2) {
+        place(tagEl, [PX, 1.45 * ROBOT, PZ], VP, rect);
+        if (em && !em.bump && tt < 2.2) {
           const e = el(`emote:${a.id}`, "a3-emote", em.e);
           e.title = em.why;
-          place(e, [A.x + 0.35, 1.65 * ROBOT + hopY + tt * 0.25, A.z], VP, rect, 1 - Math.max(0, tt - 1.6) / 0.6);
+          place(e, [PX + 0.35, 1.65 * ROBOT + tt * 0.25, PZ], VP, rect, 1 - Math.max(0, tt - 1.6) / 0.6);
         }
-        if (a.tagged) { const z = el(`zz:${a.id}`, "a3-emote small", "x_x"); place(z, [A.x, 0.9, A.z], VP, rect); }
+        if (A.bump && tt > BUMP_HIT && tt < 2.8) {  // stars circling the head
+          const fade = Math.min(1, (tt - BUMP_HIT) / 0.15) * Math.min(1, (2.8 - tt) / 0.5);
+          for (let i = 0; i < 4; i++) {
+            const ang = T * 5.5 + (i * Math.PI) / 2;
+            const st = el(`star:${a.id}:${i}`, "a3-star", i % 2 ? "✨" : "⭐");
+            st.title = em ? em.why : "bump!";
+            place(st, [PX + Math.cos(ang) * 0.45, 1.32 * ROBOT + Math.sin(ang * 2) * 0.06, PZ + Math.sin(ang) * 0.45], VP, rect, fade);
+          }
+        }
+        if (a.tagged) { const z = el(`zz:${a.id}`, "a3-emote small", "x_x"); place(z, [PX, 0.9, PZ], VP, rect); }
         hearers[a.id] = A;
       }
-      // comm range: the Manhattan diamond of the selected robot (or every robot)
+      // comm range: the square of cells around the selected robot (or every robot) that hears it, clipped to the board
+      // (hearing counts diagonals since 2026-10-11: range 2 = the 5x5 cells with the robot in the middle)
       const ranges = S.showRange ? state.agents.map((a) => a.id) : S.sel != null ? [S.sel] : [];
-      const cr = (E.meta && E.meta.comm_range) || 3;
+      const cr = (E.meta && E.meta.comm_range) || 2, lo = W(0) - 0.5, hi = W(n - 1) + 0.5, loz = Wz(0) - 0.5, hiz = Wz(n - 1) + 0.5;
       for (const id of ranges) {
         const A = anim[id];
         if (!A) continue;
-        const r = cr + 0.5, col = hsl(robotColor(id)), Vx = [[r, 0], [0, r], [-r, 0], [0, -r]];
-        for (let s = 0; s < 4; s++) {  // the four edges of the diamond |dx| + |dz| = r around the robot
-          const [px, pz] = Vx[s], [qx, qz] = Vx[(s + 1) % 4], dx = qx - px, dz = qz - pz;
-          R.draw(R.mesh.box, M4.trs(A.x + (px + qx) / 2, 0.02, A.z + (pz + qz) / 2, Math.atan2(-dz, dx), 0, 0, Math.hypot(dx, dz), 0.02, 0.05), col, { flat: true, alpha: 0.38 });
+        const col = hsl(robotColor(id));
+        const x0 = Math.max(lo, A.x - cr - 0.5), x1 = Math.min(hi, A.x + cr + 0.5), z0 = Math.max(Math.min(loz, hiz), A.z - cr - 0.5), z1 = Math.min(Math.max(loz, hiz), A.z + cr + 0.5);
+        R.draw(R.mesh.box, M4.trs((x0 + x1) / 2, 0.016, (z0 + z1) / 2, 0, 0, 0, x1 - x0, 0.01, z1 - z0), col, { flat: true, alpha: 0.1 });
+        for (const [cx, cz, sx, sz] of [[(x0 + x1) / 2, z0, x1 - x0, 0.05], [(x0 + x1) / 2, z1, x1 - x0, 0.05], [x0, (z0 + z1) / 2, 0.05, z1 - z0], [x1, (z0 + z1) / 2, 0.05, z1 - z0]]) {
+          R.draw(R.mesh.box, M4.trs(cx, 0.02, cz, 0, 0, 0, sx, 0.02, sz), col, { flat: true, alpha: 0.45 });
         }
       }
       // messages: a speech bubble over the speaker, an envelope flying to every hearer

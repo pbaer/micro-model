@@ -18,7 +18,7 @@ const html = htm.bind(h);
  *  step back. With 32 robots only the selected robot's transcript is rendered; the rest is one compact table. */
 
 const DEFAULTS = { slot: "A", task: "key_door", n: 8, n_agents: 4, seed: 0, turns: null, max_new_tokens: 512, max_calls: 4, max_history: 1, stop_when_done: true,
-  opponent: null, batch_size: null, temperature: 0.3 };  // 0.3: livelier than greedy; 0.5+ costs the robots their calls (results §28c)
+  opponent: null, batch_size: null, temperature: 0.3, prompt: null };  // 0.3: livelier than greedy; 0.5+ costs the robots their calls (results §28c)
 const SPILL_GIB = 14.5;  // reserved VRAM above this spills into host memory on Windows (CLAUDE.md): 60x slower, no error
 const LIMITS = { n: [4, 16], n_agents: [1, 32], turns: [1, 1000], max_new_tokens: [16, 1024], max_calls: [0, 16], max_history: [0, 10] };
 
@@ -68,7 +68,7 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
   const fa = focus != null ? agents.find((a) => a.id === focus) : null;
   const cells = [];
   for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) cells.push([x, y]);
-  const d = (a, x, y) => Math.abs(a.x - x) + Math.abs(a.y - y);
+  const d = (a, x, y) => Math.max(Math.abs(a.x - x), Math.abs(a.y - y));  // hearing and sight: the square around a robot (diagonals count)
   const opened = doorsOpened(state.events);
   const sc = state.score || {};
   const target = state.task === "triangulate" && Array.isArray(sc.target) ? sc.target : null;
@@ -89,7 +89,7 @@ function ArenaGrid({ n, state, turn, view, meta, ix, focus, sel, setSel, setHove
     })}
     ${showRange && html`<g clip-path="url(#arena-clip)">${agents.map((a) => {
       const r = (meta.comm_range + 0.5) * C, x = PAD + a.x * C + C / 2, y = PAD + a.y * C + C / 2;
-      return html`<polygon key=${"rg" + a.id} class="arena-range" style=${`stroke:${robotColor(a.id)}`} points=${`${x},${y - r} ${x + r},${y} ${x},${y + r} ${x - r},${y}`} />`;
+      return html`<rect key=${"rg" + a.id} class="arena-range" style=${`stroke:${robotColor(a.id)}`} x=${x - r} y=${y - r} width=${2 * r} height=${2 * r} />`;
     })}</g>`}
     ${state.objects.map((o) => {
       if (o.what === "coin") return html`<g key=${"o" + o.x + "," + o.y} class="arena-coin"><title>coin at ${xy([o.x, o.y])}</title>
@@ -233,9 +233,11 @@ function RobotPanel({ robot, ep, view, state, ix }) {
   </div>`;
 }
 
-/** The followed robot's context window at the viewed turn: everything its model saw (the declared tool blocks, the
- *  kept history, the question) and what it wrote, with the token count against the model's window. Older episode files
- *  carry no `history` / token counts: the panel shows what the record has. */
+/** The followed robot's context window at the viewed turn, in the order the model read it: the declared tool blocks, the
+ *  system prompt (when the prompt style has one), the worked examples, the earlier exchange the arena kept, the question,
+ *  then what it wrote; the exact text it read (reserved tokens as chips) folds open below. With the token count against
+ *  the model's window, and how its calls compare with the call the scaffold would have spelled out. Older episode files
+ *  carry less: the panel shows what the record has. */
 function RobotContext({ robot, ep, view }) {
   const tu = view > 0 ? ep.turns[view - 1] : null;
   const r = tu ? tu.records.find((x) => x.agent_id === robot.id) : null;
@@ -243,21 +245,40 @@ function RobotContext({ robot, ep, view }) {
   const pl = ep.meta && ep.meta.players ? ep.meta.players[r.player || "A"] : null;
   const decls = robot.tools.filter((t) => (r.declared || r.tools || []).includes(t.name));
   const used = r.prompt_tokens != null ? r.prompt_tokens + (r.gen_tokens || 0) : null;
+  const hist = r.history || [];
+  const hasSys = hist.some((m) => m.role === "system");
+  const label = (m) => m.role === "system" ? "system prompt" : m.demo ? `worked example (${m.role})` : `${m.role} (earlier turn)`;
+  const st = ep.meta && ep.meta.prompt;
   return html`<div class="a3-ctx">
     <div class="row" style="gap:8px"><b>🧠 context window · turn ${r.turn}</b><span class="muted">${pl ? `${pl.label}${pl.external ? " (external, plain text)" : ""}` : ""}</span><${Info} k="arena_context" /></div>
     ${used != null && r.context ? html`<${ContextMeter} used=${used} total=${r.context} note=${`prompt ${r.prompt_tokens} + reply ${r.gen_tokens}`} />`
       : html`<div class="legend">${r.context ? `window ${r.context} tokens · ` : ""}token counts are not recorded for ${pl && pl.external ? "an external model (its own tokenizer)" : "this episode (an older file)"}</div>`}
+    ${st && html`<div class="legend">prompt style <b>${ep.meta.prompt_name || ""}</b>: ${promptLabel(st)}</div>`}
+    ${r.tool_ok != null && html`<div class="legend">${r.tool_ok ? "✅ right tool" : "❌ wrong tool or none"}${r.call_ok != null ? (r.call_ok ? " · ✅ right argument" : " · ❌ wrong argument") : ""}
+      · the scaffold would have asked for <code>${(r.expected || []).join(" / ")}</code> (not shown to the model under a situation prompt; chance of the right tool ${r.tool_chance})</div>`}
     <div class="a3-ctx-msgs">
-      ${decls.map((t) => html`<div class="a3-msg sys" key=${"d" + t.name}><span class="a3-role">declared</span><code>${t.signature}</code> <span class="muted">${t.comment}</span></div>`)}
-      ${(r.history || []).map((m, i) => html`<div class=${"a3-msg " + m.role} key=${"h" + i}><span class="a3-role">${m.role} (earlier)</span>${m.content}</div>`)}
+      ${decls.map((t) => html`<div class="a3-msg sys" key=${"d" + t.name}><span class="a3-role">declared tool</span><code>${t.signature}</code> <span class="muted">${t.comment}</span></div>`)}
+      ${!hasSys && html`<div class="a3-msg sys muted"><span class="a3-role">system prompt</span>none in this prompt style</div>`}
+      ${hist.map((m, i) => html`<div class=${"a3-msg " + m.role + (m.demo ? " demo" : "")} key=${"h" + i}><span class="a3-role">${label(m)}</span>${m.content}</div>`)}
       <div class="a3-msg user"><span class="a3-role">user (this turn)</span>${r.observation}</div>
-      <div class="a3-msg assistant"><span class="a3-role">assistant</span>
+      <div class="a3-msg assistant"><span class="a3-role">assistant (this turn)</span>
         ${r.think != null && r.think !== "" && html`<div class="a3-think">💭 ${r.think}</div>`}
         ${(r.calls || []).map((c, i) => html`<div class="a3-call" key=${"c" + i}><code>${clip(c[0], 120)}</code> → <span class=${/^\s*error/.test(c[1]) ? "err" : ""}>${clip(String(c[1]), 160)}</span></div>`)}
         ${r.answer && html`<div>${r.answer}</div>`}
       </div>
     </div>
+    ${r.prompt_text && html`<details style="margin-top:6px"><summary class="muted">the exact text the model read (${pl && pl.external ? "its own chat template" : "reserved tokens as chips"}), then what it wrote</summary>
+      <div class="a3-raw"><${TextWithSpecials} text=${r.prompt_text + (r.raw || "")} /></div></details>`}
   </div>`;
+}
+
+/** One line for a prompt style (slm.arena.world PROMPTS). */
+export function promptLabel(st) {
+  return [st.tools === "all" ? "every tool declared" : "only the turn's tool declared",
+    st.brief === "system" ? "briefing as the system prompt" : st.brief === "user" ? "briefing at the top of the question" : "no briefing",
+    st.question === "call" ? "the question spells out the call" : "the question gives the situation, not the call",
+    (st.demos && st.demos.length) || st.demo ? `${(st.demos && st.demos.length) || st.demo} worked example${((st.demos && st.demos.length) || st.demo) > 1 ? "s" : ""}` : null,
+    st.docs === "rich" ? "tool descriptions say what they return" : null].filter(Boolean).join(" · ");
 }
 
 // ---------------------------------------------------------------------------------------------------- viewer
@@ -305,7 +326,8 @@ export function ArenaPage() {
 
   const refresh = () => { api("/api/model/status").then(setStatus).catch(() => {}); api("/api/model/checkpoints").then(setCkpts).catch(() => {}); };
   const refreshEpisodes = () => api("/api/model/arena/episodes").then(setEpisodes).catch(() => {});
-  useEffect(() => { refresh(); refreshEpisodes(); api("/api/model/arena/tasks").then(setTasks).catch((e) => setErr(String(e))); }, []);
+  const [prompts, setPrompts] = useState(null);  // {default, styles}: GET /arena/prompts
+  useEffect(() => { refresh(); refreshEpisodes(); api("/api/model/arena/tasks").then(setTasks).catch((e) => setErr(String(e))); api("/api/model/arena/prompts").then(setPrompts).catch(() => {}); }, []);
   useEffect(() => { if (!busy) return; const id = setInterval(() => setNow(Date.now()), 500); return () => clearInterval(id); }, [busy]);
   const nTurns = ep ? ep.turns.length : 0;
   useEffect(() => { if (follow) setView(nTurns); }, [nTurns, follow]);
@@ -324,7 +346,7 @@ export function ArenaPage() {
   const other = p.slot === "A" ? "B" : "A", otherInfo = slots[other] || {};
   const versus = TEAM_TASKS.has(p.task) && p.opponent === other;
   // each task's own robot-count rule (slm.arena.world Task.check; the API refuses the same)
-  const bad = p.n_agents < 2 ? "at least 2 robots" : p.task === "key_door" && p.n_agents % 2 ? "key_door pairs robots: use an even number"
+  const bad = p.n_agents < 2 ? "at least 2 robots" : p.n_agents > p.n * p.n ? `one robot per cell: at most ${p.n * p.n} robots on a ${p.n}×${p.n} grid` : p.task === "key_door" && p.n_agents % 2 ? "key_door pairs robots: use an even number"
     : p.task === "team_relay" && (p.n_agents < 4 || p.n_agents % 2) ? "team_relay needs an even number of robots, at least 4"
     : p.task === "team_relay" && p.n < p.n_agents - 1 ? `team_relay with ${p.n_agents} robots needs a grid of at least ${p.n_agents - 1}`
     : versus && !otherInfo.checkpoint ? `load the opponent's model into slot ${other} first` : null;
@@ -437,6 +459,9 @@ export function ArenaPage() {
         <span class="grp" title="sampling temperature of every robot's turn (top-p 0.95): 0 = greedy, the same episode every time for a seed (the evals' setting); higher = livelier, less predictable robots"><span class="muted">temperature</span><input type="number" min="0" max="2" step="0.1" value=${p.temperature}
           onChange=${(e) => set("temperature", Math.max(0, Math.min(2, Number(e.target.value) || 0)))} style="width:56px" /></span>
         <span class="grp"><span class="muted">max tool calls</span>${num("max_calls")}</span>
+        ${prompts && html`<span class="grp" title=${promptLabel(prompts.styles[p.prompt || prompts.default])}><span class="muted">prompt</span><select value=${p.prompt || prompts.default} onChange=${(e) => set("prompt", e.target.value === prompts.default ? null : e.target.value)}>
+          ${Object.entries(prompts.styles).map(([k, st]) => html`<option key=${k} value=${k} title=${promptLabel(st)}>${k}${k === prompts.default ? " (default)" : ""}</option>`)}
+        </select><${Info} k="arena_prompt" /></span>`}
         <span class="grp"><span class="muted">history</span>${num("max_history")}<${Info} k="arena_turn" /></span>
         <label class="muted"><input type="checkbox" checked=${p.stop_when_done} onChange=${(e) => set("stop_when_done", e.target.checked)} /> stop when done</label>
         <span class="grp"><span class="muted">batch size</span><input type="number" min="1" max="32" placeholder="all" value=${p.batch_size || ""}

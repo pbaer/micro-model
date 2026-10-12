@@ -44,7 +44,7 @@ export const question = (obs) => (obs || "").replace(SUFFIX_RE, "").trim();
 const TOOLS = ["move", "say", "look", "read_key", "read_code", "open_door", "submit", "dig", "distance_to_target", "tag", "grab"];
 const TOOL_RE = new RegExp(`\\b(${TOOLS.join("|")})\\s*\\(`, "g");
 const ERR_RE = /^\s*error\b|Traceback|Wrong code|is not the code|is not your team's code|code, not yours|is not a runner/;      // the call failed (sandbox error, wrong code)
-const FAIL_RE = /^\s*Blocked:|Unknown direction|Move there first|^\s*Nothing here|too far to tag|already tagged|There is no coin/;  // the call ran but did nothing
+const FAIL_RE = /^\s*Blocked:|^\s*Bump!|Unknown direction|Move there first|^\s*Nothing here|too far to tag|already tagged|There is no coin/;  // the call ran but did nothing
 const DIRS = { north: [0, -1], south: [0, 1], east: [1, 0], west: [-1, 0] };
 const ARROW = { north: "↑", south: "↓", east: "→", west: "←" };
 

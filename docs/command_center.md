@@ -481,6 +481,16 @@ generation per turn (`Runner.step`), streamed turn by turn. Viewer mode drives t
   `ContextMeter` of prompt + reply tokens against the model's window (records carry `history`, `prompt_tokens`,
   `gen_tokens`, `context` since 2026-10-10). Without WebGL the view says so and the map remains. Info cards `arena_3d`,
   `arena_context`. One renderer per canvas is reused across episodes (losing the context on cleanup broke the next one).
+- **Collisions and fair prompts** (2026-10-11): robots scoot between cells (a wind-up, a dash that overshoots with dust
+  behind, a rocking stop) instead of hopping. A failed move (`record.bumped`, or "Bump!" in older files) makes the robot
+  lunge towards the cell, bounce back with a squash and a spark, sway dizzily under four circling stars; a robot bumped
+  into while standing still rocks. The comm range is drawn as the square of cells that hear the robot (clipped to the
+  board; the map view too), and the board's plinth has no ink outline (the inverted hull is inflated before scaling, so on
+  a board-sized box it showed as black slabs along the edge). The form has a *prompt* select (`GET /api/model/arena/prompts`,
+  request field `prompt`; info card `arena_prompt`), and the robot panel shows the whole context window in the order the
+  model read it: declared tools, the system prompt (or that there is none), worked examples, the earlier exchange, the
+  question, the reply; "the exact text" folds open `record.prompt_text` with reserved tokens as chips; a ✅ / ❌ line
+  compares the robot's call with the one the scaffold would have spelled out (`tool_ok`, `call_ok`, `expected`).
 - **Model against model** (2026-10-10): for a competitive task the controls offer an *opponent (side B)*: the other
   slot's model, ours or an external one (any slot may now hold an external model in the arena: it answers in plain text
   and the call it writes is run, `slm.arena.world.text_action`). The form names what each side plays (from the tasks

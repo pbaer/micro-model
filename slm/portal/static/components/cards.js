@@ -1002,11 +1002,23 @@ export const CARDS = {
       🤫 it read the secret, 🪙 / 🫵 / 🎉 a coin, a tag, a goal. A tagged runner keels over. The map view is still there for
       seeing every message and label at once.</p>` },
   arena_context: { t: "A robot's context window", b: html`
-    <p>Exactly what that robot's model was given this turn, in order: the declared tool block (only the tool the question
-      needs), the earlier exchange the arena keeps (a turn whose every call failed is not kept: the model copied
-      failures), and the question. Below it, what the model wrote: its think span, the tool calls with their results,
-      and the answer. The bar counts prompt plus reply tokens against the model's context window (our checkpoints; an
-      external model uses its own tokenizer, so its count is not shown).</p>` },
+    <p>Exactly what that robot's model was given this turn, in the order it read it: the declared tool blocks (every tool
+      the robot has, or only the turn's tool, by prompt style), the system prompt with its briefing (when the style has
+      one), the worked examples, the earlier exchange the arena keeps, and this turn's question. Below it, what the model
+      wrote: its think span, the tool calls with their results, and the answer. "The exact text" folds open the whole
+      prompt as the model read it, reserved tokens as chips (an external model: its own chat template).</p>
+    <p>The ✅ / ❌ line compares its calls with the call the old scaffold would have spelled out: the right tool (against
+      chance: right tools over declared tools) and, for a call that carries a fact (a code, a name, a distance), the
+      right fact in the argument. The bar counts prompt plus reply tokens against the model's context window (our
+      checkpoints; an external model uses its own tokenizer, so its count is not shown).</p>` },
+  arena_prompt: { t: "Prompt style", b: html`
+    <p>How much each robot's prompt gives away. The <i>scaffold</i> (every result up to results §28c) declared only the tool
+      the turn needed and spelled out the call, argument included: <code>Tell robot R2: call say("the code is 7311")</code>.
+      That measures copying, not choosing. A <i>situation</i> style gives the facts the robot has and its immediate goal
+      in plain words ("The key code is 7311. R2 is close enough to hear you. Get the code to R2.") and declares every tool
+      it has, so picking the tool and putting the fact in its argument are the model's. The briefing (who the robot is,
+      the rules, its task) can go in the system prompt or at the top of the question; worked examples show a turn from no
+      arena task (a charging pad, a password) in front of the conversation. Measured in results §29.</p>` },
   arena_versus: { t: "Model against model", b: html`
     <p>In the competitive tasks (team relay, tag, gold rush) the robots are on two sides. Choose an <i>opponent</i> and the
       model in the other slot plays side B (team blue, the runners, the even robots) while this slot plays side A; with
@@ -1026,10 +1038,11 @@ export const CARDS = {
     <p>The hardest of the three: it needs arithmetic over several messages, which a small model rarely does. A failed dig
       leaves a grey × where it happened.</p>` },
   arena_range: { t: "Comm range and sight", b: html`
-    <p><b>Comm range</b>: a message said this turn is delivered, at the start of the next observation, to every robot within
-      that many cells (Manhattan distance: steps north/south/east/west) of where the speaker ended the turn. <b>Sight</b>:
-      what <code>look()</code> and the observation report, robots and objects within that distance. Both are fixed per task
-      (key and door 3 / 2, relay 2 / 2, triangulate 4 / 1).</p>
+    <p><b>Comm range</b>: a message is heard by every robot within that many cells of the speaker in every direction,
+      diagonals included, when it is said (range 2 = the 5x5 square with the speaker in the middle), and delivered at the
+      start of the next turn. <b>Sight</b>: what <code>look()</code> reports, robots and objects within that square. Both
+      are fixed per task (comm range 2 everywhere except triangulate, 3; sight 2, triangulate 1, tag and gold rush 3).
+      Until 2026-10-11 both counted steps north/south/east/west, a diamond, and the comm ranges were 3 (triangulate 4).</p>
     <p>On the grid, hover or select a robot: the pale cells are its comm range, the darker ones its sight. Everyone outside
       the pale area will not hear what it says.</p>` },
   arena_cost: { t: "Cost: one batch per turn", b: html`
@@ -1067,7 +1080,7 @@ export const CARDS = {
       the focused robot); a dashed ring is a message nobody was in range to hear. Arcs touching the selected robot are
       bright, the rest pale; a message picked in the log is the only bright one. The messages control shows arrows with
       their text, arrows only (a crowded grid), or hides them from the grid altogether; the message log and the list under
-      the grid keep showing them. "Comm range of every robot" outlines each robot's hearing diamond. Hover a robot for its tools, its last action and what it heard.</p>
+      the grid keep showing them. "Comm range of every robot" outlines each robot's hearing square. Hover a robot for its tools, its last action and what it heard.</p>
     <p>The scrubber steps through the episode (0 = the start); play replays it. While a run streams, the view follows the
       newest turn unless you step back.</p>` },
   arena_timeline: { t: "Interaction timeline", b: html`

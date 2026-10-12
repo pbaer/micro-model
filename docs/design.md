@@ -485,8 +485,32 @@ for one miss. The M8 runs use `needle_n: 16` over five depths (80 samples per le
   `sample_with_tools` over all robots, each with a fresh `PySession` per turn holding only that turn's declared tools
   (a tool declared earlier would otherwise stay callable), so a turn is simultaneous. `python -m slm.arena` runs an episode, `scripts/arena_eval.py`
   sweeps seeds, and the portal's Arena tab streams it with a live grid (`docs/command_center.md`).
-  **Competitive tasks** (2026-10-10): `team_relay` (two teams race their own code down parallel lines; comm range 3 so
-  each robot hears its teammate and the rival robot diagonally behind it in the same turn), `tag` (the first third chase
+  **Turn rules** (2026-10-11): one robot per cell (`World._spread` moves a robot the task placed on a taken cell to the
+  nearest free one); one tool call per robot per turn (`one_call_per_turn` wraps the turn's tools: a later call returns
+  `ONE_CALL`, an error, and does nothing; a call that raised does not count); and every robot acts at once: `move` only
+  records where the robot heads, and `World.resolve_moves` settles all moves after the generation. A move fails and the
+  robot stays when two or more robots head for the same cell ("contested"), two head into each other's cells
+  ("head-on"), or the cell holds a robot that does not leave it ("occupied"); a robot may follow one that leaves, and a
+  ring moving round together all gets through. The record carries `move` and `bumped` ({into, at, kind}); the next
+  question says what happened (`bump_note`), since a plain-text player never sees its call's result. Every other tool
+  sees the start-of-turn positions, and a message is heard by whoever was in range when it was said. Hearing and sight
+  cover a square (`reach`: cells apart counting diagonals; comm range 2 = the 5x5 cells around the robot, triangulate 3);
+  moving, tagging and "N steps away" still count steps (`dist`). Before, each move happened when its call ran, so the
+  robot whose call ran first won a contested cell and side A's robots all moved before side B's; a robot could also move
+  up to `max_calls` times in one turn, and hearing was a diamond of 3 steps.
+  **Prompt styles** (`PROMPTS`, 2026-10-11): how much a robot's prompt gives away, in five switches: which tools are
+  declared (`tools`: the turn's one, or every tool the robot has), where the briefing goes (`brief`: system turn, top of
+  the question, none), what the question is (`question`: "call" spells out the call with its argument, the scaffold of
+  every result up to §28c; "situation" gives the facts the robot has and its immediate goal in plain words; "ask" adds
+  a question the right tool's result answers, worded like its description, the declared-function training shape),
+  worked examples in front of the conversation (`demo`: 0-3, `DEMOS`, situations from no arena task, as token ids for our
+  checkpoints via `native_messages`), and the tool descriptions (`docs`: "rich" says what each tool returns). Every
+  question branch writes all three question levels (`_ask`), so a style never changes what a robot knows. Each record is
+  judged against the call the scaffold would have spelled out (`_judge`: `tool_ok` against `tool_chance`, `call_ok` for a
+  call that carries a fact) and carries `prompt_text`, the exact context the model read. `scripts/arena_prompt_probe.py`
+  hill-climbs styles one decision at a time (results §29).
+  **Competitive tasks** (2026-10-10): `team_relay` (two teams race their own code down parallel lines; comm range 3 steps, a
+  square of 2 since 2026-10-11, so each robot hears its teammate and the rival robot diagonally behind it in the same turn), `tag` (the first third chase
   with `tag(name)`, the rest run) and `gold_rush` (free for all over twice as many coins as robots, `grab()`). Each keeps
   the one-tool scaffold but leaves the model one real decision, offered as complete calls in a random order: which heard
   code is its team's (`say("the code is A")` or `say("the code is B")`), which of the four `move("...")` calls closes on or

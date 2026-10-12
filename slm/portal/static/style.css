@@ -442,6 +442,7 @@ a.lg-node:hover,a.lg-node:focus-visible,.lg-node.hot{text-decoration:none;box-sh
 .a3-tag.out{opacity:.55;text-decoration:line-through}
 .a3-emote{font-size:22px;filter:drop-shadow(0 2px 1px rgba(0,0,0,.18));animation:a3pop .35s cubic-bezier(.2,1.6,.4,1)}
 .a3-emote.small{font-size:12px;font-weight:700;color:#6b7280}
+.a3-star{position:absolute;left:0;top:0;pointer-events:none;font-size:15px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.25))}
 @keyframes a3pop{from{scale:.2}to{scale:1}}
 .a3-bubble{font-size:11.5px;max-width:220px;overflow:hidden;text-overflow:ellipsis;padding:4px 9px;border-radius:12px;background:#fff;border:2px solid #1f2937;
   box-shadow:2px 3px 0 rgba(31,41,55,.25);animation:a3pop .35s cubic-bezier(.2,1.6,.4,1)}
@@ -460,6 +461,8 @@ a.lg-node:hover,a.lg-node:focus-visible,.lg-node.hot{text-decoration:none;box-sh
 .a3-ctx-msgs{display:flex;flex-direction:column;gap:5px;margin-top:6px;font-size:12px;max-height:min(560px,60vh);overflow:auto}
 .a3-msg{border-radius:8px;padding:5px 8px;white-space:pre-wrap;word-break:break-word;background:#fff;border:1px solid var(--border)}
 .a3-msg.user{background:#eff6ff;border-color:#bfdbfe}.a3-msg.assistant{background:#f0fdf4;border-color:#bbf7d0}.a3-msg.sys{background:#fffbeb;border-color:#fde68a}
+.a3-msg.system{background:#f5f3ff;border-color:#ddd6fe}.a3-msg.demo{border-style:dashed;opacity:.85}
+.a3-raw{max-height:min(560px,60vh);overflow:auto;font-size:12px;border:1px solid var(--border);border-radius:8px;padding:6px 8px;background:#fff}
 .a3-role{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px}
 .a3-think{color:#6b7280;font-style:italic;margin-bottom:3px}
 .a3-call code{font-size:11px}.a3-call .err{color:#b91c1c;font-weight:600}

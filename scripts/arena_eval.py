@@ -29,6 +29,7 @@ def main() -> None:
     ap.add_argument("--batch-size", type=int, default=None, help="max robots per generation call (lower = less peak VRAM)")
     ap.add_argument("--failed-history", default="keep", choices=["keep", "drop"], help="keep a turn whose calls all failed in the robot's context?")
     ap.add_argument("--retry-temperature", type=float, default=0.8, help="sample a robot's turn after a failed or call-less one at this temperature (0 = always greedy)")
+    ap.add_argument("--prompt", default=None, help="a slm.arena.world PROMPTS style (default: DEFAULT_PROMPT); 'scaffold' = the results up to §28c")
     ap.add_argument("--temperature", type=float, default=0.0, help="every turn's sampling temperature (top-p 0.95); 0 = greedy")
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
@@ -45,7 +46,7 @@ def main() -> None:
             n = a.n or (max(8, 2 * k + 2) if task == "relay" else max(8, k) if task == "team_relay" else max(8, int(k ** 0.5 * 3)))
             eps = []
             for seed in range(a.seeds):
-                w = World(task, n, k, seed)
+                w = World(task, n, k, seed, prompt=a.prompt)
                 r = Runner(w, players=players if (a.opponent and task in ("team_relay", "tag", "gold_rush")) else {"A": players["A"]},
                            batch_size=a.batch_size, failed_history=a.failed_history, retry_temperature=a.retry_temperature,
                            temperature=a.temperature)
@@ -57,7 +58,13 @@ def main() -> None:
                     bp = by_player.setdefault(x.get("player", "A"), {"turns": 0, "calls": 0})
                     bp["turns"] += 1
                     bp["calls"] += int(bool(x["calls"]))
-                eps.append({"seed": seed, "success": bool(res["score"].get("success")), "progress": res["score"].get("progress"), "done_turn": res["score"].get("done_turn"), "turns": res["turns"],
+                tr = res["transcript"]
+                judged = [x for x in tr if x.get("tool_ok") is not None]
+                valued = [x for x in tr if x.get("call_ok") is not None]
+                eps.append({"tool_ok": round(sum(x["tool_ok"] for x in judged) / len(judged), 3) if judged else None,
+                            "tool_chance": round(sum(x["tool_chance"] for x in judged) / len(judged), 3) if judged else None,
+                            "call_ok": round(sum(x["call_ok"] for x in valued) / len(valued), 3) if valued else None, "n_valued": len(valued),
+                            "seed": seed, "success": bool(res["score"].get("success")), "progress": res["score"].get("progress"), "done_turn": res["score"].get("done_turn"), "turns": res["turns"],
                             "score": res["score"], "calls_per_turn": round(calls / max(1, turns_rows), 2), "call_errors": errors, "seconds": res["seconds"],
                             "vram_peak_gib": r.vram_peak_gib, "acted": {pk: round(v["calls"] / max(1, v["turns"]), 2) for pk, v in by_player.items()}})
                 print(f"{task:12s} k={k:2d} n={n:2d} seed={seed}: {'OK ' if eps[-1]['success'] else '-- '} turns {res['turns']:2d} done {res['score'].get('done_turn')} "
@@ -80,6 +87,9 @@ def main() -> None:
                 games["wins"] = {sd: sum(e["score"].get("winner_side") == sd for e in eps) for sd in ("A", "B", "tie")}
             if any("coins_A" in e["score"] for e in eps):
                 games["coins"] = {"A": sum(e["score"]["coins_A"] for e in eps), "B": sum(e["score"]["coins_B"] for e in eps)}
+            for key in ("tool_ok", "tool_chance", "call_ok"):
+                vals = [e[key] for e in eps if e[key] is not None]
+                games[key] = round(statistics.fmean(vals), 3) if vals else None
             games["acted"] = {pk: round(statistics.fmean(e["acted"].get(pk, 0) for e in eps), 2) for pk in sorted({x for e in eps for x in e["acted"]})}
             games["vram_peak_gib"] = max(e["vram_peak_gib"] for e in eps)
             rows.append({"task": task, "agents": k, "n": n, "episodes": eps, "games": games, "success_rate": round(sum(e["success"] for e in eps) / len(eps), 2),
@@ -90,7 +100,7 @@ def main() -> None:
     if a.out:
         Path(a.out).parent.mkdir(parents=True, exist_ok=True)
         Path(a.out).write_text(json.dumps({"checkpoint": a.checkpoint, "opponent": a.opponent, "batch_size": a.batch_size, "turns": a.turns,
-                                           "temperature": a.temperature, "retry_temperature": a.retry_temperature, "failed_history": a.failed_history,
+                                           "temperature": a.temperature, "prompt": w.prompt, "retry_temperature": a.retry_temperature, "failed_history": a.failed_history,
                                            "players": {k: {"label": p.label, "native": p.native} for k, p in players.items()}, "results": rows}, indent=1), encoding="utf-8")
 
 

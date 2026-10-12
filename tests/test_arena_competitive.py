@@ -11,6 +11,15 @@ from slm.arena.world import DIRS, Player, Runner, World, dist
 
 POS = r"\((\d+), (\d+)\)"
 
+@pytest.fixture(autouse=True)
+def _scaffold_prompt(monkeypatch):
+    """These tests check the arena's mechanics through the scaffolded questions (the oracle reads the call they spell
+    out), so the World default is the scaffold here; the fair prompt shapes have their own tests."""
+    from slm.arena import world as _w
+
+    monkeypatch.setattr(_w, "DEFAULT_PROMPT", "scaffold")
+
+
 
 def _pt(m, i=1):
     return (int(m.group(i)), int(m.group(i + 1)))
@@ -123,8 +132,9 @@ def test_tag_perfect_chasers_catch_still_runners_and_every_chaser_move_counts_as
 def test_tag_runners_score_moves_that_open_the_distance():
     w, res = _run("tag", 12, 6, seed=6, turns=6)
     sc = res["score"]
-    # a perfect runner opens the distance unless a wall leaves no way to (then every move is blocked or no better)
-    assert sc["runner_moves"] > 0 and sc["runner_good_moves"] is not None and sc["runner_good_moves"] >= 0.8, sc
+    # a perfect runner opens the distance unless a wall or another robot is in the way: the oracle does not know where
+    # the others stand, and runners fleeing the same chaser crowd together (7 of these 24 moves bump since 2026-10-11)
+    assert sc["runner_moves"] > 0 and sc["runner_good_moves"] is not None and sc["runner_good_moves"] >= 0.7, sc
 
 
 def test_tag_tool_refuses_far_and_unknown_targets():
@@ -144,9 +154,11 @@ def test_tag_tool_refuses_far_and_unknown_targets():
 def test_gold_rush_perfect_players_collect_every_coin_heading_for_a_nearest_one():
     w, res = _run("gold_rush", 8, 4, seed=8, turns=40)
     sc = res["score"]
-    assert sc["success"] and sc["collected"] == sc["coins"] and sum(w.task.got.values()) == sc["coins"], sc
+    # two perfect robots the same steps from the last coin head into the same cell every turn and bump forever (moves are
+    # simultaneous since 2026-10-11): deterministic players can lock; the rest is collected
+    assert sc["collected"] >= sc["coins"] - 1 and sum(w.task.got.values()) == sc["collected"], sc
     assert sc["nearest_coin_moves"] == 1.0 and sc["any_coin_moves"] == 1.0
-    assert sc["verdict"] and sc["leader_coins"] == max(w.task.got.values())
+    assert sc["leader_coins"] == max(w.task.got.values()), "the verdict waits for the last coin"
 
 
 def test_gold_rush_lists_coins_shuffled_and_a_coin_goes_to_the_first_grabber():
@@ -260,7 +272,7 @@ def test_one_player_plays_every_robot_even_in_a_competitive_task():
 def test_gold_rush_reports_coins_per_side():
     w, res = _run("gold_rush", 8, 4, seed=8, turns=40)
     sc = res["score"]
-    assert sc["coins_A"] + sc["coins_B"] == sc["collected"] == sc["coins"] and sc["winner_side"] in ("A", "B", "tie")
+    assert sc["coins_A"] + sc["coins_B"] == sc["collected"] >= sc["coins"] - 1
 
 
 # ---------------------------------------------------------------- tool binding and history (a gold rush on 2026-10-10)
@@ -361,3 +373,108 @@ def test_temperature_samples_every_turn_and_the_sample_seed_replays_a_game():
     assert temps == [1.0] * 3 and seeds == [77000, 77001, 77002]
     with pytest.raises(ValueError):
         Runner(World("tag", 8, 3, 0), generate=lambda p, s_: [], temperature=-0.1)
+
+
+def test_one_robot_per_cell_a_move_into_a_robot_bumps_and_the_next_question_says_so():
+    from slm.tools.functions import functions_env
+
+    for task, n, k in (("key_door", 4, 16), ("tag", 4, 12), ("gold_rush", 5, 20), ("triangulate", 4, 16)):
+        w = World(task, n, k, seed=1)
+        assert len({a.pos for a in w.agents}) == k, f"{task}: every robot starts on its own cell"
+    with pytest.raises(ValueError, match="one robot per cell"):
+        World("gold_rush", 4, 17, seed=0)
+
+    w = World("gold_rush", 8, 2, seed=0)
+    a, b = w.agents
+    a.x, a.y, b.x, b.y = 3, 3, 4, 3
+    env = functions_env(w.decls[a.id])
+    env["move"]("east")
+    assert w.resolve_moves()[a.id] == {"to": (4, 3), "ok": False, "bumped": {"into": "R2", "at": (4, 3), "kind": "occupied"}} and a.pos == (3, 3)
+    w.turn += 1
+    assert "Last turn your move failed: you bumped into R2, who stayed at (4, 3). Two robots cannot share a cell." in w.observation(a)
+    w.turn += 1
+    assert "bumped" not in w.observation(a), "the note is for the turn right after the bump only"
+    env["move"]("west")
+    assert w.resolve_moves()[a.id]["ok"] and a.pos == (2, 3), "a free cell is a normal move"
+
+
+def test_a_bump_is_on_the_record_and_a_tagged_runner_does_not_block():
+    w = World("tag", 8, 3, seed=2)
+    chaser, r1, r2 = w.agents
+    chaser.x, chaser.y, r1.x, r1.y, r2.x, r2.y = 2, 2, 3, 2, 7, 7
+
+    from slm.tools.functions import functions_env
+
+    def gen(prompts, sessions):  # the chaser walks east into R1; the runners stand still (a retry batch holds only them)
+        return [{"calls": [["move('east')", functions_env(w.decls[chaser.id])["move"]("east")]], "answer": "", "think": ""} if s_ is r.sessions[chaser.id]
+                else {"calls": [], "answer": "", "think": ""} for s_ in sessions]
+    r = Runner(w, generate=gen)
+    rec = r.step()["records"][0]
+    assert rec["bumped"] == {"into": r1.name, "at": (3, 2), "kind": "occupied"}
+    assert chaser.pos == (2, 2)
+    w.task.tagged[r1.name] = 1
+    rec = r.step()["records"][0]
+    assert rec["bumped"] is None and chaser.pos == (3, 2), "a tagged runner is out: robots pass over it"
+
+
+def test_history_zero_keeps_no_earlier_turns():
+    """history[-2 * 0:] is the whole list: max_history=0 kept every earlier turn until 2026-10-11."""
+    w = World("gold_rush", 8, 2, seed=0, max_history=0)
+    Runner(w, generate=lambda p, s_: [{"calls": [], "answer": "x", "think": ""} for _ in p]).run(3)
+    assert [m["role"] for m in w.messages(w.agents[0])] == ["user"]
+
+
+def test_moves_resolve_at_once_contested_head_on_follow_and_ring():
+    from slm.tools.functions import functions_env
+
+    def setup(cells):
+        w = World("gold_rush", 8, len(cells), seed=0)
+        for a, (x, y) in zip(w.agents, cells):
+            a.x, a.y = x, y
+        return w, [functions_env(w.decls[a.id])["move"] for a in w.agents]
+
+    w, mv = setup([(1, 1), (3, 1)])  # both head for (2, 1)
+    mv[0]("east"); mv[1]("west")
+    res = w.resolve_moves()
+    assert not res[0]["ok"] and not res[1]["ok"] and res[0]["bumped"] == {"into": "R2", "at": (2, 1), "kind": "contested"}
+    assert [a.pos for a in w.agents] == [(1, 1), (3, 1)]
+    w.turn += 1
+    assert "you and R2 both tried to step into (2, 1) and bumped into each other" in w.observation(w.agents[0])
+
+    w, mv = setup([(1, 1), (2, 1)])  # swap
+    mv[0]("east"); mv[1]("west")
+    res = w.resolve_moves()
+    assert res[0]["bumped"]["kind"] == res[1]["bumped"]["kind"] == "head-on" and [a.pos for a in w.agents] == [(1, 1), (2, 1)]
+
+    w, mv = setup([(1, 1), (2, 1), (3, 1)])  # a line follows its leader east
+    mv[0]("east"); mv[1]("east"); mv[2]("east")
+    res = w.resolve_moves()
+    assert all(r["ok"] for r in res.values()) and [a.pos for a in w.agents] == [(2, 1), (3, 1), (4, 1)]
+
+    w, mv = setup([(1, 1), (2, 1), (3, 1)])  # the leader stays: the whole line bumps
+    mv[0]("east"); mv[1]("east")
+    res = w.resolve_moves()
+    assert not res[0]["ok"] and not res[1]["ok"] and res[1]["bumped"] == {"into": "R3", "at": (3, 1), "kind": "occupied"}
+    assert res[0]["bumped"]["into"] == "R2"
+
+    w, mv = setup([(1, 1), (2, 1), (2, 2), (1, 2)])  # a ring of four turns round together
+    mv[0]("east"); mv[1]("south"); mv[2]("west"); mv[3]("north")
+    res = w.resolve_moves()
+    assert all(r["ok"] for r in res.values()) and [a.pos for a in w.agents] == [(2, 1), (2, 2), (1, 2), (1, 1)]
+
+
+def test_only_the_first_tool_call_of_a_turn_counts():
+    from slm.arena.world import ONE_CALL, one_call_per_turn
+
+    w = World("gold_rush", 8, 2, seed=0)
+    a = w.agents[0]
+    a.x, a.y = 3, 3
+    w.agents[1].x, w.agents[1].y = 6, 6
+    from slm.tools.functions import functions_env
+
+    env = one_call_per_turn(functions_env(w.decls[a.id]))
+    with pytest.raises(TypeError):
+        env["move"]()  # a wrong call raises and does not count
+    assert "set off north" in env["move"]("north")
+    assert env["move"]("east") == ONE_CALL and env["look"]() == ONE_CALL and ONE_CALL.startswith("error:")
+    assert w.resolve_moves()[a.id]["to"] == (3, 2) and a.pos == (3, 2), "only the first move happened"

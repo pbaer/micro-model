@@ -6,6 +6,15 @@ import pytest
 
 from slm.arena.world import TASKS, KeyDoor, Relay, Runner, Triangulate, World, dist
 
+@pytest.fixture(autouse=True)
+def _scaffold_prompt(monkeypatch):
+    """These tests check the arena's mechanics through the scaffolded questions (the oracle reads the call they spell
+    out), so the World default is the scaffold here; the fair prompt shapes have their own tests."""
+    from slm.arena import world as _w
+
+    monkeypatch.setattr(_w, "DEFAULT_PROMPT", "scaffold")
+
+
 
 def _env(world, agent):
     from slm.tools.functions import functions_env
@@ -18,18 +27,19 @@ def test_move_say_look_and_range_delivery():
     a, b = w.agents
     a.x, a.y, b.x, b.y = 0, 0, 5, 5
     ea, eb = _env(w, a), _env(w, b)
-    assert "moved north" not in ea["move"]("north") and a.pos == (0, 0), "the grid edge blocks"
-    assert "moved east" in ea["move"]("east") and a.pos == (1, 0)
+    assert "Blocked" in ea["move"]("north") and a.pos == (0, 0), "the grid edge blocks"
+    assert "set off east towards (1, 0)" in ea["move"]("east") and a.pos == (0, 0), "a move is settled when every robot has acted"
+    assert w.resolve_moves() == {0: {"to": (1, 0), "ok": True, "bumped": None}} and a.pos == (1, 0)
     assert "Unknown direction" in ea["move"]("up")
     out = ea["say"]("hello")
-    assert "nobody" in out, "b is 9 cells away, comm range 3"
+    assert "nobody" in out, "b is 4 cells away in x and 5 in y: outside the 5x5 square"
     w.deliver()
     assert b.inbox == [], "out of range: nothing heard"
-    b.x, b.y = 3, 0
+    b.x, b.y = 3, 2  # 2 cells east and 2 south: a corner of the square, heard (it was out of the old diamond)
     ea["say"]("the code is 1234")
     w.deliver()
     assert b.inbox == ["R1 said: 'the code is 1234'"], "delivered at the next observation, with the speaker's name"
-    assert "R2 at (3, 0)" in ea["look"]()
+    assert "R2 at (3, 2)" in ea["look"]()
     assert "R1 said" in w.status(b)
 
 
