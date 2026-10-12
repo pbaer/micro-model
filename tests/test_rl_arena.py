@@ -96,3 +96,11 @@ def test_a_rollout_is_rewarded_by_its_call(tok, monkeypatch):
                       tools=True, reward_scheme="binary", reward_schemes={"arena": "fraction"})
     for r in g:
         assert r.tool_calls == 1 and r.tool_results[0][0] == "look()" and r.fraction == 1.0 and r.reward == 1.0 and r.correct
+
+
+def test_a_move_without_a_direction_earns_nothing():
+    """Try 1 (2026-10-12) learned move("pen") on every movement turn when it still paid 0.25."""
+    mover = next(x for x in _tasks("gold_rush", 120) if x.meta["judge"]["goal"])
+    for code in ('move("pen")', 'move("scissors")', "move()", 'move("up")', 'x = "north"\nmove(x)'):
+        assert arena_verdict(mover, [[code, "Unknown direction"]]).fraction == 0.0, code
+    assert arena_verdict(mover, [["move(direction='north')", "ok"]]).fraction in (0.25, 1.0)

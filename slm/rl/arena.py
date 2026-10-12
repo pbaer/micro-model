@@ -143,10 +143,16 @@ def arena_verdict(task: Task, calls: list) -> Verdict:
     if not v["tool_ok"]:
         return Verdict(False, first[0], f"wrong tool (expected {v['expected']})", fraction=0.0)
     goal = j.get("goal")
-    if goal and re.search(r"\bmove\s*\(", canonical(first[0])):
-        m = re.search(r"\b(north|south|east|west)\b", str(first[0]).lower())
+    if re.search(r"\bmove\s*\(", canonical(first[0])):
+        # a move needs a direction: move("pen") is not a step the wrong way but no step at all. Scored 0.25 in try 1
+        # (2026-10-12), every movement turn became move("scissors") / move("folder") by step 100, a sure 0.25
+        m = re.search(r"move\s*\(\s*(?:direction\s*=\s*)?['\"]\s*(north|south|east|west)\s*['\"]\s*\)", str(first[0]).lower())
+        if not m:
+            return Verdict(False, first[0], "move without a direction", fraction=0.0)
+        if not goal:  # a free move (the digger's search): any real step
+            return Verdict(True, first[0], "a step", fraction=1.0)
         pos, cells, sense = tuple(goal[0]), [tuple(c) for c in goal[1]], goal[2]
-        new = _step(pos, m.group(1), j["n"]) if m and m.group(1) in DIRS else pos
+        new = _step(pos, m.group(1), j["n"]) if m.group(1) in DIRS else pos
         before, after = min(dist(pos, c) for c in cells), min(dist(new, c) for c in cells)
         good = new != pos and (after < before if sense == "towards" else after > before)
         return Verdict(good, first[0], f"step {'closes' if sense == 'towards' else 'opens'} the distance" if good else "step the wrong way",
