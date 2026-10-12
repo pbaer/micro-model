@@ -880,8 +880,9 @@ PROMPTS = {
     "situation_user": {"tools": "all", "brief": "user", "question": "situation", "ending": " What do you do?"},
     "ask": {"tools": "all", "brief": "none", "question": "ask", "ending": ""},
     # the probe's best fair shape (results §29): every tool declared, no briefing, the "ask" question, and three worked
-    # examples in the order look around, move to a pad, pass a password on (the last example weighs most)
-    "ask_examples": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "demos": [2, 0, 1]},
+    # examples in the order look around, move to a pad, pass a password on (the last example weighs most), and the tools
+    # named with the words their questions use (key_code, secret_code, pick_up_coin, hand_in)
+    "ask_examples": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "demos": [2, 0, 1], "names": "domain"},
 }
 DEFAULT_PROMPT = "ask_examples"
 

@@ -1799,3 +1799,51 @@ picking its default: M10 playing every robot, 6 robots, 5 seeds per task, 12 tur
   (§27), is wrong here.
 - **0.3 keeps the games**: calls on 80-100% of turns, gold rush and tag at their greedy level (32 and 5 vs 28 and 6;
   5 seeds, within noise). The portal's default is 0.3; evals stay greedy (`arena_eval.py --temperature 0`).
+
+### 29. A fair prompt for the arena robots (2026-10-11)
+
+Every arena result so far (§24-§28c) used a scaffold that spelled out the call, argument included ('Tell robot R2: call
+say("the code is 7311")') and declared only that one tool: it measured copying a call, not choosing one. The prompt is
+now a set of switches (`slm.arena.world.PROMPTS`, design.md) and each turn is judged against the call the scaffold
+would have spelled out: the right tool (`tool_ok`, chance = right tools / declared tools) and, for a call carrying a
+fact (a code, a name, a distance), the right fact (`call_ok`). Same day, the turn rules changed (one call per robot per
+turn, moves resolved at once with collisions, hearing within a square of 2); the episode rows below are all under them.
+
+**The probe** (`scripts/arena_prompt_probe.py`: 414 robot-turns from oracle-played episodes of all six tasks, one
+greedy turn per style with stub tools, no history; M10). Right tool / right fact, pooled; "acted" counts any code span:
+
+| prompt | right tool (chance) | right fact | |
+|---|---|---|---|
+| scaffold (the call spelled out, one tool declared) | 0.82-0.86 (1.00) | 0.59 | the old setting |
+| the call spelled out, every tool declared | 0.71 (0.27) | 0.24 | |
+| situation (facts + goal in words), every tool | 0.18 (0.27) | 0.00 | below chance |
+| situation + briefing as the system prompt (or atop the question) | 0.00 | 0.00 | no tool call at all |
+| situation ending "Which tool do you call, and with what argument?" | 0.07 | 0.00 | |
+| "ask" (a question the right tool answers, worded like its description) | 0.01 | 0.00 | reads as a Python puzzle |
+| situation + 2 worked examples | 0.37 | 0.36 | |
+| ask + 2 worked examples | 0.49-0.51 | 0.24-0.29 | |
+| ask + 3 examples, the look() example last | 0.48 | 0.39 | gold rush 0.01: everyone looks |
+| ask + 3 examples ordered look, move, password | 0.68 | 0.42 | the last example weighs most |
+| same + tools named by their questions' words (key_code, secret_code, pick_up_coin, hand_in) | **0.72** | 0.38 | `ask_examples`, the default |
+| tool descriptions that say what they return | -0.08 | +0.03 | no help |
+
+- **A system prompt switches tool use off** (0.00 acted), wherever the briefing goes, as in the eval prompt sweep (§26).
+- **Without worked examples a fair question is at or below chance**; the examples (situations from no arena task: a
+  charging pad, a password, looking around) teach the protocol, and their order matters (the last one is copied most).
+- Failures that remain: copying an example's argument (`say("the password is lilac")`), falling back to `look()`, and
+  inventing a tool (`code("key")` for read_key, which the domain names partly fixed).
+
+**Whole episodes** (M10 on every robot, 6 robots, 12 turns; scaffold and fair 5 seeds, fair without history 3):
+
+| prompt | key_door | relay | triangulate | team_relay | tag | gold_rush |
+|---|---|---|---|---|---|---|
+| scaffold | 0/5, progress 0.47 | 3/5, 0.80 | 0/5, 0.18 | 5/5 (red 4, blue 1) | 6 tagged of 20 | 22 coins |
+| `ask_examples` (fair) | 0/5, 0.00 | 0/5, 0.00 | 0/5, -0.04 | no winner | 0 tagged | 0 coins |
+| `ask_examples`, no history | 0/3, 0.00 | 0/3, 0.00 | 0/3, -0.13 | no winner | 0 | 0 |
+
+Right tool in those fair episodes: 0.21-0.90 against 0.24-0.31 chance (highest where the right call is `look()`); the
+chains still stall at their first link (the code is never read and passed on correctly) and no coin is ever picked up.
+**Under a fair prompt M10 cannot play any of the six games.** Everything the arena measured before was the model
+executing a spelled-out call; choosing the tool and its argument from the situation is a capability it does not have
+yet, and the fair arena is now a target for training rather than an eval it passes. The portal defaults to the fair
+prompt (`ask_examples`); `scaffold` reproduces §24-§28c and is the one that makes for a lively game to watch.

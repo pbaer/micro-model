@@ -93,3 +93,20 @@ def test_prompt_style_checks_its_fields():
         prompt_style("nope")
     with pytest.raises(ValueError):
         prompt_style({"tools": "some"})
+
+
+def test_domain_names_alias_the_tools_and_map_back_for_the_task_and_the_judge():
+    from slm.arena.world import canonical
+
+    w = World("relay", 14, 6, seed=0, prompt="ask_examples")
+    src = w.agents[0]
+    tools = w.turn_tools(src)
+    assert "secret_code" in [d.name for d in tools] and "read_code" not in [d.name for d in tools]
+    assert any(d.signature.startswith("def secret_code(") for d in tools)
+    assert canonical("x = secret_code()\nsay(x)") == "x = read_code()\nsay(x)"
+
+    def gen(prompts, sessions):  # the source calls the alias; the others do nothing
+        return [{"calls": [["secret_code()", s_.functions["secret_code"]()]], "answer": "", "think": ""} if "secret_code" in s_.functions
+                else {"calls": [], "answer": "", "think": ""} for s_ in sessions]
+    rec = Runner(w, generate=gen).step()["records"][0]
+    assert rec["tool_ok"] is True and src.memory.get("code") == w.task.code, "the task read the alias call as read_code()"

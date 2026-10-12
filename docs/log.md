@@ -1042,3 +1042,9 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   Answers are now kept whole (our checkpoints replay the turn's ids and never saw the clip). Also: no turn limit by default
   (runs until the game ends or stop), max new tokens 512, the task panel above the arena and the selected robot beside it,
   the 3D orbit drag direction reversed.
+- 2026-10-11 Arena fairness (Peter: "call say("the code is 7311") kind of feels like cheating"). Prompt switches +
+  per-turn judging against the scaffold's call; a probe hill-climbed 30 shapes (results §29): the best fair one
+  (every tool, an "ask" question, three ordered worked examples, domain tool names) picks the right tool 0.72 vs 0.27
+  chance per turn, but in whole episodes no task makes any progress. A system prompt switches tool use off entirely.
+  Same day: one tool call per turn, simultaneous moves with collisions, square hearing range, and max_history=0 kept
+  the whole history (history[-0:]) -- fixed.
