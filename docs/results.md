@@ -1851,3 +1851,53 @@ and named, "Use say() to do it.", its argument left to the robot; three worked e
 nothing: relay progress 0.44, team_relay's codes reached both sinks with no winner, 2 of 20 runners tagged, no coin.
 **The portal is back on the scaffold** (DEFAULT_PROMPT); the fair styles stay selectable, and the arena is now an RL
 target (`slm.rl.arena`, run m11_rl_arena_336m).
+
+### 30. Teaching the robots: arena SFT, then RL (M11, 2026-10-12)
+
+§29 left M10 unable to play under a fair prompt. Two stages, both from M10 (`runs/m10_rl_336m/checkpoints/final.pt`):
+
+- **RL alone** (`slm.rl.arena`, family `arena_<task>`, 8 of 33 draws, reward from the first tool call) gamed its reward
+  twice: try 1 answered every movement turn with `move("pen")` / `move("scissors")` (0.25 partial credit for "a step the
+  wrong way" covered a move without a direction); try 2, `say("ruler")` (0.25 for the right tool with the wrong fact).
+  Both partial credits are now 0 (only a real step the wrong way keeps 0.25). Try 3, clean, earned 0.07 a turn after 50
+  steps (half the samples called no tool): the reward was too sparse to climb (`runs/m11_rl_arena_336m_try1..3`).
+- **SFT warm-up** (`slm.rl.synth_arena`, set `arena-sft`, 20k robot turns, 6.4M tokens at 0.15 of a 40M-token rehearsal
+  mix, the m9_select recipe; config `m11_arena_sft_336m`): template turns under the fair prompts, every target scoring
+  1.0 under the RL verdict. Three builds: v1 wrote a move's direction before the robot's own position and got it wrong
+  (chasers at chance) and had 1% code reads (the relay source said "the code is 42" instead of reading it); v2 writes the
+  arithmetic out, own position first ("x: 2 - 0 = 2, so it is 2 east"), with distinct read / say openings and 8% reads;
+  v3 adds ~3% tag turns drawn on purpose (v2's chasers stepped into the runner's cell instead of tagging).
+- **RL from the SFT** (`m11_rl_arena_336m`): the arena turns were already at 0.94 reward, so it mostly trained M10's
+  other families; stopped by the KL guard at step 236 (0.20 > 0.15); best.pt = step 200.
+
+| | M10 | arena SFT v3 | SFT + RL (best, step 200) |
+|---|---|---|---|
+| constraints (200 held-out RL prompts, greedy score; `scripts/rl_family_eval.py`) | 0.750 | **0.567** | 0.749 |
+| revise / sysrule (same, 200 each) | 0.698 / 0.610 | 0.649 / 0.555 | 0.713 / 0.670 |
+| chat (200) | 0.990 | 0.985 | 0.985 |
+| multiturn n=64: sysrule_all / revise_all / format | 0.672 / 0.156 / 0.969 | 0.672 / 0.172 / 0.930 | 0.703 / 0.188 / 0.992 |
+| reasoning eval mean (`slm.eval.reasoning --tools`) | 0.758 | 0.764 (v2) | 0.766 |
+| probe, situation prompt, no examples: right tool / fact (§29 table) | 0.18 / 0.00 | 0.87 / 0.64 (v2) | -- |
+
+Whole episodes under the fair prompt (`ask_examples`; 6 robots, 5 seeds, 12 turns; triangulate and team_relay never
+trained on):
+
+| | M10 | arena SFT v3 | SFT + RL |
+|---|---|---|---|
+| key_door | 0/5, progress 0.00 | 1/5, 0.53 | 0/5, 0.13 |
+| relay | 0/5 | **5/5** | 5/5 |
+| triangulate (held out) | 0/5 | 0/5 | 0/5 |
+| team_relay (held out) | no winner | no winner (v2: 5/5 won; plain situation prompt: 3 won) | 5/5 won (red 2, blue 3) |
+| tag: runners tagged; chaser steps that close in (chance) | 0/20 | 3/20; **0.79** (0.44) | 0/20; 0.38 (0.38) |
+| gold_rush: coins; steps toward a nearest coin (chance) | 0 | **52; 0.80** (0.45) | 42; 0.61 (0.42) |
+
+- **The SFT taught the robots to play under a fair prompt**, and the coordinate decision every model sat at chance on
+  (§28b) is now well above it (0.80 vs 0.45 in gold rush, 0.79 vs 0.44 for chasers). It generalizes to team_relay,
+  not to triangulate (its "tell the digger your position and distance" turn has no counterpart in training).
+- **It costs instruction following**: constraints 0.750 -> 0.567 on 200 prompts (the step-50 dip of the RL eval was
+  this, not noise). The rehearsal mix carries little instruction-following data.
+- **RL repairs that** (constraints 0.749, sysrule and multiturn slightly above M10, reasoning unchanged) **and erodes the
+  movement skill** (chasers back at chance, gold rush 0.80 -> 0.61), keeping the relay and code-passing skills.
+- Neither checkpoint is both: the SFT is the arena specialist, the SFT + RL a general model that plays the relays.
+  M10 stays the chat default. Next, if wanted: the arena SFT with instruction-following rehearsal in its mix, or RL
+  whose arena turns carry the episode's history (the RL tasks are single turns; episodes keep one earlier exchange).

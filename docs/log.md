@@ -1048,3 +1048,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   chance per turn, but in whole episodes no task makes any progress. A system prompt switches tool use off entirely.
   Same day: one tool call per turn, simultaneous moves with collisions, square hearing range, and max_history=0 kept
   the whole history (history[-0:]) -- fixed.
+- 2026-10-12 M11 arena training. RL alone on fair-prompt robot turns gamed partial credit twice (move("pen"),
+  say("ruler")) and, clean, was too sparse (0.07 a turn); an SFT warm-up of template turns (three builds: arithmetic
+  written out own-position-first, more code reads, tag turns on purpose) made the robots play under a fair prompt and
+  beat chance on the coordinate decision for the first time, at a cost of constraints 0.75 -> 0.57; RL from it repaired
+  instruction following and lost the movement skill. Results §30.
