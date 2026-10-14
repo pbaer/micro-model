@@ -1935,3 +1935,33 @@ centred embeddings, top-1 / top-5 %:
   1.0% and 0.13% (median row cosine >= 0.9999) and the scores by < 0.3 points. Across bases, top-5 is flat at ~84 while
   top-1 drifts down with more pretraining (149M at 1B tokens 65.0, M8 4K 53.9, M10 base 54.5); the 26M TinyStories
   model has morphology (past tense 98%) but no world knowledge (capitals 0%).
+
+### 32. One model for chat and the arena: M11 = m11_rl_arena_336m step 100 (2026-10-13)
+
+§30 left two checkpoints, each good at one thing: the arena SFT (plays, constraints 0.567) and its RL stage's best
+(constraints back, movement lost). Three ways to get both, each checked on 200 held-out prompts per instruction-following
+family and on whole fair-prompt games (`ask_examples`, 6 robots, 5 seeds):
+
+| | constraints / sysrule | key_door | relay | chaser steps closing in (chance) | gold coins; nearest-coin steps (chance) |
+|---|---|---|---|---|---|
+| M10 | 0.750 / 0.610 | 0/5, 0.00 | 0/5 | -- | 0 |
+| arena SFT (`m11_arena_sft_336m`) | 0.567 / 0.555 | 1/5, 0.53 | 5/5 | 0.79 (0.44) | 52; 0.80 (0.45) |
+| weight soup, 50% RL best (`scripts/soup.py`) | 0.709 / 0.610 | 1/5, 0.67 | 5/5 | 0.60 (0.39) | 48; 0.60 (0.44) |
+| weight soup, 70% RL best | 0.755 / 0.650 | 0/5, 0.13 | 5/5 | 0.36 (0.38) | 40; 0.58 (0.42) |
+| arena SFT, instruction-following rehearsal tripled (`m11_arena_sft_if_336m`) | 0.593 / 0.555 | 1/5, 0.60 | 5/5 | 0.88 (0.42) | 51; 0.74 (0.43) |
+| RL from the arena SFT, step 50 | 0.652 / 0.540 | | | | |
+| **RL from the arena SFT, step 100** | **0.749 / 0.605** | **1/5, 0.60** | **5/5** | **0.73 (0.41)** | **51; 0.69 (0.41)** |
+| RL best (step 200) | 0.749 / 0.670 | 0/5, 0.13 | 5/5 | 0.38 (0.38) | 42; 0.61 (0.42) |
+
+- **Averaging trades one skill for the other** along the line between the SFT and the RL checkpoint; it does not give both.
+- **Rehearsal does not prevent the loss**: tripling the instruction-following sets in the SFT mix (0.06 -> 0.18 constraint
+  sets, systemchats 0.14) moved constraints 0.567 -> 0.593. M10's instruction following was made by its RL stage, and an
+  SFT on top of an RL model undoes part of what RL made, whatever the rehearsal.
+- **RL gives it back fast and takes the movement skill slowly**: instruction following is home by step 100 (half way at
+  step 50), the movement skill still mostly there (0.73 chaser, 0.69 nearest coin); by step 200 it is gone.
+
+M11 (step 100) against M10 on the rest of the suite: chat 0.990 / 0.990, revise 0.688 / 0.698 (200 prompts); multiturn
+(n=64) recall 0.906 / 0.906, revise_all 0.156 / 0.156, sysrule_all 0.641 / 0.672, format 0.984 / 0.969; reasoning eval mean
+0.760 / 0.758 (gsm8k_test 0.035 / 0.05, n=200). Under the scaffold M11 wins every team relay, solves every relay, tags 6
+of 20 runners with chasers closing in on 0.94 of their steps (chance 0.35) and takes 38 coins. Triangulate, held out,
+stays unsolved (0/5 under both prompts) -- no model has solved it. The judged quality suite has not been run on M11.

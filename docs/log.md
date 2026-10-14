@@ -1053,3 +1053,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   written out own-position-first, more code reads, tag turns on purpose) made the robots play under a fair prompt and
   beat chance on the coordinate decision for the first time, at a cost of constraints 0.75 -> 0.57; RL from it repaired
   instruction following and lost the movement skill. Results §30.
+- 2026-10-13 One model for chat and arena: weight soups of the arena SFT and its RL stage trade the two skills; tripled
+  instruction-following rehearsal in the SFT did not stop its loss (0.567 -> 0.593); the RL stage's step-100 checkpoint
+  has both (constraints 0.749 vs M10 0.750, fair-prompt arena play intact). M11 = runs/m11_rl_arena_336m/checkpoints/
+  step_00100.pt. Lesson: SFT on an RL model undoes RL-made behaviour; a short RL pass restores it before it erodes the
+  SFT's new skill -- pick the checkpoint by measurement, not best.pt (selected on the trainer's small mixed held-out set).
