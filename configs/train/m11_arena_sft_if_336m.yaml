@@ -1,0 +1,72 @@
+# M11 stage A, take 2: m11_arena_sft_336m with instruction-following rehearsal tripled (results §32).
+#
+# m11_arena_sft_336m taught the robots to play under a fair prompt but cost constraints 0.75 -> 0.57 (200 held-out
+# prompts); RL repaired that and lost the movement skill, and weight averaging between the two only trades one for the
+# other. Same arena set and schedule; the constraint sets go from 0.06 to 0.18 of the mix, system-prompt rules to 0.14.
+#
+# (take 1's header follows)
+#
+# RL alone on arena robot turns (m11_rl_arena_336m try 3) barely moved: after 50 steps the arena reward averaged 0.07,
+# half the samples called no tool, and gold rush / tag earned nothing. arena-sft (slm.rl.synth_arena) is ~20k robot
+# turns under the fair prompts (every tool declared or the turn's tool named; the situation, never the call), each
+# answered by a template turn: one or two sentences of reasoning (for a move, the coordinates worked out), the
+# oracle's call, `#### ...`. Every target scores 1.0 under the RL verdict; triangulate and team_relay are not in it.
+# The rest is rehearsal of the M10 tool-stage mixture so chat, tools and reasoning stay where they are (a narrow SFT
+# step cost judged quality before: m10 skipped the select SFT for that). The RL stage (m11_rl_arena_336m) starts here.
+run_name: m11_arena_sft_if_336m
+tokenizer_dir: C:\slm-data\tokenizer\v1
+model_file: configs/model/base_336m.yaml
+init_from: runs/m10_rl_336m/checkpoints/final.pt
+model:
+  loss_chunk_size: 4096
+data:
+  kind: sft
+  sft_root: C:\slm-data\sft\v1
+  tokenized_root: C:\slm-data\tokenized\v1
+  mixture:
+    arena-sft: 0.15                               # the format set, as in m11_arena_sft_336m
+    smoltalk-smol-constraints-4k-think: 0.12      # instruction following, doubled (0.06 -> 0.12) ...
+    smoltalk-smol-constraints-short: 0.06         # ... plus the short form: m11_arena_sft lost constraints 0.75 -> 0.57
+    smoltalk-systemchats-30k-short: 0.14          # system-prompt rules (0.12 -> 0.14)
+    smoltalk-smol-magpie-ultra-4k-direct: 0.15
+    smoltalk-openhermes-100k-4k-direct: 0.08
+    synthetic-python-tools: 0.10
+    smoltalk-openhermes-100k-short: 0.04
+    gsm8k-tools: 0.05
+    synthetic-reasoning-tools: 0.04
+    synthetic-multiturn-tools: 0.04
+    synthetic-reasoning: 0.03
+  seq_len: 4096
+  val_tokens: 1000000
+  extra_val_mixture: {fineweb-edu-10bt: 0.72, cosmopedia: 0.11, finemath: 0.07, python-edu: 0.065, synth-retrieval: 0.035}
+optim:
+  lr: 1.5e-5
+  betas: [0.9, 0.95]
+  eps: 1.0e-8
+  weight_decay: 0.1
+  grad_clip: 1.0
+schedule:
+  type: cosine
+  total_tokens: 40000000
+  warmup_tokens: 2000000
+  min_lr_ratio: 0.1
+batch:
+  microbatch: 2
+  tokens_per_update: 131072
+runtime:
+  compile: true
+  sdpa_backend: cudnn
+  seed: 11
+  log_every_updates: 10
+ckpt:
+  every_minutes: 10
+eval:
+  every_tokens: 10000000
+  gen_every_tokens: 10000000
+  gen_max_new_tokens: 128
+  gen_temperature: 0.8
+  gen_top_p: 0.95
+  report_every_minutes: 5
+  prompts:
+    - "<|user|>What is 17 + 25?<|end|><|assistant|>"
+notes: "Arena-format SFT on M10 (rl final); the base for the M11 RL stage. Gate: greedy probe on fair prompts incl. the held-out tasks, first-token loss on arena-sft val, and the standard suite unchanged vs M10."
