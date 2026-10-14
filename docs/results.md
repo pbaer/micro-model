@@ -1901,3 +1901,37 @@ trained on):
 - Neither checkpoint is both: the SFT is the arena specialist, the SFT + RL a general model that plays the relays.
   M10 stays the chat default. Next, if wanted: the arena SFT with instruction-following rehearsal in its mix, or RL
   whose arena turns carry the episode's history (the RL tasks are single turns; episodes keep one earlier exchange).
+
+### 31. Do M10's token embeddings hold the classic word-vector analogies? (2026-10-13)
+
+`scripts/embedding_analogies.py` (CPU; full results `runs/embeddings/*_analogies.json`): M10's embedding matrix (32768 x
+1024, tied with the output projection; 64 special rows dropped), words in the leading-space form (" king") where both
+words of a pair are single tokens, every ordered pair of pairs in a category as one quadruple a:b :: c:? (8,642), answered
+by the nearest neighbour of v(b) - v(a) + v(c) by cosine with a, b, c excluded (3CosAdd). "c-only" answers with the
+nearest neighbour of c alone (the offset did no work when it matches). Word-like pool (20,029 alphabetic tokens),
+centred embeddings, top-1 / top-5 %:
+
+| category (pairs kept) | top-1 | top-5 | c-only | | category | top-1 | top-5 | c-only |
+|---|---|---|---|---|---|---|---|---|
+| gender (23) | 77.5 | 98.0 | 39.5 | | past tense (37) | 46.2 | 97.4 | 0.0 |
+| capital (22) | 49.8 | 91.1 | 0.0 | | gerund (20) | 79.7 | 100 | 25.0 |
+| US state capital (13) | 36.5 | 66.7 | 8.3 | | antonym (30) | 9.4 | 59.0 | 6.7 |
+| nationality (30) | 99.0 | 100 | 93.3 | | negation prefix (17) | 30.5 | 73.9 | 5.9 |
+| plural (30) | 64.8 | 100 | 43.3 | | code inverse: get/set, encode/decode (25) | 4.5 | 23.3 | 0.0 |
+| comparative (30) | 93.3 | 100 | 20.0 | | code abbreviation: integer/int (26) | 0.6 | 49.7 | 0.0 |
+| superlative (22) | 83.8 | 98.7 | 0.0 | | code plural: key/keys (19) | 78.9 | 98.8 | 68.4 |
+| **all** | **54.2** | **84.2** | 22.9 | | | | | |
+
+- **The classic structure is there**: king - man + woman lands on queen (top-5: queen, kings, King, Queen, princess);
+  Japan:Tokyo :: France -> Paris, go:went :: see -> saw, big:bigger :: good -> better, encode:decode :: encrypt ->
+  decrypt. Grammar relations and gender are strong; country-capital moderate; antonyms and the code relations (inverse
+  operations, abbreviations) are not linear in the embeddings. Nationality's 99% is mostly plain similarity (c-only 93%).
+- **88% of top-1 misses are a case or inflection variant of c** (dog:dogs :: country -> " Country", countries second);
+  skipping those, top-1 is 63.9%. A token's nearest neighbours are its own case / spacing variants, then its semantic class.
+- **The offsets are shared but weak**: within a category the offset vectors agree at a centred cosine of 0.2-0.4
+  (king-queen vs man-woman 0.40; random pairs 0.00), hence top-5 high, top-1 often a neighbour. The raw embeddings are
+  anisotropic (random-pair cosine 0.18); centring changes accuracy by ~2 points only.
+- **The structure is made in pretraining and passed through untouched**: SFT, tool SFT and RL move the matrix by 2.1%,
+  1.0% and 0.13% (median row cosine >= 0.9999) and the scores by < 0.3 points. Across bases, top-5 is flat at ~84 while
+  top-1 drifts down with more pretraining (149M at 1B tokens 65.0, M8 4K 53.9, M10 base 54.5); the 26M TinyStories
+  model has morphology (past tense 98%) but no world knowledge (capitals 0%).
