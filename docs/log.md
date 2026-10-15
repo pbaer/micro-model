@@ -1058,3 +1058,5 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   has both (constraints 0.749 vs M10 0.750, fair-prompt arena play intact). M11 = runs/m11_rl_arena_336m/checkpoints/
   step_00100.pt. Lesson: SFT on an RL model undoes RL-made behaviour; a short RL pass restores it before it erodes the
   SFT's new skill -- pick the checkpoint by measurement, not best.pt (selected on the trainer's small mixed held-out set).
+- 2026-10-14 M11 judged quality 3.594 vs M10 4.135: arena training made the model call undeclared functions on plain
+  chat prompts (tool misfire 0.18 vs 0.04). Not promoted; the instruction-following families and multiturn missed it.

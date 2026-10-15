@@ -1965,3 +1965,13 @@ M11 (step 100) against M10 on the rest of the suite: chat 0.990 / 0.990, revise 
 0.760 / 0.758 (gsm8k_test 0.035 / 0.05, n=200). Under the scaffold M11 wins every team relay, solves every relay, tags 6
 of 20 runners with chasers closing in on 0.94 of their steps (chance 0.35) and takes 38 coins. Triangulate, held out,
 stays unsolved (0/5 under both prompts) -- no model has solved it. The judged quality suite has not been run on M11.
+
+**Judged quality gate (2026-10-14): M11 fails.** The quality suite (35 prompts, blind Sonnet judge, docs/quality_eval.md):
+overall 3.594 against M10 final's 4.135 (correctness 3.50 / 3.75, coherence 3.59 / 4.47, task 3.69 / 4.19); tool misfire
+0.179 / 0.036 (reaching for the sandbox on prompts that need none), answers that stop 0.83 / 0.97. The arena's lesson,
+"the answer is a call to a declared function", carried over to plain chat: asked the capital of France it calls
+`city_population(c)`, asked when water boils it calls `waterBoiling(i)` -- functions nobody declared -- and loops on the
+sandbox's NameError until the budget runs out. The instruction-following families and the multiturn eval (§32) did not
+see it: their prompts are not short factual questions. **M11 is not promoted**; M10 stays the chat default. A fix
+would teach the negative case (memory: teach-the-negative-case): arena-SFT conversations where no function is declared
+and the answer is plain, or more `chat` (plain, no-call) draws in the RL pass.
