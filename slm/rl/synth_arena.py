@@ -118,7 +118,33 @@ def target_turn(task, rng: random.Random):
     return f"{why} <<<{call}>>>", answers.get(name, "#### done")
 
 
-def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -> dict:
+PLAIN = {  # what a robot would do, in words, when nothing is declared it could do it with (the negative set)
+    "move": "I would step {a0}.", "say": "I would say: {a0}.", "look": "I would look around to see who is near.",
+    "read_key": "I would read the code first; I do not know it yet.", "read_code": "I would read the code first; I do not know it yet.",
+    "open_door": "I would open the door with the code {a0}.", "submit": "I would hand in the code {a0}.", "tag": "I would tag {a0}.",
+    "grab": "I would pick up the coin.", "distance_to_target": "I would measure my distance to the target first.",
+}
+
+
+def negative_turn(task, think: str) -> tuple[str, str]:
+    """The same turn with no function declared (2026-10-14: M11, trained only on turns that call a declared function,
+    called undeclared ones on plain chat -- city_population(c) for "the capital of France"): the reasoning stays, the
+    call becomes words."""
+    from slm.arena.world import CANON
+
+    call = re.search(r"<<<(.*)>>>", think).group(1)
+    name = re.match(r"\w+", call).group(0)
+    name = CANON.get(name, name)
+    args = re.findall(r'"([^"]*)"', call)
+    why = think[: think.index("<<<")].strip()
+    if name in ("read_key", "read_code", "distance_to_target", "look"):  # their reasoning names the function: not here
+        why = {"look": "I have nothing to pass on yet.", "distance_to_target": "I do not know my distance to the target yet."}.get(
+            name, "I have not read the code yet, and nobody has told me it.")
+    plain = PLAIN.get(name, "I would act.").format(a0=args[0] if args else "")
+    return f"No function is declared here, so I cannot call one; I answer in words. {why}", f"#### {plain}"
+
+
+def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0, negative: bool = False) -> dict:
     from slm.arena.world import native_messages
     from slm.data.chat import format_chat
     from slm.data.sft import SftShardWriter
@@ -132,7 +158,7 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
     seen: Counter = Counter()  # identical conversations, capped: a turn whose question is the same in every world
     # (reading the code, picking up a coin) is word for word identical; deduplicated to one copy, the first build had 3-12
     # of them against 10k moves, and reading the code is the first link of every chain
-    tag_quota = max(1, n * 3 // 100)  # v3: a chaser next to a runner is ~3% of tag turns; ~600 of 20k are drawn on purpose
+    tag_quota = 0 if negative else max(1, n * 3 // 100)  # v3: a chaser next to a runner is ~3% of tag turns; ~600 of 20k are drawn on purpose
     while sum(counts.values()) < n:
         hunting = tools["tag"] < tag_quota
         task_name = "tag" if hunting else rng.choice(TRAIN_TASKS)
@@ -140,6 +166,10 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
         t = make_arena_task(rng, task_name, first_turn=rng.random() < 0.15)
         if t is None:
             skipped["no call"] += 1
+            continue
+        st = t.meta["arena"]["style"]
+        if negative and (st["question"] == "hint" or st.get("demos")):  # "Use say() to do it." / example calls contradict "nothing declared"
+            skipped["style"] += 1
             continue
         if hunting and not t.answer.startswith("tag("):
             skipped["tag hunt"] += 1
@@ -164,8 +194,12 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
             continue
         seen[key] += 1
         decls = t.meta["functions"]
+        if negative:  # the same conversation with nothing declared: the turn answers in words
+            think, answer = negative_turn(t, think)
+            decls = None
         session = PySession()
-        session.register(functions_env(decls))
+        if decls:
+            session.register(functions_env(decls))
         conv = native_messages(tok, msgs) + [{"role": "assistant", "think": think, "content": answer}]
         enc = format_chat(tok, conv, think_required=True, tools=True, session=session, functions=decls)
         mask = list(enc.loss_mask)
@@ -181,8 +215,8 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
                 mask[i] = 0
             if x == r_close:
                 inside = False
-        if tok.special("<|python_call|>") not in enc.ids:
-            skipped["markup did not run"] += 1
+        if (tok.special("<|python_call|>") in enc.ids) == negative:  # a call in every positive, none in a negative
+            skipped["markup did not run" if not negative else "call in a negative"] += 1
             continue
         split = "val" if rng.random() < 0.02 else "train"
         writers[split].add(enc.ids, mask)
@@ -191,7 +225,7 @@ def build(tok, n: int, out_root: Path, name: str = "arena-sft", seed: int = 0) -
         styles[f"{t.meta['arena']['style']['question']}{'+examples' if t.meta['arena']['style'].get('demos') else ''}{'+names' if t.meta['arena']['style'].get('names') else ''}"] += 1
     for wr in writers.values():
         wr.flush()
-    m = {"name": name, "tokenizer_sha256": tok.sha256, "think_required": True, "tools": True, "functions": True, "seed": seed,
+    m = {"name": name, "tokenizer_sha256": tok.sha256, "think_required": True, "tools": True, "functions": not negative, "negative": negative, "seed": seed,
          "conversations": sum(counts.values()), "task_counts": dict(counts), "tool_counts": dict(tools), "style_counts": dict(styles),
          "skipped": dict(skipped), "heldout_tasks": ["triangulate", "team_relay"],
          "train_examples": writers["train"].total_examples, "train_tokens": writers["train"].total_tokens, "train_targets": writers["train"].total_targets,
@@ -209,8 +243,9 @@ def main() -> None:
     ap.add_argument("--out", required=True)
     ap.add_argument("--name", default="arena-sft")
     ap.add_argument("--seed", type=int, default=11)
+    ap.add_argument("--negative", action="store_true", help="the same turns with no function declared, answered in words (set arena-neg)")
     a = ap.parse_args()
-    print(json.dumps(build(SlmTokenizer.load(a.tokenizer), a.n, Path(a.out), a.name, a.seed), indent=1))
+    print(json.dumps(build(SlmTokenizer.load(a.tokenizer), a.n, Path(a.out), a.name, a.seed, a.negative), indent=1))
 
 
 if __name__ == "__main__":
