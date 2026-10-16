@@ -25,4 +25,4 @@ class PortalSettings:
     open_browser: bool = True
     # the Inference tab's chat mode loads this on first use: "<run>/<file>" (or a path); when it is not on disk the
     # newest RL / reasoning / SFT final.pt stands in (slm.portal.api.model.mark_default_chat)
-    default_chat_checkpoint: str = "m10_rl_336m/final.pt"
+    default_chat_checkpoint: str = "m11_rl_arena_neg_336m/final.pt"  # M11 (results §33): M10's chat quality, and it plays the arena

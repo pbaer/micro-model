@@ -1060,3 +1060,8 @@ Dated entries, newest last. Incidents, decisions and their reasons. Numbers live
   SFT's new skill -- pick the checkpoint by measurement, not best.pt (selected on the trainer's small mixed held-out set).
 - 2026-10-14 M11 judged quality 3.594 vs M10 4.135: arena training made the model call undeclared functions on plain
   chat prompts (tool misfire 0.18 vs 0.04). Not promoted; the instruction-following families and multiturn missed it.
+- 2026-10-16 M11 promoted: m11_rl_arena_neg_336m final (arena SFT with its negative case -- the same robot turns with
+  nothing declared, answered in words -- then 150 RL steps with plain chat doubled). Head-to-head judged quality (two
+  blind judges, one packet) 3.99 vs M10 3.91-3.93; every other chat / instruction-following / reasoning number within
+  noise; plays the arena under the fair prompt. Chat default and arena default prompt switched. Judge drift between
+  passes is ~0.2: compare checkpoints inside one blind packet.

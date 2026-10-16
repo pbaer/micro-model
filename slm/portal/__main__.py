@@ -46,7 +46,7 @@ def main() -> None:
     ap.add_argument("--data-root", default=None)
     ap.add_argument("--gpu-policy", default="auto", choices=["auto", "cuda", "cpu"])
     ap.add_argument("--no-browser", action="store_true")
-    ap.add_argument("--default-chat", default=None, help="checkpoint the chat mode loads on first use, as <run>/<file> (default: the settings' m10_rl_336m/final.pt)")
+    ap.add_argument("--default-chat", default=None, help="checkpoint the chat mode loads on first use, as <run>/<file> (default: the settings' m11_rl_arena_neg_336m/final.pt)")
     ap.add_argument("--reload", action="store_true", help="dev: auto-reload on code changes")
     a = ap.parse_args()
     s = PortalSettings(runs_root=Path(a.runs_root), host=a.host, port=a.port, gpu_policy=a.gpu_policy, open_browser=not a.no_browser)

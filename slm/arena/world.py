@@ -890,7 +890,7 @@ PROMPTS = {
     "hint": {"tools": "turn", "brief": "none", "question": "hint", "ending": "", "demos": [2, 0, 1]},
     "ask_examples": {"tools": "all", "brief": "none", "question": "ask", "ending": "", "demos": [2, 0, 1], "names": "domain"},
 }
-DEFAULT_PROMPT = "scaffold"  # results §29: under the fair prompts M10 makes no progress in any task
+DEFAULT_PROMPT = "ask_examples"  # M11 plays under it (results §33); M10 and older checkpoints need "scaffold" (§29)
 
 # Worked examples put in front of the conversation (`demo`: how many): a situation from no task of the arena and a turn
 # that reasons, makes one call and answers, in the shape our checkpoints generate. They show the protocol (pick a tool,

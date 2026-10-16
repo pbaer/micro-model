@@ -184,7 +184,7 @@ from the page's title).
 
 - **Model.** `GET /api/model/checkpoints` marks every chat-capable entry `chat_ok` (our SFT / reasoning / RL checkpoints,
   external chat models with weights on disk; never a base checkpoint) and one entry `default_chat`:
-  `PortalSettings.default_chat_checkpoint` (`m10_rl_336m/final.pt`; `python -m slm.portal --default-chat <run>/<file>`
+  `PortalSettings.default_chat_checkpoint` (`m11_rl_arena_neg_336m/final.pt`, M11, since 2026-10-16; `python -m slm.portal --default-chat <run>/<file>`
   overrides) when it is listed, else the stand-in `mark_default_chat` picks (RL before reasoning before SFT, a later
   milestone before an earlier, `final.pt` before `best.pt`, newest last). The page uses slot A: an empty slot loads the
   default on arrival (device auto, so CPU while a training run is live); a slot already holding a chat-capable

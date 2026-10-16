@@ -1975,3 +1975,38 @@ sandbox's NameError until the budget runs out. The instruction-following familie
 see it: their prompts are not short factual questions. **M11 is not promoted**; M10 stays the chat default. A fix
 would teach the negative case (memory: teach-the-negative-case): arena-SFT conversations where no function is declared
 and the answer is plain, or more `chat` (plain, no-call) draws in the RL pass.
+
+### 33. M11, take 3: the negative case, and M11 is promoted (2026-10-16)
+
+§32's candidate (the arena SFT + 100 RL steps) failed the judged quality gate by calling undeclared functions on plain
+chat. Take 3 adds the negative case: `arena-neg` (`slm.rl.synth_arena --negative`, 6k conversations, 0.8M tokens) is the
+same robot turns with **nothing declared**, the reasoning kept and the call turned into words ("No function is declared
+here, so I cannot call one; I answer in words. ... #### I would step east."), at 0.05 of the SFT mix
+(`m11_arena_sft_neg_336m`); the RL pass from it (`m11_rl_arena_neg_336m`) doubles the plain-chat draws (3 -> 6 of 36),
+150 steps, a snapshot every 25.
+
+Tool misfire on the quality suite (no judge needed): M10 1/28, §32's M11 4/28, take-3 SFT 3/28, RL steps 25-150
+3, 2, 3, 2, 2, **1**/28. Constraints (200 prompts) by RL step: 0.552 (SFT), 0.598, 0.658, 0.684, 0.705, 0.738, **0.752**.
+Judged quality by step (one judge pass per packet): 3.84, 3.90, 3.66, 3.56, 3.76, 3.83.
+
+**The head-to-head**: the stored M10 score (4.135) came from a judge instance weeks earlier, so M10 final and step 150
+were shuffled into one blind 70-item packet and scored by two independent judges: **M10 3.906 / 3.925, step 150 3.990 /
+3.986**. Step 150 is behind on `pattern` (2.83 vs 4.08: days / months / evens; the suite's known `expect` defect, §quality
+docs) and ahead on `facts` (4.5-4.7 vs 4.3). Cross-pass judge drift of ~0.2 is the lesson: compare checkpoints inside one
+blind packet.
+
+| | M10 | **M11 = m11_rl_arena_neg_336m final (step 150)** |
+|---|---|---|
+| judged quality, head to head (judge A / B) | 3.906 / 3.925 | **3.990 / 3.986** |
+| tool misfire / answers that stop | 0.036 / 0.97 | 0.036 / 1.00 |
+| constraints / revise / sysrule / chat (200 each) | 0.750 / 0.698 / 0.610 / 0.990 | 0.752 / 0.706 / 0.615 / 0.985 |
+| multiturn n=64: recall / revise_all / sysrule_all / format | 0.906 / 0.156 / 0.672 / 0.969 | 0.891 / 0.172 / 0.703 / 0.977 |
+| reasoning eval mean (gsm8k_test) | 0.758 (0.05) | 0.767 (0.075) |
+| fair-prompt arena (`ask_examples`, 5 seeds): key_door / relay / team_relay | 0/5 / 0/5 / no winner | **2/5 / 5/5 / 5 won** |
+| tag: chaser steps closing in (chance); runners tagged | -- ; 0/20 | 0.70 (0.43); 0/20 |
+| gold_rush: coins; nearest-coin steps (chance) | 0 | 42; 0.68 (0.40) |
+
+**Promoted**: M11 is the portal's chat default (`PortalSettings.default_chat_checkpoint =
+m11_rl_arena_neg_336m/final.pt`) and the arena's default prompt is the fair one (`DEFAULT_PROMPT = "ask_examples"`;
+M10 and older checkpoints still need `scaffold`). Open: a chaser next to a runner still rarely tags it under the fair
+prompt, and triangulate (never trained on) is unsolved by every model.
